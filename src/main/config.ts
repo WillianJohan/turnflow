@@ -1,6 +1,10 @@
 import { app } from 'electron'
 import { homedir } from 'os'
-import { configDir as resolveConfigDir } from '../shared/paths'
+import {
+  binDir as resolveBinDir,
+  configDir as resolveConfigDir,
+  socketPath as resolveSocketPath
+} from '../shared/paths'
 import { join } from 'path'
 
 export const DIGITALK_HOME = join(homedir(), 'Documents/Digitalk')
@@ -14,3 +18,8 @@ export const CLAUDE_PROJECTS = join(homedir(), '.claude/projects')
 export const configDir = (): string =>
   resolveConfigDir(process.env, process.platform, homedir(), !app.isPackaged)
 export const userDataDir = (): string => app.getPath('userData')
+// mesmos caminhos que o modo CLI resolve (dev = não empacotado → turnflow-dev)
+export const socketPath = (): string =>
+  resolveSocketPath(process.env, process.platform, homedir(), !app.isPackaged)
+export const binDir = (): string =>
+  resolveBinDir(process.env, process.platform, homedir(), !app.isPackaged)

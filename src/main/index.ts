@@ -5,9 +5,32 @@ import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
 import { windowPrefs } from './windowPrefs'
 import { isExternalLink } from './links'
-import { configDir } from './config'
+import { binDir, configDir, socketPath } from './config'
 import { BRAND } from '../shared/brand'
 import { changeBus } from './changeBusInstance'
+import { parseCli, runCli } from '../cli/dispatch'
+import { shimContent, writeShim, type ShimTarget } from './shim'
+import { startSocketServer, stubMcpHandler } from './socketServer'
+
+// Despacho do modo CLI (`turnflow mcp`): antes do lock, do whenReady e de qualquer janela.
+// O lock é da instância com janela; a CLI nunca o disputa nem foca a janela aberta.
+const cli = parseCli(process.argv)
+if (cli.mode === 'cli') {
+  app.dock?.hide()
+  runCli(cli, {
+    socket: socketPath(),
+    env: process.env,
+    stdin: process.stdin,
+    stdout: process.stdout,
+    stderr: process.stderr
+  }).then(
+    (code) => app.exit(code),
+    (e) => {
+      process.stderr.write(`${e instanceof Error ? e.message : String(e)}\n`)
+      app.exit(1)
+    }
+  )
+} else startApp()
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -48,22 +71,60 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-// sem menu: os aceleradores padrão (Ctrl+R, Ctrl+Shift+R, Ctrl+W) recarregavam/fechavam a janela
-Menu.setApplicationMenu(null)
+function shimTarget(): ShimTarget {
+  if (process.env.APPIMAGE) return { kind: 'appimage', appimage: process.env.APPIMAGE }
+  if (is.dev) return { kind: 'dev', electron: process.execPath, appDir: app.getAppPath() }
+  return { kind: 'exec', exec: process.execPath }
+}
 
-app.setPath('userData', join(configDir(), 'electron'))
+// shim de path estável + socket local: falha aqui não derruba a janela
+async function startLocalSurface(): Promise<void> {
+  try {
+    writeShim(binDir(), shimContent(shimTarget(), process.platform))
+  } catch (e) {
+    console.error('[shim]', e)
+  }
+  try {
+    const server = await startSocketServer(socketPath(), stubMcpHandler)
+    app.on('will-quit', () => void server.close())
+  } catch (e) {
+    // ALREADY_RUNNING com o lock na mão = outra instância com outro userData (ex.: teste)
+    console.error('[socket]', e instanceof Error ? e.message : e)
+  }
+}
 
-app.on('will-quit', changeBus.dispose)
+function startApp(): void {
+  // sem menu: os aceleradores padrão (Ctrl+R, Ctrl+Shift+R, Ctrl+W) recarregavam/fechavam a janela
+  Menu.setApplicationMenu(null)
 
-app.whenReady().then(async () => {
-  if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
-  const win = createWindow()
-  // handlers registrados antes de carregar a página: senão o renderer chama antes de existirem
-  const dispose = await registerIpc(win)
-  if (is.dev && process.env['ELECTRON_RENDERER_URL'])
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  else win.loadFile(join(__dirname, '../renderer/index.html'))
-  win.on('closed', dispose)
-})
+  // antes do lock: o lock do Electron é por userData
+  app.setPath('userData', join(configDir(), 'electron'))
 
-app.on('window-all-closed', () => app.quit())
+  if (!app.requestSingleInstanceLock()) {
+    app.quit()
+    return
+  }
+  let main: BrowserWindow | undefined
+  app.on('second-instance', () => {
+    if (!main || main.isDestroyed()) return
+    if (main.isMinimized()) main.restore()
+    main.focus()
+  })
+
+  app.on('will-quit', changeBus.dispose)
+
+  app.whenReady().then(async () => {
+    if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
+    const win = createWindow()
+    main = win
+    // handlers registrados antes de carregar a página: senão o renderer chama antes de existirem
+    const dispose = await registerIpc(win)
+    if (is.dev && process.env['ELECTRON_RENDERER_URL'])
+      win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    else win.loadFile(join(__dirname, '../renderer/index.html'))
+    win.on('closed', dispose)
+    void startLocalSurface()
+  })
+
+  app.on('window-all-closed', () => app.quit())
+}
