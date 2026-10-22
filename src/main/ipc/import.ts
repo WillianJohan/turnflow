@@ -115,7 +115,10 @@ export function registerImportIpc(h: Register, deps: ImportIpcDeps): void {
     src: Awaited<ReturnType<typeof readDkdesk>>
   }> => {
     const src = await readDkdesk(deps.legacyDir())
-    const { config } = await readConfig(deps.configDir)
+    // config.json quebrado: o writeConfig recusaria depois dos temas gravados; falha antes de tudo
+    const { config, error } = await readConfig(deps.configDir)
+    if (error) throw importError('VALIDATION', 'app_config_invalid')
+
     const plan = planDkdesk(src, {
       config: { ...config },
       themes: await deps.readThemesRaw(),

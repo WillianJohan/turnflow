@@ -397,6 +397,19 @@ describe('canais do import', () => {
       expect(readdirSync(join(e.configDir, 'themes')).sort()).toEqual(before)
     })
 
+    it('config.json do app inválido: falha antes de escrever qualquer coisa', async () => {
+      const e = setup()
+      seedLegacy(e.legacy)
+      writeFileSync(join(e.configDir, 'config.json'), '{ nope')
+      for (const call of [
+        () => e.call('importLegacyDryRun'),
+        () => e.call('importLegacyApply', { token: 'x' })
+      ])
+        expect(await call()).toMatchObject({ ok: false, error: { code: 'VALIDATION' } })
+      expect(readdirSync(join(e.configDir, 'themes'))).toEqual([])
+      expect(readFileSync(join(e.configDir, 'config.json'), 'utf8')).toBe('{ nope')
+    })
+
     it('token velho é preview_stale e origem ausente é NOT_FOUND', async () => {
       const e = setup()
       rmSync(e.legacy, { recursive: true })

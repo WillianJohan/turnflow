@@ -5,7 +5,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest'
 import type { AppConfig, Theme } from '../../../shared/types'
 import { tmpDir } from '../../testing/db'
 import { nodeBrainFs } from '../markdown/scan'
-import { applyDkdesk } from './apply'
+import { applyDkdesk, nodeThemeIo } from './apply'
 import { planDkdesk, type DkdeskPlan } from './plan'
 import { readDkdesk, type DkdeskSource } from './read'
 
@@ -181,5 +181,42 @@ describe('import do app legado', () => {
     const { src, plan: p } = await plan(dir, dst.themesDir)
     await applyDkdesk(p, src, dst)
     expect(hashTree(dir)).toBe(before)
+  })
+
+  it('escrita que falha no meio não deixa nada na pasta de temas', async () => {
+    const dst = newDst()
+    const { src, plan: p } = await plan(makeSource(), dst.themesDir)
+    for (const failAt of ['write', 'sync', 'link'] as const) {
+      const io = {
+        ...nodeThemeIo,
+        open: async (f: string, flags: string, mode: number) => {
+          const h = await nodeThemeIo.open(f, flags, mode)
+          return {
+            writeFile: async (d: string) => {
+              if (failAt === 'write') {
+                await h.writeFile(d.slice(0, 5))
+                throw Object.assign(new Error('disk full'), { code: 'ENOSPC' })
+              }
+              await h.writeFile(d)
+            },
+            sync: async () => {
+              if (failAt === 'sync') throw new Error('io')
+              await h.sync()
+            },
+            close: () => h.close()
+          }
+        },
+        link: async (a: string, b: string) => {
+          if (failAt === 'link') throw new Error('nolink')
+          await nodeThemeIo.link(a, b)
+        }
+      }
+      await expect(applyDkdesk(p, src, { ...dst, io })).rejects.toThrow()
+      expect(readdirSync(dst.themesDir)).toEqual([])
+    }
+    expect(dst.writeConfig).not.toHaveBeenCalled()
+    // e sem falha o tema entra, sem sobra de temporário
+    await applyDkdesk(p, src, dst)
+    expect(readdirSync(dst.themesDir)).toEqual(['night.json'])
   })
 })

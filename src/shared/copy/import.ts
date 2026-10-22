@@ -11,6 +11,8 @@ export const IMPORT_COPY = {
     too_many_tasks: 'This folder has too many tasks to import at once.',
     too_large: 'The task READMEs in this folder are too large to read at once.',
     preview_stale: 'The folder changed since the preview. Preview it again before importing.',
+    app_config_invalid:
+      'The settings file of this app is not valid JSON. Fix or remove it before importing.',
     legacy_not_found: 'The legacy source was not found.',
     export_dest_invalid: 'The export destination is not a valid folder.',
     status_map_newer_version:

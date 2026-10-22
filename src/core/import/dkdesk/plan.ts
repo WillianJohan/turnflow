@@ -25,6 +25,9 @@ const HEX = /^#[0-9a-f]{6}$/i
 const ID = /^[\w.-]+$/
 const COLOR_KEY = /^\w{1,40}$/
 const NAME_MAX = 80
+// tetos do contrato do IPC (strings do plano) e faixa sensata de fonte
+const MAX_STR = 256
+const FONT_RANGE = [8, 48] as const
 // base de um tema sem `ui.bg`/`ui.accent` válidos: as cores do tema escuro padrão
 const FALLBACK_BG = '#14161a'
 const FALLBACK_ACCENT = '#58a6ff'
@@ -118,40 +121,60 @@ export function planDkdesk(src: DkdeskSource, dst: DkdeskDst): DkdeskPlan {
   for (const { id, json } of src.themes) {
     const t = normalizeTheme(json, id)
     const name = t?.name ?? id
-    if (id in dst.builtin) {
-      themes.push({ from: id, to: null, name, action: 'skip_builtin' })
-    } else if (!t || !validId(id)) {
-      themes.push({ from: id, to: null, name, action: 'skip_invalid' })
+    if (Object.hasOwn(dst.builtin, id)) {
+      themes.push({ from: id.slice(0, MAX_STR), to: null, name, action: 'skip_builtin' })
+    } else if (!t || !validId(id) || id.length > MAX_STR) {
+      themes.push({ from: id.slice(0, MAX_STR), to: null, name, action: 'skip_invalid' })
     } else {
       const same = sameContent.get(contentKey(t.ui, t.terminal))
-      if (same !== undefined) {
-        themes.push({ from: id, to: same, name, action: 'skip_same' })
+      if (same !== undefined && same.length <= MAX_STR) {
+        themes.push({ from: id.slice(0, MAX_STR), to: same, name, action: 'skip_same' })
       } else {
         const to = free(id)
-        taken.add(to)
-        themes.push({ from: id, to, name, action: 'create' })
+        if (to.length > MAX_STR) {
+          themes.push({ from: id.slice(0, MAX_STR), to: null, name, action: 'skip_invalid' })
+        } else {
+          taken.add(to)
+          themes.push({ from: id.slice(0, MAX_STR), to, name, action: 'create' })
+        }
       }
     }
   }
 
   const config: Record<string, unknown> = {}
+  const rejected: string[] = []
   const from = src.config ?? {}
   for (const key of MIGRATED) {
     const def = dst.defaults[key]
     let value = from[key]
     if (typeof value !== typeof def) continue
+    if (typeof value === 'string' && value.length > MAX_STR) {
+      rejected.push(key)
+      continue
+    }
+    if (
+      (key === 'fontSize' || key === 'appFontSize') &&
+      !(typeof value === 'number' && value >= FONT_RANGE[0] && value <= FONT_RANGE[1])
+    ) {
+      rejected.push(key)
+      continue
+    }
     if (key === 'theme') {
       const moved = themes.find((t) => t.from === value)
       if (moved?.to) value = moved.to
-      else if (typeof value !== 'string' || !(value in dst.builtin)) continue
+      else if (typeof value !== 'string' || !Object.hasOwn(dst.builtin, value)) continue
     }
     // só migra o que o app ainda tem no padrão (ausente = padrão) e que de fato muda algo
     const mine = key in dst.config ? dst.config[key] : def
     if (mine === def && value !== def) config[key] = value
   }
-  const ignored_keys = Object.keys(from)
-    .filter((k) => !(MIGRATED as readonly string[]).includes(k))
+  const ignored_keys = [
+    ...Object.keys(from).filter((k) => !(MIGRATED as readonly string[]).includes(k)),
+    ...rejected
+  ]
+    .filter((k) => k.length <= MAX_STR)
     .sort()
+    .slice(0, 500)
 
   const token = createHash('sha256')
     .update(canonical({ themes, config, ignored_keys }))

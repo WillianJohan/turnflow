@@ -126,4 +126,54 @@ describe('planDkdesk', () => {
     expect(a.token).toBe(b.token)
     expect(a.token).not.toBe(c.token)
   })
+
+  it('id que é propriedade de Object.prototype não é builtin', () => {
+    const p = planDkdesk(
+      src({
+        config: { theme: 'toString' },
+        themes: [
+          { id: 'constructor', json: dark },
+          { id: 'toString', json: light }
+        ]
+      }),
+      dst()
+    )
+    expect(p.themes.map((t) => t.action)).toEqual(['create', 'create'])
+    expect(p.config).toEqual({ theme: 'toString' })
+    const q = planDkdesk(src({ config: { theme: '__proto__' } }), dst())
+    expect(q.config).toEqual({})
+  })
+
+  it('limites: texto longo e número fora da faixa não entram; item grande não derruba a prévia', () => {
+    const long = 'a'.repeat(257)
+    const p = planDkdesk(
+      src({
+        config: {
+          termFont: long,
+          appFont: long,
+          theme: long,
+          fontSize: 500,
+          appFontSize: 2,
+          [long]: 1
+        },
+        themes: [
+          { id: long, json: dark },
+          { id: 'x'.repeat(250), json: dark },
+          { id: 'ok', json: light }
+        ]
+      }),
+      dst({ themes: [{ id: 'x'.repeat(250), json: { ui: { bg: '#111111' }, terminal: {} } }] })
+    )
+    expect(p.themes.map((t) => t.action)).toEqual(['skip_invalid', 'skip_invalid', 'create'])
+    expect(p.themes.every((t) => t.from.length <= 256 && (t.to ?? '').length <= 256)).toBe(true)
+    expect(p.config).toEqual({})
+    expect(p.ignored_keys).toEqual(
+      expect.arrayContaining(['fontSize', 'appFontSize', 'termFont', 'appFont', 'theme'])
+    )
+    expect(p.ignored_keys.every((k) => k.length <= 256)).toBe(true)
+    expect(planDkdesk(src({ config: { fontSize: 8, appFontSize: 48 } }), dst()).config).toEqual({
+      fontSize: 8,
+      appFontSize: 48
+    })
+  })
 })
