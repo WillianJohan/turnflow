@@ -3,8 +3,8 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } fro
 import { basename, join } from 'node:path'
 import { VAULT_COPY } from '../../shared/copy/vault'
 import { ensureDailyBackup, preMigrationName, scheduleDailyBackup, writeBackup } from '../db/backup'
-import type { Migration } from '../db/migrate'
-import { MIGRATIONS } from '../db/migrations'
+import { latestVersion, type Migration } from '../db/migrate'
+import { LATEST } from '../db/migrations'
 import { DbOpenError, openDb, type Db } from '../db/open'
 import type { KeyBackend } from './backend'
 import { generateDek } from './dek'
@@ -50,7 +50,11 @@ export interface Vault {
   commitFirstRun(): Promise<void>
   unlockWithPassword(password: string): Promise<void>
   recover(words: string, newPassword?: string): Promise<void>
-  /** Só em `first_run`: restaura um backup aberto pelas palavras. Erro não deixa nada escrito. */
+  /**
+   * Só em `first_run`: restaura um backup aberto pelas palavras. Erro não deixa nada escrito.
+   * Como no `recover`: senha informada → modo senha, mesmo com chaveiro real; sem senha → chaveiro
+   * (no `basic_text`, `PASSWORD_REQUIRED`).
+   */
   restore(backupPath: string, words: string, password?: string): Promise<void>
   db(): Db
   close(): void
@@ -124,7 +128,14 @@ export function createVault(deps: VaultDeps): Vault {
     return run
   }
 
-  function open(file: string, dek: Buffer, create: boolean, instrument: boolean): Db {
+  /** `preBackup: false` no restore: a origem já é o backup e nunca muda. */
+  function open(
+    file: string,
+    dek: Buffer,
+    create: boolean,
+    instrument: boolean,
+    preBackup = true
+  ): Db {
     assertNotClosed()
     try {
       return openDb({
@@ -135,7 +146,7 @@ export function createVault(deps: VaultDeps): Vault {
         // Primeiro uso (e restore) começam do zero: backup pré só de banco que já existia.
         // Sem backup pré, a migration não roda: o erro sobe e o vault vai a `failed`.
         beforeMigrate: (db, from) => {
-          if (from === 0) return
+          if (from === 0 || !preBackup) return
           try {
             writeBackup(db, paths.backups, preMigrationName(from, now()))
           } catch (e) {
@@ -433,12 +444,12 @@ export function createVault(deps: VaultDeps): Vault {
         if (state !== 'first_run') throw new VaultError('BAD_STATE')
         const dek = wordsToDek(words)
         try {
-          const real = backend.kind() === 'real'
-          if (!real && !password) throw new VaultError('PASSWORD_REQUIRED')
+          if (!password && backend.kind() !== 'real') throw new VaultError('PASSWORD_REQUIRED')
           // O boot do first_run já tirou banco e chave do caminho; o rename abaixo sobrescreveria.
           if (existsSync(paths.keyFile) || existsSync(paths.db)) throw new VaultError('BAD_STATE')
           // Embrulha antes de tocar no disco: falha de chaveiro ou KDF não deixa nada escrito.
-          const kf = real ? wrapKeyring(dek) : await wrapWithPassword(dek, password as string)
+          const kf = password ? await wrapWithPassword(dek, password) : wrapKeyring(dek)
+          assertNotClosed() // close() durante o KDF: nada vai ao disco
           // Decisão 11: cópia em restore.tmp → .init → mesmo caminho do commitFirstRun.
           ensureDir()
           removeInit()
@@ -448,9 +459,9 @@ export function createVault(deps: VaultDeps): Vault {
               tmpDir: paths.restoreTmp,
               target: paths.dbInit,
               dek,
-              latest: Math.max(...(deps.migrations ?? MIGRATIONS).map((m) => m.version))
+              latest: deps.migrations ? latestVersion(deps.migrations) : LATEST
             })
-            open(paths.dbInit, dek, false, false).close()
+            open(paths.dbInit, dek, false, false, false).close()
             assertNotClosed()
             writeKeyFile(paths.keyFile, kf)
           } catch (e) {

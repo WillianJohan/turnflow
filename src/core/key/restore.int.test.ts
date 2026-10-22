@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import Database from 'better-sqlite3-multiple-ciphers'
 import { describe, expect, it } from 'vitest'
 import { writeBackup } from '../db/backup'
+import type { Migration } from '../db/migrate'
 import { LATEST, MIGRATIONS } from '../db/migrations'
 import { openDb, type Db } from '../db/open'
 import { runSearch } from '../db/search'
@@ -11,9 +12,10 @@ import { dumpTables, insertCheckpoint, insertTask, tmpDir } from '../testing/db'
 import { fakeKeyBackend } from '../testing/fakeKeyBackend'
 import type { KeyBackend } from './backend'
 import { VaultError, type VaultErrorCode } from './errors'
+import { readKeyFile } from './keyfile'
 import { vaultPaths } from './paths'
 import { dekToWords, wordsToDek } from './recovery'
-import { createVault, type Vault } from './vault'
+import { createVault, type Vault, type VaultDeps } from './vault'
 
 const NEW_PASSWORD = 'senha-nova-123'
 const TABLES = ['task', 'checkpoint', 'secret', 'flow', 'flow_stage', 'task_type', 'project']
@@ -32,12 +34,15 @@ async function rejectsWith(p: Promise<unknown>, code: VaultErrorCode): Promise<V
 }
 
 /** Vault novo num diretório vazio, já em `first_run`. */
-async function fresh(backend: KeyBackend = fakeKeyBackend('real')): Promise<{
+async function fresh(
+  backend: KeyBackend = fakeKeyBackend('real'),
+  extra: Partial<VaultDeps> = {}
+): Promise<{
   vault: Vault
   dir: string
 }> {
   const dir = tmpDir()
-  const vault = createVault({ paths: vaultPaths(dir), backend })
+  const vault = createVault({ paths: vaultPaths(dir), backend, ...extra })
   expect(await vault.boot()).toBe('first_run')
   return { vault, dir }
 }
@@ -214,6 +219,55 @@ describe('restore', () => {
 
     await rejectsWith(p, 'LOCKED')
     expect(readdirSync(dir)).toEqual([])
+  })
+
+  it('close() durante o KDF da senha → LOCKED, nada escrito', async () => {
+    const { a, file } = await backupOfA()
+    a.vault.close()
+    const { vault: b, dir } = await fresh(fakeKeyBackend('basic_text'))
+
+    const p = b.restore(file, a.words, NEW_PASSWORD)
+    await new Promise((r) => setTimeout(r, 30)) // já dentro do Argon2
+    b.close()
+
+    await rejectsWith(p, 'LOCKED')
+    expect(readdirSync(dir)).toEqual([])
+  })
+
+  it('senha informada com chaveiro real → modo senha; sem senha → chaveiro', async () => {
+    const { a, file } = await backupOfA()
+    a.vault.close()
+    const withPw = await fresh()
+    await withPw.vault.restore(file, a.words, NEW_PASSWORD)
+    expect(readKeyFile(join(withPw.dir, 'key.enc'))?.mode).toBe('password')
+    withPw.vault.close()
+    const noPw = await fresh()
+    await noPw.vault.restore(file, a.words)
+    expect(readKeyFile(join(noPw.dir, 'key.enc'))?.mode).toBe('keyring')
+    noPw.vault.close()
+  }, 60_000)
+
+  it('migration que falha no backup antigo → MIGRATION_FAILED, sem backup pré-migration', async () => {
+    const dek = randomBytes(32)
+    const file = join(tmpDir(), 'antigo.db')
+    openDb({ file, dek, create: true, migrations: MIGRATIONS.slice(0, 2) }).close()
+    const before = sha(file)
+    const broken: Migration = {
+      version: LATEST + 1,
+      name: 'quebrada',
+      up: () => {
+        throw new Error('falha de teste')
+      }
+    }
+    const { vault: b, dir } = await fresh(fakeKeyBackend('real'), {
+      migrations: [...MIGRATIONS, broken]
+    })
+
+    await rejectsWith(b.restore(file, dekToWords(dek).join(' ')), 'MIGRATION_FAILED')
+
+    expectUntouched(b, dir)
+    expect(sha(file)).toBe(before)
+    b.close()
   })
 
   it('backup antigo (v2) migra até LATEST e popula a busca', async () => {
