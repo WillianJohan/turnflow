@@ -10,7 +10,10 @@ export const IMPORT_COPY = {
     too_large: 'The task READMEs in this folder are too large to read at once.',
     preview_stale: 'The folder changed since the preview. Preview it again before importing.',
     legacy_not_found: 'The legacy source was not found.',
-    export_dest_invalid: 'The export destination is not a valid folder.'
+    export_dest_invalid: 'The export destination is not a valid folder.',
+    status_map_newer_version:
+      'The status map was saved by a newer version of the app and will not be overwritten.',
+    flow_has_no_stages: 'This flow has no stages to map statuses to.'
   },
   importedStatus: (status: string): string => `Imported status: ${status}`,
   /** Por que um caminho ficou de fora do import. */

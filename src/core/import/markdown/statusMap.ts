@@ -1,7 +1,10 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { access, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { z } from 'zod'
 import { StatusRoleZ, StatusTargetZ } from '../../../shared/contracts'
 import { fold } from '../../db/fold'
+import { importError } from '../errors'
 import type { BrainDir } from './scan'
 
 export type StatusRole = z.infer<typeof StatusRoleZ>
@@ -62,6 +65,7 @@ const ordered = (stages: FlowStageLite[]): FlowStageLite[] =>
 /** Id da etapa que cumpre o papel neste fluxo (`blocked` = a primeira; o motivo é de quem chama). */
 export function resolveRole(role: StatusRole, stages: FlowStageLite[]): string {
   const all = ordered(stages)
+  if (all.length === 0) throw importError('VALIDATION', 'flow_has_no_stages')
   const live = all.filter((s) => !s.is_final)
   const first = all[0].id
   const working = (): string => live.filter((s) => !s.waits_other)[1]?.id ?? first
@@ -88,11 +92,12 @@ export function suggestTarget(
   key: string,
   map: StatusMapFile,
   stages: FlowStageLite[]
-): { target: StatusTarget | null; source: StatusSource } {
+): { target: StatusTarget | null; source: StatusSource; stage_id?: string } {
+  if (!key) return { target: null, source: 'none' }
   const saved = Object.hasOwn(map.entries, key) ? map.entries[key] : undefined
   if (saved) return { target: saved, source: 'saved' }
   const named = stageByName(key, stages)
-  if (named) return { target: { stage: named.name }, source: 'stage_name' }
+  if (named) return { target: { stage: named.name }, source: 'stage_name', stage_id: named.id }
   const seed = SEED_RULES.find((r) => r.re.test(key))
   if (seed) return { target: { role: seed.role }, source: 'seed' }
   return { target: null, source: 'none' }
@@ -120,19 +125,25 @@ export function resolveStatus(
     target: null
   })
   if (p.status === null) return none()
-  const { target, source } = suggestTarget(statusKey(p.status), map, stages)
+  const { target, source, stage_id } = suggestTarget(statusKey(p.status), map, stages)
   if (!target) return none()
   let stageId: string
-  if ('stage' in target) {
+  if (stage_id) {
+    stageId = stage_id
+  } else if ('stage' in target) {
     const s = stageByName(target.stage, stages)
-    if (!s) return none()
+    // Salvo aponta para etapa que não existe mais: a UI explica; o status cai na primeira etapa.
+    if (!s) return { ...none(), source, target }
     stageId = s.id
   } else {
     stageId = resolveRole(target.role, stages)
   }
   const isFinal = stages.find((s) => s.id === stageId)?.is_final ?? false
   const reason =
-    p.blocked ?? (!('stage' in target) && target.role === 'blocked' ? statusReason(p.status) : null)
+    p.blocked ??
+    (!('stage' in target) && target.role === 'blocked'
+      ? (statusReason(p.status) ?? p.status.trim())
+      : null)
   return {
     stage_id: stageId,
     blocked_reason: isFinal ? null : reason,
@@ -142,24 +153,77 @@ export function resolveStatus(
   }
 }
 
-const StatusMapFileZ = z
-  .object({ version: z.literal(1), entries: z.record(z.string(), StatusTargetZ) })
-  .strict()
+export type StatusMapProblem = 'unreadable' | 'invalid' | 'newer_version'
+export type StatusMapRead = { map: StatusMapFile; problem?: StatusMapProblem; dropped: number }
 
-const EMPTY = (): StatusMapFile => ({ version: 1, entries: {} })
-
-/** Ausente, ilegível ou fora do formato = mapa vazio (a semente cobre). */
-export async function readStatusMap(file: string): Promise<StatusMapFile> {
-  try {
-    const parsed = StatusMapFileZ.safeParse(JSON.parse(await readFile(file, 'utf8')))
-    return parsed.success ? parsed.data : EMPTY()
-  } catch {
-    return EMPTY()
+/** Normaliza as chaves com `statusKey` e descarta (contando) as entradas inválidas. */
+export function normalizeEntries(raw: Record<string, unknown>): {
+  entries: Record<string, StatusTarget>
+  dropped: number
+} {
+  const entries: Record<string, StatusTarget> = {}
+  let dropped = 0
+  for (const [k, v] of Object.entries(raw)) {
+    const key = statusKey(k)
+    const t = StatusTargetZ.safeParse(v)
+    if (!key || !t.success) dropped++
+    else entries[key] = t.data
   }
+  return { entries, dropped }
 }
 
+const EMPTY = (): StatusMapFile => ({ version: 1, entries: {} })
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Ausente = mapa vazio sem problema; o resto vem com `problem` e a semente cobre. */
+export async function readStatusMap(file: string): Promise<StatusMapRead> {
+  let text: string
+  try {
+    text = await readFile(file, 'utf8')
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { map: EMPTY(), dropped: 0 }
+    return { map: EMPTY(), problem: 'unreadable', dropped: 0 }
+  }
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch {
+    return { map: EMPTY(), problem: 'unreadable', dropped: 0 }
+  }
+  if (!isRecord(json) || typeof json.version !== 'number' || !isRecord(json.entries))
+    return { map: EMPTY(), problem: 'invalid', dropped: 0 }
+  if (json.version > 1) return { map: EMPTY(), problem: 'newer_version', dropped: 0 }
+  if (json.version !== 1) return { map: EMPTY(), problem: 'invalid', dropped: 0 }
+  const { entries, dropped } = normalizeEntries(json.entries)
+  return { map: { version: 1, entries }, dropped }
+}
+
+const exists = (p: string): Promise<boolean> =>
+  access(p).then(
+    () => true,
+    () => false
+  )
+
+/**
+ * Grava o mapa. Arquivo existente ilegível, inválido ou com entradas descartadas vai para `.bak`
+ * antes (nada do usuário se perde calado); de versão mais nova, recusa.
+ */
 export async function writeStatusMap(file: string, m: StatusMapFile): Promise<void> {
-  const tmp = `${file}.tmp`
-  await writeFile(tmp, JSON.stringify(m, null, 2))
-  await rename(tmp, file)
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 })
+  const cur = await readStatusMap(file)
+  if (cur.problem === 'newer_version') throw importError('CONFLICT', 'status_map_newer_version')
+  if ((cur.problem || cur.dropped > 0) && (await lstat(file)).isFile()) {
+    let bak = `${file}.bak`
+    if (await exists(bak)) bak = `${file}.bak.${randomBytes(4).toString('hex')}`
+    await rename(file, bak)
+  }
+  const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`
+  try {
+    await writeFile(tmp, JSON.stringify(m, null, 2))
+    await rename(tmp, file)
+  } catch (e) {
+    await rm(tmp, { force: true })
+    throw e
+  }
 }

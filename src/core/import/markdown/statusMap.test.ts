@@ -1,6 +1,9 @@
+import { DomainError } from '../../domain/errors'
 import { describe, expect, it } from 'vitest'
 import {
+  normalizeEntries,
   resolveRole,
+  suggestTarget,
   resolveStatus,
   statusKey,
   statusReason,
@@ -139,9 +142,55 @@ describe('resolveStatus', () => {
     })
   })
 
-  it('stage sem par vale como sem mapeamento', () => {
+  it('stage salvo sem par: mapped false, source saved, target preservado', () => {
     const map: StatusMapFile = { version: 1, entries: { 'em teste': { stage: 'Inexistente' } } }
-    expect(res('em teste', 'current', map)).toMatchObject({ stage_id: 's1', mapped: false })
+    expect(res('em teste', 'current', map)).toMatchObject({
+      stage_id: 's1',
+      mapped: false,
+      source: 'saved',
+      target: { stage: 'Inexistente' }
+    })
+  })
+
+  it('bloqueado sem dois pontos guarda o status como motivo', () => {
+    expect(res('Bloqueada')).toMatchObject({ stage_id: 's1', blocked_reason: 'Bloqueada' })
+    expect(res('  Blocked ')).toMatchObject({ blocked_reason: 'Blocked' })
+    const map: StatusMapFile = { version: 1, entries: { aguardando: { role: 'blocked' } } }
+    expect(res('Aguardando', 'current', map)).toMatchObject({ blocked_reason: 'Aguardando' })
+    expect(res('bloqueada: x')).toMatchObject({ blocked_reason: 'x' })
+  })
+
+  it('chave vazia nunca casa etapa nem semente', () => {
+    const stages = [st('a', 'Nada', 0, { short_name: '' }), st('b', 'Fim', 1, { is_final: true })]
+    for (const s of ['', '   ', ':x']) {
+      expect(res(s, 'current', empty, stages)).toMatchObject({
+        stage_id: 'a',
+        mapped: false,
+        source: 'none'
+      })
+    }
+  })
+
+  it('suggestTarget por nome devolve o id da etapa casada', () => {
+    const dup = [
+      st('a', 'Same', 0),
+      st('b', 'Other', 1, { short_name: 'same' }),
+      st('c', 'Fim', 2, { is_final: true })
+    ]
+    expect(suggestTarget('same', empty, dup)).toMatchObject({ source: 'stage_name', stage_id: 'a' })
+  })
+
+  it('chaves salvas sao normalizadas por statusKey na leitura do mapa em memoria', () => {
+    expect(normalizeEntries({ ' Em Teste: x ': { role: 'review' } }).entries).toEqual({
+      'em teste': { role: 'review' }
+    })
+  })
+
+  it('resolveRole sem etapas e erro de dominio', () => {
+    expect(() => resolveRole('first', [])).toThrow(DomainError)
+    expect(() => resolveStatus({ status: 'x', dir: 'current', blocked: null }, empty, [])).toThrow(
+      DomainError
+    )
   })
 
   it('linha Blocked poe o motivo em etapa nao final', () => {
