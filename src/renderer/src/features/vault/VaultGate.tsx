@@ -40,6 +40,18 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
   )
   const retryBoot = useCallback(() => fetchBoot('result'), [fetchBoot])
   const applyResult = useCallback((b: Boot) => dispatch({ t: 'result', boot: b }), [])
+  // tela de falha: o main refaz o boot (o wipe interrompido termina, o banco reaberto)
+  const retryVault = useCallback(
+    () =>
+      orThrow(api.vaultRetry()).then(
+        (b) => {
+          setLoadError(null)
+          applyResult(b)
+        },
+        (e) => setLoadError(message(e))
+      ),
+    [api, applyResult]
+  )
 
   useEffect(() => {
     fetchBoot('initial')
@@ -155,7 +167,11 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
         />
       )}
       {screen === 'failed' && (
-        <Failed message={boot.failure?.message ?? ''} onRetry={retryBoot} onWipe={toWipe} />
+        <Failed
+          message={loadError ?? boot.failure?.message ?? ''}
+          onRetry={retryVault}
+          onWipe={toWipe}
+        />
       )}
     </div>
   )

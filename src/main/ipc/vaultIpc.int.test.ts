@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { BRAND } from '../../shared/brand'
@@ -397,6 +397,60 @@ describe('canais do vault', () => {
     expect(existsSync(join(dir, BRAND.db))).toBe(false)
     vault.close()
   }, 20_000)
+
+  it('vault.retry fora de failed → CONFLICT/BAD_STATE e não refaz o boot', async () => {
+    const { vault, invoke } = setup()
+    await vault.boot()
+    const spy = vi.spyOn(vault, 'boot')
+    expect(await invoke(ch.vaultRetry.name)).toEqual({
+      ok: false,
+      error: { code: 'CONFLICT', message: VAULT_COPY.errors.BAD_STATE }
+    })
+    expect(spy).not.toHaveBeenCalled()
+    vault.close()
+  })
+
+  it('vault.retry depois de falha transitória (banco fora do lugar) refaz o boot até ready', async () => {
+    const dir = tmpDir()
+    const backend = fakeKeyBackend('real')
+    const first = setup({ dir, extra: { backend } })
+    await first.vault.boot()
+    await first.invoke(ch.firstRunBegin.name, {})
+    await first.invoke(ch.firstRunCommit.name, { saved: true })
+    first.vault.close()
+    const db = join(dir, BRAND.db)
+    renameSync(db, `${db}.fora`)
+    const { vault, invoke } = setup({ dir, extra: { backend } })
+    expect(await vault.boot()).toBe('failed')
+    expect(vault.failure()?.message).toBe(VAULT_COPY.dbNotFound)
+    renameSync(`${db}.fora`, db)
+    expect(await invoke(ch.vaultRetry.name)).toEqual(bootOk('ready', { backend: 'real' }))
+    vault.close()
+  }, 20_000)
+
+  // root ignora o 0500 do diretório: o rm não falharia
+  it.skipIf(process.getuid?.() === 0)(
+    'Apagar tudo interrompido: vault.retry termina o wipe (wipeFailed promete isso)',
+    async () => {
+      const dir = tmpDir()
+      await committed(dir)
+      const { vault, invoke } = setup({ dir })
+      await vault.boot()
+      const backups = join(dir, 'backups')
+      chmodSync(backups, 0o500)
+      try {
+        expect(await invoke(ch.vaultWipe.name, { confirm: 'APAGAR' })).toMatchObject({ ok: false })
+        expect(vault.state()).toBe('failed')
+        expect(vault.failure()?.message).toBe(VAULT_COPY.wipeFailed)
+      } finally {
+        chmodSync(backups, 0o700)
+      }
+      expect(await invoke(ch.vaultRetry.name)).toEqual(bootOk('first_run'))
+      expect(existsSync(join(dir, BRAND.db))).toBe(false)
+      vault.close()
+    },
+    20_000
+  )
 
   it('wireVaultEvents: cada transição emite o Boot igual ao boot.get do momento', async () => {
     const emitted: Boot[] = []

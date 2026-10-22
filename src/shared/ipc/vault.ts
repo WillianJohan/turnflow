@@ -75,6 +75,8 @@ export const vaultWipe = defineChannel(
   z.object({ confirm: z.literal(WIPE_WORD, { message: VAULT_COPY.wipeConfirm }) }).strict(),
   BootZ
 )
+/** Só em `failed`: refaz o boot (termina um Apagar tudo interrompido, reabre o banco). */
+export const vaultRetry = defineChannel('vault.retry', NoInput, BootZ)
 export const vaultRecover = defineChannel(
   'vault.recover',
   z.object({ words: Words, newPassword: NewPassword.optional() }).strict(),

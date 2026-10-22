@@ -38,5 +38,6 @@ export const MANIFEST = {
   vaultUnlock: ['vault.unlock', 'invoke'],
   vaultRecover: ['vault.recover', 'invoke'],
   vaultWipe: ['vault.wipe', 'invoke'],
+  vaultRetry: ['vault.retry', 'invoke'],
   searchQuery: ['search.query', 'invoke']
 } as const satisfies { [K in keyof Channels]: readonly [string, Channels[K]['kind']] }

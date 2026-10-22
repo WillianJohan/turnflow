@@ -114,4 +114,11 @@ export function registerVaultIpc(
   )
   // `confirm: 'APAGAR'` é exigido pelo contrato: o zod barra qualquer outra coisa antes daqui
   h(V.vaultWipe, () => guarded(() => vault.wipeAll()).then(boot))
+  // O "Tentar de novo" da tela de falha: o boot termina um wipe interrompido ou reabre o banco.
+  h(V.vaultRetry, () =>
+    guarded(async () => {
+      if (vault.state() !== 'failed') throw new VaultError('BAD_STATE')
+      await vault.boot()
+    }).then(boot)
+  )
 }
