@@ -31,6 +31,7 @@ export const preMigrationName = (from: number, now: Date): string =>
  */
 export function writeBackup(db: Db, dir: string, name: string): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
+  chmodSync(dir, 0o700) // mode do mkdir só vale na criação e passa pelo umask
   const final = join(dir, name)
   const tmp = `${final}.tmp`
   rmSync(tmp, { force: true })
@@ -41,8 +42,8 @@ export function writeBackup(db: Db, dir: string, name: string): string {
   } finally {
     closeSync(fd)
   }
+  chmodSync(tmp, 0o600) // antes do rename: o VACUUM INTO cria com o umask
   renameSync(tmp, final)
-  chmodSync(final, 0o600)
   return final
 }
 

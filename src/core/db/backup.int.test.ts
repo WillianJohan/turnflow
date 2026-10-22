@@ -138,7 +138,7 @@ describe('pruneBackups', () => {
 describe('pré-migration com a migration falhando', () => {
   it('o arquivo pré existe, abre com a DEK e está em LATEST', () => {
     const dir = join(tmpDir(), 'backups')
-    const file = join(tmpDir(), 'turnflow.db')
+    const file = join(tmpDir(), `${BRAND.id}.db`)
     openDb({ file, dek: TEST_DEK, create: true }).close()
     const quebra = {
       version: LATEST + 1,
