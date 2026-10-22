@@ -2,7 +2,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { DomainChanged } from '../../shared/ipc/events'
-import { insertCheckpoint, insertTask, openTestDb, tmpDir } from '../testing/db'
+import { insertCheckpoint, insertSession, insertTask, openTestDb, tmpDir } from '../testing/db'
 import type { Db } from './open'
 import { compact, purgeTask } from './purge'
 import { runSearch } from './search'
@@ -65,6 +65,31 @@ describe('LGPD local', () => {
     expect(count(db, "select count(*) as n from temp.vocab where term in ('xyz', 'gpd')")).toBe(0)
     // o resto continua achável
     expect(runSearch(db, 'enchimento').length).toBeGreaterThan(0)
+    db.close()
+  })
+
+  it('purge leva activity, project_item e outbox e solta a sessão', () => {
+    const { db, id } = seeded()
+    db.prepare("insert into project(id, name) values ('p', 'P')").run()
+    db.prepare(
+      "insert into project_item(id, project_id, rank, kind, task_id) values ('i', 'p', 'a0', 'task', ?)"
+    ).run(id)
+    db.prepare(
+      "insert into activity(id, at, actor, op, task_id) values ('a', '2026-10-22T00:00:00Z', 'user', 'create', ?)"
+    ).run(id)
+    db.prepare(
+      "insert into sync_outbox(id, task_id, op, idem_key, created_at) values ('o', ?, 'comment', 'comment:a', '2026-10-22T00:00:00Z')"
+    ).run(id)
+    const s = insertSession(db, { task_id: id, state: 'working', state_at: '2026-10-22T00:00:00Z' })
+
+    expect(purgeTask(db, id, createTx(db, noop))).toBe(true)
+
+    for (const t of ['activity', 'project_item', 'sync_outbox'])
+      expect(count(db, `select count(*) as n from ${t} where task_id = ?`, id)).toBe(0)
+    const row = db.prepare('select task_id from ai_session where id = ?').get(s) as {
+      task_id: string | null
+    }
+    expect(row.task_id).toBeNull()
     db.close()
   })
 

@@ -76,7 +76,7 @@ describe('vault', () => {
     expect(words).toHaveLength(24)
     await vault.commitFirstRun()
     expect(vault.state()).toBe('ready')
-    expect(vault.db().prepare('select count(*) as n from flow').get()).toEqual({ n: 0 })
+    expect(vault.db().prepare('select count(*) as n from flow').get()).toEqual({ n: 3 })
     vault.close()
     expect(readKeyFile(join(dir, 'key.enc'))?.mode).toBe('keyring')
     const again = vaultAt(dir, backend).vault
