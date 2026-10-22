@@ -49,6 +49,8 @@ export function openDb(o: OpenOpts): Db {
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
     db.pragma('secure_delete = ON')
+    // temporários (VACUUM, ordenações) ficam em memória: nada de texto em arquivo temp sem cifra
+    db.pragma('temp_store = MEMORY')
     db.function('tf_fold', { deterministic: true }, (s: unknown) =>
       typeof s === 'string' ? fold(s) : s
     )

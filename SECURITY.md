@@ -14,7 +14,11 @@ issue pública com detalhes de uma falha ainda não corrigida.
 - A DEK fica no `key.enc`, embrulhada pelo chaveiro do sistema operacional. Quando o sistema não
   tem um chaveiro que proteja de verdade (por exemplo, o backend `basic_text` do Linux), ela é
   embrulhada por uma senha mestra que você define (Argon2id).
-- Os backups diários (`backups/`, 7 cópias) são cópias do banco cifradas com a mesma chave.
+- Os backups (`backups/`) são cópias do banco cifradas com a mesma chave:
+  - diários: as 7 últimas cópias, uma por dia em que o app abre (com uso diário, 7 dias);
+  - de atualização (antes de cada migração do esquema): no máximo 3, e cada um sai depois de 7 dias;
+  - cópias de resgate (`orphan-*`, um banco encontrado sem a chave ao abrir): ficam até você
+    apagá-las ou usar Apagar tudo.
 
 ## A chave de recuperação
 
@@ -31,13 +35,20 @@ computador.
 - Os worktrees e os arquivos dos projetos em que você trabalha.
 - As diretrizes geradas para os agentes.
 - A configuração do app (`config.json`, `ui.json`, `themes/`).
+- Os logs do app (`logs/`), em texto plano: podem ter trecho de um comando SQL ou o título de uma
+  task. O Apagar tudo os remove.
 
 ## Apagar uma task de vez
 
 Apagar uma task definitivamente remove do banco a task, os checkpoints dela e o índice de busca,
-com `secure_delete`, `wal_checkpoint(TRUNCATE)` e `VACUUM`, para que o texto não sobre em páginas
-livres nem no `-wal`. **Limite honesto: ela continua nos backups diários por até 7 dias**, até a
-rotação descartar o último backup que a contém.
+com `secure_delete`, `wal_checkpoint(TRUNCATE)` e `VACUUM` (com os temporários em memória,
+`temp_store=MEMORY`). Assim o texto não sobra em páginas livres do banco, no `-wal` nem em arquivo
+temporário criado pelo app. Isso não alcança o que o sistema operacional ou o disco guardam por
+conta própria (swap, snapshots do sistema de arquivos, setores remapeados de SSD).
+
+**Limite honesto: ela continua nos backups.** Nos diários, até a rotação descartar a última cópia
+que a contém (7 dias de uso); nos de atualização, até 7 dias. Numa cópia de resgate (`orphan-*`),
+até você apagá-la ou usar Apagar tudo.
 
 ## Apagar tudo
 

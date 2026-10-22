@@ -50,10 +50,10 @@ export function writeBackup(db: Db, dir: string, name: string): string {
 /** Cria o backup do dia se faltar (devolve o path) e poda. Já existe: `null`. */
 export function ensureDailyBackup(db: Db, dir: string, now: Date): string | null {
   const name = dailyName(now)
-  pruneBackups(dir) // tira `.tmp` órfão antes de olhar se o do dia existe
+  pruneBackups(dir, now) // tira `.tmp` órfão antes de olhar se o do dia existe
   if (existsSync(join(dir, name))) return null
   const out = writeBackup(db, dir, name)
-  pruneBackups(dir)
+  pruneBackups(dir, now)
   return out
 }
 
@@ -62,9 +62,23 @@ export function ensureDailyBackup(db: Db, dir: string, now: Date): string | null
 const chronoKey = (name: string): string =>
   name.replace(/^.*?(?:-pre-v\d+)?-(\d{8}(?:-\d{6})?)\.db$/, '$1')
 
-/** Remove os mais antigos de cada tipo e qualquer `.tmp`. Nunca toca em `orphan-*`. */
+/** Pré-migration mais velho que isto sai, mesmo abaixo do limite de cópias (SECURITY.md: até 7 dias). */
+export const PRE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Data local do nome (`YYYYMMDD` ou `YYYYMMDD-HHMMSS`). */
+function stampDate(key: string): Date {
+  const [, y, mo, d, h = '0', mi = '0', s = '0'] =
+    /^(\d{4})(\d{2})(\d{2})(?:-(\d{2})(\d{2})(\d{2}))?$/.exec(key) ?? []
+  return new Date(+y, +mo - 1, +d, +h, +mi, +s)
+}
+
+/**
+ * Remove os mais antigos de cada tipo, o pré-migration com mais de 7 dias e qualquer `.tmp`.
+ * Nunca toca em `orphan-*` (cópia de resgate: fica até o usuário apagar ou usar Apagar tudo).
+ */
 export function pruneBackups(
   dir: string,
+  now: Date,
   keep: { daily: number; pre: number } = { daily: 7, pre: 3 }
 ): string[] {
   if (!existsSync(dir)) return []
@@ -79,6 +93,13 @@ export function pruneBackups(
       .sort((a, b) => chronoKey(a).localeCompare(chronoKey(b)))
     removed.push(...found.slice(0, Math.max(0, found.length - n)))
   }
+  const expired = names.filter(
+    (x) =>
+      PRE_RE.test(x) &&
+      !removed.includes(x) &&
+      now.getTime() - stampDate(chronoKey(x)).getTime() > PRE_MAX_AGE_MS
+  )
+  removed.push(...expired)
   for (const n of removed) rmSync(join(dir, n), { force: true })
   return removed
 }

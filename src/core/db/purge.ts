@@ -17,9 +17,12 @@ export function purgeTask(db: Db, taskId: string, tx: Tx): boolean {
 
 /**
  * Tira do disco o que o `secure_delete` não alcança: as páginas antigas no `-wal` e as páginas
- * livres do arquivo principal. Fora de transação (o `VACUUM` não roda dentro de uma).
+ * livres do arquivo principal. Os temporários do `VACUUM` ficam em memória (`temp_store`).
+ * @throws Error se chamado dentro de uma transação aberta (o `VACUUM` não roda dentro de uma);
+ *   nada é checkpointado nesse caso.
  */
 export function compact(db: Db): void {
+  if (db.inTransaction) throw new Error('compact: não pode rodar dentro de uma transação')
   db.pragma('wal_checkpoint(TRUNCATE)')
   db.exec('VACUUM')
   db.pragma('wal_checkpoint(TRUNCATE)')

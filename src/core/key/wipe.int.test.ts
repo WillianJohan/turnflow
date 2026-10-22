@@ -171,32 +171,36 @@ describe('apagar tudo', () => {
     other.close()
   }, 20_000)
 
-  it('erro no meio: failed, a chave já foi e o próximo boot termina', async () => {
-    const dir = tmpDir()
-    const p = vaultPaths(dir)
-    seedKept(dir)
-    const vault = vaultAt(dir, fakeKeyBackend('real'))
-    await firstRun(vault)
-    chmodSync(p.backups, 0o500) // o backup do dia lá dentro não sai
-    try {
-      let err: unknown
+  // root ignora o 0500 do diretório: o rm não falharia
+  it.skipIf(process.getuid?.() === 0)(
+    'erro no meio: failed, a chave já foi e o próximo boot termina',
+    async () => {
+      const dir = tmpDir()
+      const p = vaultPaths(dir)
+      seedKept(dir)
+      const vault = vaultAt(dir, fakeKeyBackend('real'))
+      await firstRun(vault)
+      chmodSync(p.backups, 0o500) // o backup do dia lá dentro não sai
       try {
-        await vault.wipeAll()
-      } catch (e) {
-        err = e
+        let err: unknown
+        try {
+          await vault.wipeAll()
+        } catch (e) {
+          err = e
+        }
+        expect((err as VaultError).code).toBe('OPEN_FAILED')
+        expect(vault.state()).toBe('failed')
+        expect(vault.failure()?.message).toBe(VAULT_COPY.wipeFailed)
+        expect(existsSync(p.keyFile)).toBe(false)
+        expect(existsSync(p.wipeMarker)).toBe(true)
+      } finally {
+        chmodSync(p.backups, 0o700)
       }
-      expect((err as VaultError).code).toBe('OPEN_FAILED')
-      expect(vault.state()).toBe('failed')
-      expect(vault.failure()?.message).toBe(VAULT_COPY.wipeFailed)
-      expect(existsSync(p.keyFile)).toBe(false)
-      expect(existsSync(p.wipeMarker)).toBe(true)
-    } finally {
-      chmodSync(p.backups, 0o700)
+      expect(await vault.boot()).toBe('first_run')
+      expectWiped(dir, p)
+      vault.close()
     }
-    expect(await vault.boot()).toBe('first_run')
-    expectWiped(dir, p)
-    vault.close()
-  })
+  )
 
   it('depois do close() o wipe não roda (close é terminal)', async () => {
     const dir = tmpDir()

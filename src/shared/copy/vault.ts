@@ -19,7 +19,8 @@ export const VAULT_COPY = {
   /** Validação do `vault.wipe` quando a palavra de confirmação não confere. */
   wipeConfirm: `Digite ${WIPE_WORD} para confirmar`,
   /** Aviso da tela de apagar task de vez (E3/E6). */
-  purgeNotice: 'Ela continua nos backups diários por até 7 dias.',
+  purgeNotice:
+    'Ela continua nos backups diários por até 7 dias de uso e nos backups de atualização por até 7 dias. Cópias de resgate (orphan-*) ficam até você apagá-las ou usar Apagar tudo.',
   /** Texto de cada `VaultErrorCode`. Nunca interpolar senha, palavra ou DEK. */
   errors: {
     PASSWORD_REQUIRED: 'Defina uma senha mestra',

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { BRAND } from '../../shared/brand'
@@ -99,9 +99,9 @@ describe('ensureDailyBackup', () => {
     db.close()
   })
 
-  it('mantém 7; orphan-* e pré-migration ficam intocados', () => {
+  it('mantém 7; orphan-* e pré-migration recente ficam intocados', () => {
     const { db, dir } = setup()
-    const pre = preMigrationName(1, day(1))
+    const pre = preMigrationName(1, day(5))
     writeBackup(db, dir, 'orphan-y.db')
     writeBackup(db, dir, pre)
     for (let d = 1; d <= 9; d++) ensureDailyBackup(db, dir, day(d))
@@ -125,13 +125,28 @@ describe('pruneBackups', () => {
     ]
     for (const n of nomes) touch(dir, n)
     touch(dir, 'orphan-z.db')
-    const removed = pruneBackups(dir)
+    const removed = pruneBackups(dir, day(6))
     expect(removed.sort()).toEqual([nomes[0], nomes[1]].sort())
     expect(list(dir)).toEqual([...nomes.slice(2), 'orphan-z.db'].sort())
   })
 
+  it('pré-migration com mais de 7 dias sai mesmo abaixo de 3; orphan-* fica', () => {
+    const dir = tmpDir()
+    const velho = preMigrationName(4, new Date(2026, 9, 1, 11, 59, 0))
+    const limite = preMigrationName(5, new Date(2026, 9, 1, 12, 0, 0)) // exatamente 7 dias
+    touch(dir, velho)
+    touch(dir, limite)
+    touch(dir, 'orphan-20260901-000000.db')
+    mkdirSync(join(dir, 'orphan-20260901-000000'))
+    const removed = pruneBackups(dir, day(8))
+    expect(removed).toEqual([velho])
+    expect(list(dir)).toEqual(
+      [limite, 'orphan-20260901-000000', 'orphan-20260901-000000.db'].sort()
+    )
+  })
+
   it('diretório inexistente não lança', () => {
-    expect(pruneBackups(join(tmpDir(), 'nada'))).toEqual([])
+    expect(pruneBackups(join(tmpDir(), 'nada'), day(1))).toEqual([])
   })
 })
 

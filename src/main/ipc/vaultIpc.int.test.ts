@@ -59,6 +59,13 @@ function setup(o: { dir?: string; extra?: Partial<VaultDeps>; dialogs?: VaultDia
 }
 
 const ch = CHANNELS
+/**
+ * DEK fixa para os testes de vazamento: palavra sorteada pode ser trecho de texto fixo do Result
+ * ("code", "error", "message", "true", "vault"...) e o teste ficaria instável. Nenhuma das 24
+ * palavras desta aparece em texto fixo (o teste "palavras da DEK fixa" confere).
+ */
+const LEAK_DEK = createHash('sha256').update('leak-b').digest()
+const leakRandom = (): Buffer => Buffer.from(LEAK_DEK)
 const bootOk = (state: Boot['state'], extra: Partial<Boot> = {}): unknown => ({
   ok: true,
   data: { state, backend: 'basic_text', lock: null, failure: null, version: VERSION, ...extra }
@@ -182,10 +189,7 @@ describe('canais do vault', () => {
 
   it('nenhum Result de erro contém a senha ou as palavras', async () => {
     const dir = tmpDir()
-    // DEK fixa: palavra sorteada pode ser trecho de texto fixo ("true", "vault", "word" em password)
-    // e o teste ficaria instável; com estas, nenhuma aparece em texto fixo.
-    const dek = createHash('sha256').update('leak-b').digest()
-    const words = await committed(dir, { random: () => Buffer.from(dek) })
+    const words = await committed(dir, { random: leakRandom })
     const { vault, invoke } = setup({ dir })
     await vault.boot()
     const swapped = [...words]
@@ -213,6 +217,33 @@ describe('canais do vault', () => {
     }
     vault.close()
   }, 60_000)
+
+  it('palavras da DEK fixa não aparecem no texto fixo dos Results', () => {
+    const fixed = JSON.stringify({
+      ok: false,
+      error: { code: 'VALIDATION', message: '', details: { index: 0 } },
+      data: {
+        state: 'first_run',
+        backend: 'basic_text',
+        lock: null,
+        failure: null,
+        version: VERSION
+      },
+      copy: VAULT_COPY,
+      words: [VAULT_COPY.wordUnknown(24), VAULT_COPY.passwordTooLong(1024)],
+      codes: [
+        'LOCKED',
+        'CONFLICT',
+        'INTERNAL',
+        'NOT_FOUND',
+        'password',
+        'saved',
+        'words',
+        'confirm'
+      ]
+    }).toLowerCase()
+    expect(dekToWords(LEAK_DEK).filter((w) => fixed.includes(w))).toEqual([])
+  })
 
   it('migration quebrada vira failed', async () => {
     const dir = tmpDir()
@@ -264,7 +295,7 @@ describe('canais do vault', () => {
 
   it('firstRun.restore com palavra errada → VALIDATION e o Result não leva as palavras', async () => {
     const a = tmpDir()
-    const words = await committed(a)
+    const words = await committed(a, { random: leakRandom })
     const file = join(a, 'backups', dailyName(new Date()))
     expect(existsSync(file)).toBe(true)
     const { vault, invoke, dir } = setup()

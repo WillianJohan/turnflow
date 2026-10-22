@@ -37,6 +37,21 @@ describe('LGPD local', () => {
     db.close()
   })
 
+  it('temp_store em memória: o VACUUM não deixa temporário em disco', () => {
+    const db = openTestDb()
+    expect(db.pragma('temp_store', { simple: true })).toBe(2) // 2 = MEMORY
+    db.close()
+  })
+
+  it('compact dentro de transação lança antes do VACUUM', () => {
+    const { db, file } = seeded()
+    db.exec('begin')
+    expect(() => compact(db)).toThrow(/transação/)
+    db.exec('rollback')
+    expect(statSync(file + '-wal').size).toBeGreaterThan(0) // nada foi checkpointado
+    db.close()
+  })
+
   it('purge limpa FTS e derivados', () => {
     const { db, id } = seeded()
     expect(runSearch(db, SECRET).length).toBeGreaterThan(0)
