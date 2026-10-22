@@ -46,7 +46,7 @@ export type VaultDeps = {
   onReady?: (db: Db) => void
   onChange?: () => void
   migrations?: Migration[]
-  /** Falha de backup (diário ou pré-migration). A linha leva o código do erro, nunca o caminho. */
+  /** Falha de backup e erro inesperado que vira `OPEN_FAILED`. A linha leva o código do erro, nunca o caminho. */
   log?: (level: 'warn' | 'error', line: string) => void
 }
 export interface Vault {
@@ -88,15 +88,16 @@ const stamp = (d: Date): string =>
 /**
  * Converte qualquer erro em `VaultError`. `DbOpenError` mantém o código (`NOT_FOUND` vira
  * `OPEN_FAILED`) e a mensagem de origem em `details.message`. Erro de FS/SQLite pode trazer o
- * caminho do arquivo: vira `OPEN_FAILED` só com o texto do `VAULT_COPY`.
+ * caminho do arquivo: vira `OPEN_FAILED` só com o texto do `VAULT_COPY`, e o rótulo vai pro `log`.
  */
-function toVaultError(e: unknown): VaultError {
+function toVaultError(e: unknown, log?: (line: string) => void): VaultError {
   if (e instanceof VaultError) return e
   if (e instanceof DbOpenError)
     return new VaultError(e.code === 'NOT_FOUND' ? 'OPEN_FAILED' : e.code, {
       message: e.message,
       version: e.details?.version
     })
+  log?.(`erro inesperado: ${errorLabel(e)}`)
   return new VaultError('OPEN_FAILED')
 }
 
@@ -132,6 +133,8 @@ function moveDbFiles(from: string, to: string): void {
 export function createVault(deps: VaultDeps): Vault {
   const { paths, backend } = deps
   const now = deps.now ?? ((): Date => new Date())
+  const logError = (line: string): void => deps.log?.('error', line)
+  const asVaultError = (e: unknown): VaultError => toVaultError(e, logError)
   // Antes do boot nada está aberto: `locked` sem motivo.
   let state: VaultState = 'locked'
   let lock: LockReason | null = null
@@ -155,7 +158,7 @@ export function createVault(deps: VaultDeps): Vault {
         assertNotClosed()
         return await fn()
       } catch (e) {
-        throw toVaultError(e)
+        throw asVaultError(e)
       }
     })
     queue = run.catch(() => undefined)
@@ -191,7 +194,7 @@ export function createVault(deps: VaultDeps): Vault {
         instrument: instrument ? deps.instrument : undefined
       })
     } catch (e) {
-      throw toVaultError(e)
+      throw asVaultError(e)
     }
   }
 
@@ -237,7 +240,8 @@ export function createVault(deps: VaultDeps): Vault {
     })
     try {
       deps.onReady?.(db)
-    } catch {
+    } catch (e) {
+      logError(`onReady falhou: ${errorLabel(e)}`)
       closeDb()
       throw fail(new VaultError('OPEN_FAILED'))
     }
@@ -251,7 +255,7 @@ export function createVault(deps: VaultDeps): Vault {
     try {
       db = open(paths.db, dek, false, true)
     } catch (e) {
-      throw fail(toVaultError(e))
+      throw fail(asVaultError(e))
     }
     enterReady(db)
   }
@@ -328,7 +332,8 @@ export function createVault(deps: VaultDeps): Vault {
   function wipeOrFail(steps: () => void): void {
     try {
       steps()
-    } catch {
+    } catch (e) {
+      logError(`apagar tudo falhou: ${errorLabel(e)}`)
       throw fail(new VaultError('OPEN_FAILED', { message: VAULT_COPY.wipeFailed }))
     }
   }
@@ -377,6 +382,7 @@ export function createVault(deps: VaultDeps): Vault {
       // Corrompido: só as palavras abrem. Outro erro de leitura: a mensagem traria o caminho.
       if (e instanceof VaultError && e.code === 'KEYFILE_CORRUPT')
         return settle('locked', 'keyfile_corrupt')
+      logError(`key.enc ilegível: ${errorLabel(e)}`)
       throw fail(new VaultError('OPEN_FAILED'))
     }
     if (!kf) {
@@ -423,6 +429,7 @@ export function createVault(deps: VaultDeps): Vault {
         } catch (e) {
           if (closed) throw e // close() no meio do boot: LOCKED, sem virar failed
           if (state === 'failed') return state
+          logError(`boot falhou: ${errorLabel(e)}`)
           fail(new VaultError('OPEN_FAILED'))
           return state
         }
@@ -499,7 +506,7 @@ export function createVault(deps: VaultDeps): Vault {
           try {
             db = open(paths.db, dek, false, true)
           } catch (e) {
-            const err = toVaultError(e)
+            const err = asVaultError(e)
             if (err.code === 'WRONG_KEY') throw err // palavras de outra DEK: segue locked
             throw fail(err)
           }

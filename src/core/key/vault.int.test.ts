@@ -180,6 +180,16 @@ describe('vault', () => {
     expect(JSON.stringify(vault.failure())).not.toContain(dir)
   })
 
+  it('key.enc ilegível loga o errno, sem o caminho', async () => {
+    const dir = tmpDir()
+    mkdirSync(join(dir, 'key.enc'))
+    const log = vi.fn()
+    const { vault } = vaultAt(dir, fakeKeyBackend('real'), { log })
+    expect(await vault.boot()).toBe('failed')
+    expect(log.mock.calls.map((c) => c[1]).join('\n')).toMatch(/EISDIR/)
+    expect(JSON.stringify(log.mock.calls)).not.toContain(dir)
+  })
+
   it('key.enc corrompido → locked/keyfile_corrupt, e as palavras recuperam', async () => {
     const backend = fakeKeyBackend('real')
     const { words, paths } = await committed(tmpDir(), backend)
@@ -513,6 +523,35 @@ describe('vault', () => {
       expect(instrumented).toHaveLength(1)
       expect(instrumented[0].open).toBe(false)
       expect(() => vault.db()).toThrow(expect.objectContaining({ code: 'LOCKED' }))
+    })
+
+    it('onReady que lança: o rótulo do erro vai pro log, sem a mensagem crua', async () => {
+      const log = vi.fn()
+      const { vault } = vaultAt(tmpDir(), fakeKeyBackend('real'), {
+        log,
+        onReady: () => {
+          throw Object.assign(new Error('/caminho/secreto'), { code: 'EBOOM' })
+        }
+      })
+      await vault.boot()
+      await vault.beginFirstRun()
+      await rejectsWith(vault.commitFirstRun(), 'OPEN_FAILED')
+      expect(log.mock.calls.map((c) => c[1]).join('\n')).toMatch(/EBOOM/)
+      expect(JSON.stringify(log.mock.calls)).not.toContain('/caminho/secreto')
+    })
+
+    it('erro inesperado numa operação vira OPEN_FAILED e loga só o rótulo', async () => {
+      const log = vi.fn()
+      const { vault } = vaultAt(tmpDir(), fakeKeyBackend('real'), {
+        log,
+        random: () => {
+          throw Object.assign(new Error('/caminho/secreto'), { code: 'ERAND' })
+        }
+      })
+      await vault.boot()
+      await rejectsWith(vault.beginFirstRun(), 'OPEN_FAILED')
+      expect(log.mock.calls.map((c) => c[1]).join('\n')).toMatch(/ERAND/)
+      expect(JSON.stringify(log.mock.calls)).not.toContain('/caminho/secreto')
     })
 
     it('begin com senha curta zera a DEK nova', async () => {

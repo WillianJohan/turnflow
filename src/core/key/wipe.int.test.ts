@@ -8,7 +8,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { BRAND } from '../../shared/brand'
 import { VAULT_COPY } from '../../shared/copy/vault'
 import { dailyName } from '../db/backup'
@@ -178,7 +178,8 @@ describe('apagar tudo', () => {
       const dir = tmpDir()
       const p = vaultPaths(dir)
       seedKept(dir)
-      const vault = vaultAt(dir, fakeKeyBackend('real'))
+      const log = vi.fn()
+      const vault = vaultAt(dir, fakeKeyBackend('real'), { log })
       await firstRun(vault)
       chmodSync(p.backups, 0o500) // o backup do dia lá dentro não sai
       try {
@@ -193,6 +194,8 @@ describe('apagar tudo', () => {
         expect(vault.failure()?.message).toBe(VAULT_COPY.wipeFailed)
         expect(existsSync(p.keyFile)).toBe(false)
         expect(existsSync(p.wipeMarker)).toBe(true)
+        expect(log.mock.calls.map((c) => c[1]).join('\n')).toMatch(/EACCES|EPERM/)
+        expect(JSON.stringify(log.mock.calls)).not.toContain(dir)
       } finally {
         chmodSync(p.backups, 0o700)
       }
