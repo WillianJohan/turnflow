@@ -26,6 +26,12 @@ export const AppConfigZ = z.object({
     .string()
     .max(Limits.workdir)
     .refine(isAbsolutePath, DOMAIN_COPY.errors.workdir_relative)
+    .nullable(),
+  // gravado pelo apply do import; mesma regra da pasta padrão (só absoluta ou null)
+  brainDir: z
+    .string()
+    .max(Limits.workdir)
+    .refine(isAbsolutePath, DOMAIN_COPY.errors.workdir_relative)
     .nullable()
 }) satisfies z.ZodType<AppConfig>
 

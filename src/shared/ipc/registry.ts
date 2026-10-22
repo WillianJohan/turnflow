@@ -4,6 +4,7 @@ import * as config from './config'
 import * as domain from './domain'
 import * as fonts from './fonts'
 import * as header from './header'
+import * as imp from './import'
 import * as pty from './pty'
 import * as search from './search'
 import * as session from './session'
@@ -76,6 +77,9 @@ export const CHANNELS = {
   projectDelete: domain.projectDelete,
   flowSaveStage: domain.flowSaveStage,
   flowDeleteStage: domain.flowDeleteStage,
-  activityUndo: domain.activityUndo
+  activityUndo: domain.activityUndo,
+  importDryRun: imp.importDryRun,
+  importApply: imp.importApply,
+  importPickFolder: imp.importPickFolder
 } as const
 export type Channels = typeof CHANNELS

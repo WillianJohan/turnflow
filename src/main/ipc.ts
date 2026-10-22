@@ -17,6 +17,7 @@ import {
   watchConfig,
   writeConfig
 } from './appConfig'
+import { existsSync } from 'fs'
 import { access, readFile } from 'fs/promises'
 import type { Events } from '../shared/ipc/events'
 import type { Channel } from '../shared/ipc/define'
@@ -44,7 +45,8 @@ import { getHeader, readCache } from './header'
 import { handle as handleOn, IpcError, type Handler, type IpcLike } from './ipc/handle'
 import { registerPtyIo } from './ipc/ptyIo'
 import { onPtyExit } from './ipc/ptyExit'
-import { registerDomainIpc } from './ipc/domain'
+import { domainCache, registerDomainIpc } from './ipc/domain'
+import { registerImportIpc } from './ipc/import'
 import { registerSearchIpc } from './ipc/search'
 import { registerVaultIpc, type VaultDialogs } from './ipc/vault'
 import type { Vault } from '../core/key/vault'
@@ -55,7 +57,8 @@ export const UPDATE_ID = '__update__'
 export type IpcDeps = {
   vault: Vault
   version: string
-  dialogs: VaultDialogs
+  /** `folder`: diálogo nativo de pasta (import do brain); `null` = cancelado. */
+  dialogs: VaultDialogs & { folder(): Promise<string | null> }
   /** Log local (o mesmo do vault): recebe a mensagem crua dos erros `INTERNAL`. */
   log?: (line: string) => void
   /** Relógio do domínio (fixo pelo `TURNFLOW_TEST_NOW` no build de teste). */
@@ -76,12 +79,13 @@ export async function registerIpc(
   const handle = <Ch extends Channel>(ch: Ch, fn: Handler<Ch>): void =>
     handleOn(ipc, ch, fn, { validateOutput: is.dev, log: deps.log })
   let tasks = new Map<string, Task>()
+  // pasta que a lateral herdada lista; muda quando o import grava `config.brainDir`
+  let brainRoot = BRAIN_TASKS
   const reload = async (): Promise<Task[]> => {
-    const list = await loadTasks()
+    const list = await loadTasks(brainRoot)
     tasks = new Map(list.map((t) => [t.id, t]))
     return list
   }
-  await reload()
 
   // uuid (session_id do claude) de cada PTY vivo, pra recusar a mesma conversa em duas abas
   // e pra descobrir quando uma aba avulsa virou task
@@ -103,10 +107,24 @@ export async function registerIpc(
       send('pty:renamed', from, to)
     }
   }
-  const unwatch = watchTasks(BRAIN_TASKS, async () => {
+  const onBrainChange = async (): Promise<void> => {
     send('tasks:changed', await reload())
     adopt()
-  })
+  }
+  let unwatch = watchTasks(brainRoot, onBrainChange)
+  /**
+   * Troca a pasta da lateral herdada (Decisão 25): solta o watcher antigo, arma o novo, recarrega e
+   * avisa a tela. Mesma pasta = nada. `TURNFLOW_BRAIN` (dev/teste) sempre vence.
+   */
+  const setLegacyBrain = async (brainDir: string | null): Promise<void> => {
+    if (process.env.TURNFLOW_BRAIN || !brainDir) return
+    const dir = existsSync(join(brainDir, 'tasks')) ? join(brainDir, 'tasks') : brainDir
+    if (dir === brainRoot) return
+    unwatch()
+    brainRoot = dir
+    unwatch = watchTasks(dir, onBrainChange)
+    await onBrainChange()
+  }
 
   const hooks = await startHookServer((raw, st, sid, info) => {
     const id = alias.get(raw) ?? raw
@@ -161,11 +179,17 @@ export async function registerIpc(
   const cfgDir = configDir()
   await ensureDefaults(cfgDir)
   // última pasta padrão lida do config.json: toda leitura (inclusive a do watch) atualiza
-  let defaultWorkdir = (await readConfig(cfgDir)).config.defaultWorkdir
+  const startConfig = (await readConfig(cfgDir)).config
+  let defaultWorkdir = startConfig.defaultWorkdir
+  await setLegacyBrain(startConfig.brainDir)
+  await reload()
   const configState = async (): Promise<ConfigState> => {
     const { config, error } = await readConfig(cfgDir)
-    // JSON inválido devolve os padrões: a pasta padrão em uso fica a anterior até o arquivo voltar
-    if (!error) defaultWorkdir = config.defaultWorkdir
+    // JSON inválido devolve os padrões: a pasta padrão e o brain em uso ficam os anteriores
+    if (!error) {
+      defaultWorkdir = config.defaultWorkdir
+      await setLegacyBrain(config.brainDir)
+    }
     const t = await readTheme(cfgDir, config.theme)
     return {
       dir: cfgDir,
@@ -250,7 +274,7 @@ export async function registerIpc(
     startPty(UPDATE_ID, argv, DIGITALK_HOME, await env(UPDATE_ID), cols, rows, ptyEvents)
     guard.register(UPDATE_ID, owner)
   })
-  handle(C.CHANNELS.tasksRoot, () => BRAIN_TASKS)
+  handle(C.CHANNELS.tasksRoot, () => brainRoot)
   // clique na notificação: traz a janela pra frente
   handle(C.CHANNELS.focusWindow, () => {
     if (win.isMinimized()) win.restore()
@@ -289,11 +313,24 @@ export async function registerIpc(
   handle(C.CHANNELS.header, ({ id, force }) => getHeader(task(id), force))
   registerVaultIpc(handle, deps)
   registerSearchIpc(handle, deps)
-  registerDomainIpc(handle, {
-    vault: deps.vault,
+  // um DomainDeps por banco, o mesmo para o domínio e o import (Decisão 33)
+  const domainFor = domainCache({
     now: deps.domain.now,
     defaultWorkdir: () => defaultWorkdir,
     afterCommit: changeBus.afterCommit
+  })
+  registerDomainIpc(handle, { vault: deps.vault, domainFor })
+  registerImportIpc(handle, {
+    vault: deps.vault,
+    domainFor,
+    configDir: cfgDir,
+    pickFolder: () => deps.dialogs.folder(),
+    // o watch do config.json também rearma, mas aqui a lateral já lista quando o apply responde
+    setBrainDir: async (dir) => {
+      await writeConfig(cfgDir, { brainDir: dir })
+      await setLegacyBrain(dir)
+    },
+    log: deps.log
   })
 
   return () => {

@@ -158,6 +158,12 @@ function vaultDialogs(win: BrowserWindow): VaultDialogs {
   }
 }
 
+// Diálogo nativo de pasta (import do brain); cancelado = null.
+async function pickFolder(win: BrowserWindow): Promise<string | null> {
+  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+  return r.canceled ? null : (r.filePaths[0] ?? null)
+}
+
 // rascunhos do Composer e layout ficam no localStorage, em texto plano (configDir/electron/)
 async function clearBrowserData(): Promise<void> {
   await session.defaultSession.clearStorageData()
@@ -238,7 +244,7 @@ function startApp(): void {
     const dispose = await registerIpc(win, ipcMain, {
       vault,
       version: app.getVersion(),
-      dialogs: vaultDialogs(win),
+      dialogs: { ...vaultDialogs(win), folder: () => pickFolder(win) },
       log: (line) => log('error', line),
       domain: { now }
     })

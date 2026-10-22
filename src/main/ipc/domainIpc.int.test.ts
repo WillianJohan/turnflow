@@ -10,7 +10,7 @@ import { CHANNELS } from '../../shared/ipc/registry'
 import type { Result } from '../../shared/ipc/result'
 import type { TaskDetail, TaskRow } from '../../shared/contracts'
 import { handle, type Handler, type IpcLike } from './handle'
-import { registerDomainIpc } from './domain'
+import { domainCache, registerDomainIpc } from './domain'
 
 const T0 = Date.parse('2026-10-22T12:00:00.000Z')
 
@@ -29,9 +29,11 @@ function setup(
     handle(ipc, ch, fn, { validateOutput: true, log: o.log })
   registerDomainIpc(h, {
     vault,
-    now: () => new Date(T0),
-    defaultWorkdir: () => null,
-    afterCommit: o.afterCommit ?? (() => undefined)
+    domainFor: domainCache({
+      now: () => new Date(T0),
+      defaultWorkdir: () => null,
+      afterCommit: o.afterCommit ?? (() => undefined)
+    })
   })
   return async (method, input) => {
     const fn = invokes.get(CHANNELS[method].name)

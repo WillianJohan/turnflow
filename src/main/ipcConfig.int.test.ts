@@ -67,7 +67,7 @@ beforeEach(async () => {
   dispose = await registerIpc(win as never, ipc as never, {
     vault: { db: () => db } as never,
     version: '0.0.0',
-    dialogs: { save: async () => null, open: async () => null },
+    dialogs: { save: async () => null, open: async () => null, folder: async () => null },
     domain: { now: () => new Date('2026-10-22T12:00:00.000Z') }
   })
   call = async (method, input) =>

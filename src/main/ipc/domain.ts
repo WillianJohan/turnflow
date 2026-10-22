@@ -15,11 +15,31 @@ import type { DomainChanged } from '../../shared/ipc/events'
 import { IpcError, type Register } from './handle'
 import { toIpcError } from './vault'
 
-export type DomainIpcDeps = {
-  vault: Vault
+export type DomainIpcDeps = { vault: Vault; domainFor: (db: Db) => DomainDeps }
+
+/**
+ * Um `DomainDeps` por instância de `Db`: trocar o banco (wipe/restore) cria outro, e o velho some
+ * com ele. O `registerIpc` cria um só e entrega o mesmo ao domínio e ao import (Decisão 33).
+ */
+export function domainCache(deps: {
   now: () => Date
   defaultWorkdir: () => string | null
   afterCommit: (c: DomainChanged) => void
+}): (db: Db) => DomainDeps {
+  const domains = new WeakMap<Db, DomainDeps>()
+  return (db) => {
+    let d = domains.get(db)
+    if (!d) {
+      d = createDomain({
+        db,
+        afterCommit: deps.afterCommit,
+        now: deps.now,
+        defaultWorkdir: deps.defaultWorkdir
+      })
+      domains.set(db, d)
+    }
+    return d
+  }
 }
 
 const USER: Actor = { kind: 'user' }
@@ -49,21 +69,7 @@ function run<C extends Command>(d: DomainDeps, cmd: C, confirmed?: true): Comman
 }
 
 export function registerDomainIpc(h: Register, deps: DomainIpcDeps): void {
-  // um DomainDeps por instância de Db: trocar o banco (wipe/restore) cria outro, e o velho some com ele
-  const domains = new WeakMap<Db, DomainDeps>()
-  const domainFor = (db: Db): DomainDeps => {
-    let d = domains.get(db)
-    if (!d) {
-      d = createDomain({
-        db,
-        afterCommit: deps.afterCommit,
-        now: deps.now,
-        defaultWorkdir: deps.defaultWorkdir
-      })
-      domains.set(db, d)
-    }
-    return d
-  }
+  const { domainFor } = deps
   const on = <C extends Channel>(
     ch: C,
     fn: (d: DomainDeps, input: z.output<C['input']>) => z.input<C['output']>

@@ -5,8 +5,8 @@ import { MANIFEST } from './manifest'
 
 describe('contratos IPC', () => {
   const all = Object.entries(CHANNELS)
-  it('cobre os 63 canais', () => {
-    expect(all).toHaveLength(63)
+  it('cobre os 66 canais', () => {
+    expect(all).toHaveLength(66)
   })
   it('todo canal tem input e output zod', () => {
     for (const [, ch] of all) {

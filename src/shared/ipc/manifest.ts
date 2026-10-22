@@ -65,5 +65,8 @@ export const MANIFEST = {
   projectDelete: ['project.delete', 'invoke'],
   flowSaveStage: ['flow.saveStage', 'invoke'],
   flowDeleteStage: ['flow.deleteStage', 'invoke'],
-  activityUndo: ['activity.undo', 'invoke']
+  activityUndo: ['activity.undo', 'invoke'],
+  importDryRun: ['import.dryRun', 'invoke'],
+  importApply: ['import.apply', 'invoke'],
+  importPickFolder: ['import.pickFolder', 'invoke']
 } as const satisfies { [K in keyof Channels]: readonly [string, Channels[K]['kind']] }

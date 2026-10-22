@@ -32,7 +32,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     Outros: '❔'
   },
   // pasta de trabalho das tasks sem `workdir` próprio (absoluta); null = nenhuma
-  defaultWorkdir: null
+  defaultWorkdir: null,
+  // pasta do brain do último import (absoluta), gravada pelo apply; null = nenhuma
+  brainDir: null
 }
 
 const DARK: Theme = {
@@ -570,6 +572,10 @@ const readRaw = async (dir: string): Promise<Record<string, unknown>> =>
   JSON.parse(await readFile(join(dir, 'config.json'), 'utf8'))
 
 // Campo com tipo errado cai no padrão (theme: 5 quebrava o readTheme e o app ficava sem config).
+/** Caminho absoluto dentro do teto do `Limits.workdir`, ou null. */
+const absolutePath = (v: unknown): string | null =>
+  typeof v === 'string' && v.length <= Limits.workdir && isAbsolutePath(v) ? v : null
+
 const sane = (raw: Record<string, unknown>): AppConfig => ({
   theme: typeof raw.theme === 'string' ? raw.theme : DEFAULT_CONFIG.theme,
   draftMode: typeof raw.draftMode === 'boolean' ? raw.draftMode : DEFAULT_CONFIG.draftMode,
@@ -585,12 +591,8 @@ const sane = (raw: Record<string, unknown>): AppConfig => ({
       return [k, typeof mine === 'string' ? mine : v]
     })
   ),
-  defaultWorkdir:
-    typeof raw.defaultWorkdir === 'string' &&
-    raw.defaultWorkdir.length <= Limits.workdir &&
-    isAbsolutePath(raw.defaultWorkdir)
-      ? raw.defaultWorkdir
-      : DEFAULT_CONFIG.defaultWorkdir
+  defaultWorkdir: absolutePath(raw.defaultWorkdir) ?? DEFAULT_CONFIG.defaultWorkdir,
+  brainDir: absolutePath(raw.brainDir) ?? DEFAULT_CONFIG.brainDir
 })
 
 // Saída do `fc-list : family` → nomes únicos ordenados (cada linha pode listar apelidos após vírgula).

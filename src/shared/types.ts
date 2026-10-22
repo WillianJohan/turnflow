@@ -47,6 +47,8 @@ export type AppConfig = {
   statusIcons: Record<string, string>
   /** Pasta de trabalho padrão das tasks sem `workdir` (absoluta) ou `null`. */
   defaultWorkdir: string | null
+  /** Pasta do brain do último import (absoluta) ou `null`; a lateral herdada lista dela. */
+  brainDir: string | null
 }
 export type ConfigState = {
   dir: string
