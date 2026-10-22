@@ -41,6 +41,19 @@ export const COPY = {
   recoverSubmit: 'Desbloquear',
   recoverBack: 'Voltar para a senha',
 
+  restoreLink: 'Restaurar de um backup',
+  restoreTitle: 'Restaurar de um backup',
+  restoreIntro:
+    'Escolha um arquivo de backup (pasta backups da instalação antiga) e digite as 24 palavras da chave de recuperação dela.',
+  restorePick: 'Escolher arquivo',
+  restoreNoFile: 'Nenhum arquivo escolhido',
+  restoreChosen: (path: string): string => `Arquivo: ${path}`,
+  restoreWords: 'As 24 palavras, separadas por espaço',
+  restoreNew: 'Senha mestra nova',
+  restoreConfirm: 'Repita a senha',
+  restoreSubmit: 'Restaurar',
+  restoreBack: 'Voltar',
+
   failedTitle: 'O banco não pôde ser aberto',
   retry: 'Tentar de novo'
 }

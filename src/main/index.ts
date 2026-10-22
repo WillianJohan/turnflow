@@ -8,6 +8,7 @@ import { windowPrefs } from './windowPrefs'
 import { isExternalLink } from './links'
 import { binDir, configDir, socketPath } from './config'
 import { BRAND } from '../shared/brand'
+import { VAULT_COPY } from '../shared/copy/vault'
 import { changeBus } from './changeBusInstance'
 import { cliUserDataDir } from '../shared/paths'
 import { parseCli, runCli } from '../cli/dispatch'
@@ -145,6 +146,14 @@ function vaultDialogs(win: BrowserWindow): VaultDialogs {
       if (r.canceled || !r.filePath) return null
       await writeSecretFile(r.filePath, text)
       return r.filePath
+    },
+    async open() {
+      const r = await dialog.showOpenDialog(win, {
+        defaultPath: vaultPaths(configDir()).backups,
+        properties: ['openFile'],
+        filters: [{ name: VAULT_COPY.backupFilter, extensions: ['db'] }]
+      })
+      return r.canceled ? null : (r.filePaths[0] ?? null)
     }
   }
 }

@@ -48,6 +48,8 @@ export const VAULT_COPY = {
     notKeyringMode: 'A chave não está no chaveiro do sistema',
     kdfOutOfRange: 'Parâmetros de derivação da chave fora do permitido'
   },
+  /** Filtro do diálogo de escolher backup. */
+  backupFilter: `Backup do ${BRAND.name}`,
   /** `WORDS_UNKNOWN` com a posição (1-based) da primeira palavra desconhecida. */
   wordUnknown: (position: number): string => `A palavra ${position} não existe na lista`,
 

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type { Boot } from '../../../../shared/ipc/vault'
 import { COPY } from './copy'
 
-export type Screen = 'new_password' | 'words' | 'unlock' | 'recover' | 'failed' | 'app'
-export type Mode = 'default' | 'recover'
+export type Screen = 'new_password' | 'words' | 'restore' | 'unlock' | 'recover' | 'failed' | 'app'
+export type Mode = 'default' | 'recover' | 'restore'
 
 // O vault conta o mínimo em code points depois do NFC; a tela conta igual.
 const length = (s: string): number => [...s.normalize('NFC')].length
@@ -26,6 +26,8 @@ export function screenFor(b: Boot, mode: Mode, words: string[] | null): Screen {
     case 'failed':
       return 'failed'
     case 'first_run':
+      // Decisão 11: restaurar só existe no primeiro uso
+      if (mode === 'restore') return 'restore'
       // chaveiro de verdade dispensa senha: o portão chama firstRunBegin({}) e mostra as palavras
       return words || b.backend === 'real' ? 'words' : 'new_password'
     case 'locked':

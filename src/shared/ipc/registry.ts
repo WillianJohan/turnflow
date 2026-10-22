@@ -43,6 +43,8 @@ export const CHANNELS = {
   firstRunBegin: vault.firstRunBegin,
   firstRunSaveWords: vault.firstRunSaveWords,
   firstRunCommit: vault.firstRunCommit,
+  firstRunPickBackup: vault.firstRunPickBackup,
+  firstRunRestore: vault.firstRunRestore,
   vaultUnlock: vault.vaultUnlock,
   vaultRecover: vault.vaultRecover,
   searchQuery: search.searchQuery

@@ -4,9 +4,11 @@ import { passwordProblem, useSubmit } from './form'
 
 /** Primeiro uso sem chaveiro de verdade: define a senha mestra. */
 export function NewPassword({
-  onSubmit
+  onSubmit,
+  onRestore
 }: {
   onSubmit: (password: string) => Promise<unknown>
+  onRestore: () => void
 }): React.JSX.Element {
   const [a, setA] = useState('')
   const [b, setB] = useState('')
@@ -61,6 +63,9 @@ export function NewPassword({
       )}
       <button data-testid="pw-submit" className="vault-primary" disabled={!!problem || busy}>
         {COPY.passwordSubmit}
+      </button>
+      <button type="button" data-testid="restore-link" className="vault-link" onClick={onRestore}>
+        {COPY.restoreLink}
       </button>
     </form>
   )

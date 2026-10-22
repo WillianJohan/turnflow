@@ -73,7 +73,22 @@ describe('screenFor', () => {
       null,
       'failed'
     ],
-    ['ready', boot({ state: 'ready' }), 'default', null, 'app']
+    ['ready', boot({ state: 'ready' }), 'default', null, 'app'],
+    ['first_run em modo restore', boot({ state: 'first_run' }), 'restore', null, 'restore'],
+    [
+      'first_run real em modo restore, com palavras',
+      boot({ backend: 'real' }),
+      'restore',
+      w24,
+      'restore'
+    ],
+    [
+      'restore só existe no first_run',
+      boot({ state: 'locked', lock: 'password' }),
+      'restore',
+      null,
+      'unlock'
+    ]
   ] as const)('%s', (_name, b, mode, words, want) => {
     expect(screenFor(b, mode, words === null ? null : [...words])).toBe(want)
   })

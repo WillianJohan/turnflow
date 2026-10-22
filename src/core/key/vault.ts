@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { VAULT_COPY } from '../../shared/copy/vault'
 import { ensureDailyBackup, preMigrationName, scheduleDailyBackup, writeBackup } from '../db/backup'
 import type { Migration } from '../db/migrate'
+import { MIGRATIONS } from '../db/migrations'
 import { DbOpenError, openDb, type Db } from '../db/open'
 import type { KeyBackend } from './backend'
 import { generateDek } from './dek'
@@ -18,6 +19,7 @@ import {
 } from './keyfile'
 import type { VaultPaths } from './paths'
 import { dekToWords, wordsToDek } from './recovery'
+import { extractBackup } from './restore'
 
 export type VaultState = 'first_run' | 'locked' | 'ready' | 'failed'
 export type VaultFailure = {
@@ -48,6 +50,8 @@ export interface Vault {
   commitFirstRun(): Promise<void>
   unlockWithPassword(password: string): Promise<void>
   recover(words: string, newPassword?: string): Promise<void>
+  /** Só em `first_run`: restaura um backup aberto pelas palavras. Erro não deixa nada escrito. */
+  restore(backupPath: string, words: string, password?: string): Promise<void>
   db(): Db
   close(): void
 }
@@ -419,6 +423,46 @@ export function createVault(deps: VaultDeps): Vault {
           }
           keyFile = kf
           enterReady(db)
+        } finally {
+          dek.fill(0)
+        }
+      }),
+
+    restore: (backupPath, words, password) =>
+      exclusive(async () => {
+        if (state !== 'first_run') throw new VaultError('BAD_STATE')
+        const dek = wordsToDek(words)
+        try {
+          const real = backend.kind() === 'real'
+          if (!real && !password) throw new VaultError('PASSWORD_REQUIRED')
+          // O boot do first_run já tirou banco e chave do caminho; o rename abaixo sobrescreveria.
+          if (existsSync(paths.keyFile) || existsSync(paths.db)) throw new VaultError('BAD_STATE')
+          // Embrulha antes de tocar no disco: falha de chaveiro ou KDF não deixa nada escrito.
+          const kf = real ? wrapKeyring(dek) : await wrapWithPassword(dek, password as string)
+          // Decisão 11: cópia em restore.tmp → .init → mesmo caminho do commitFirstRun.
+          ensureDir()
+          removeInit()
+          try {
+            extractBackup({
+              source: backupPath,
+              tmpDir: paths.restoreTmp,
+              target: paths.dbInit,
+              dek,
+              latest: Math.max(...(deps.migrations ?? MIGRATIONS).map((m) => m.version))
+            })
+            open(paths.dbInit, dek, false, false).close()
+            assertNotClosed()
+            writeKeyFile(paths.keyFile, kf)
+          } catch (e) {
+            rmSync(paths.restoreTmp, { recursive: true, force: true })
+            // com key.enc já gravado o .init é o banco dele: o boot faz o rename
+            if (!existsSync(paths.keyFile)) removeInit()
+            throw e
+          }
+          keyFile = kf
+          moveDbFiles(paths.dbInit, paths.db)
+          dropPending()
+          openReady(dek)
         } finally {
           dek.fill(0)
         }

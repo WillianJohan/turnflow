@@ -6,6 +6,7 @@ import { clearClipboardIf, gateReducer, initialGate, screenFor, withoutChannel }
 import { Failed } from './Failed'
 import { NewPassword } from './NewPassword'
 import { Recover } from './Recover'
+import { Restore } from './Restore'
 import { RecoveryWords } from './RecoveryWords'
 import { Unlock } from './Unlock'
 import './vault.css'
@@ -80,6 +81,7 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
 
   const screen = screenFor(boot, mode, words)
   if (screen === 'app') return <>{children}</>
+  const toRestore = (): void => dispatch({ t: 'mode', mode: 'restore' })
 
   return (
     <div className="vault">
@@ -88,6 +90,7 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
           onSubmit={(password) =>
             orThrow(api.firstRunBegin({ password })).then((r) => setWords(r.words))
           }
+          onRestore={toRestore}
         />
       )}
       {screen === 'words' && (
@@ -107,6 +110,7 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
               applyResult(b)
             })
           }
+          onRestore={toRestore}
         />
       )}
       {screen === 'unlock' && (
@@ -120,6 +124,19 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
           boot={boot}
           onRecover={(w, newPassword) =>
             orThrow(api.vaultRecover({ words: w, newPassword })).then(applyResult)
+          }
+          onBack={() => dispatch({ t: 'mode', mode: 'default' })}
+        />
+      )}
+      {screen === 'restore' && (
+        <Restore
+          boot={boot}
+          onPick={() => orThrow(api.firstRunPickBackup()).then((r) => r?.path ?? null)}
+          onRestore={(backupPath, w, password) =>
+            orThrow(api.firstRunRestore({ backupPath, words: w, password })).then((b) => {
+              setWords(null) // palavras de um begin anterior não valem para o banco restaurado
+              applyResult(b)
+            })
           }
           onBack={() => dispatch({ t: 'mode', mode: 'default' })}
         />

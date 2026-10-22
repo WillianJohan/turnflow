@@ -43,7 +43,11 @@ describe('registerIpc', () => {
       webContents: { id: 1, on: () => undefined, send: () => undefined },
       isDestroyed: () => false
     }
-    const deps = { vault: {} as never, version: '0.0.0', dialogs: { save: async () => null } }
+    const deps = {
+      vault: {} as never,
+      version: '0.0.0',
+      dialogs: { save: async () => null, open: async () => null }
+    }
     const dispose = await registerIpc(win as never, ipc as never, deps)
     dispose()
     const expected = Object.values(CHANNELS).map((c) => c.name)

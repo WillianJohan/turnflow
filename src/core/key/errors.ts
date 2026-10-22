@@ -24,6 +24,7 @@ export type VaultErrorDetails = { index?: number; version?: number; message?: st
 const PASS_THROUGH: ReadonlySet<VaultErrorCode> = new Set([
   'MIGRATION_FAILED',
   'NEWER_SCHEMA',
+  'BACKUP_NEWER',
   'OPEN_FAILED',
   'BAD_STATE'
 ])

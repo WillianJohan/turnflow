@@ -1,15 +1,19 @@
 import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { BRAND } from '../../shared/brand'
 import { VAULT_COPY } from '../../shared/copy/vault'
 import type { Channel } from '../../shared/ipc/define'
 import { CHANNELS } from '../../shared/ipc/registry'
 import type { Boot } from '../../shared/ipc/vault'
+import { dailyName } from '../../core/db/backup'
 import { MIGRATIONS, LATEST } from '../../core/db/migrations'
 import type { Migration } from '../../core/db/migrate'
 import { tmpDir } from '../../core/testing/db'
 import { fakeKeyBackend } from '../../core/testing/fakeKeyBackend'
 import { vaultPaths } from '../../core/key/paths'
+import { dekToWords } from '../../core/key/recovery'
 import { createVault, type Vault, type VaultDeps } from '../../core/key/vault'
 import { handle, type Handler, type IpcLike } from './handle'
 import { registerVaultIpc, wireVaultEvents, type VaultDialogs } from './vault'
@@ -44,7 +48,10 @@ function setup(o: { dir?: string; extra?: Partial<VaultDeps>; dialogs?: VaultDia
     ...o.extra
   })
   const ipc = fakeIpc()
-  const dialogs = o.dialogs ?? { save: vi.fn(async () => '/escolhido/chave.txt') }
+  const dialogs = o.dialogs ?? {
+    save: vi.fn(async () => '/escolhido/chave.txt'),
+    open: vi.fn(async () => null)
+  }
   const h = <C extends Channel>(ch: C, fn: Handler<C>): void =>
     handle(ipc, ch, fn, { validateOutput: true })
   registerVaultIpc(h, { vault, version: VERSION, dialogs, now: () => NOW })
@@ -231,7 +238,7 @@ describe('canais do vault', () => {
 
   it('saveWords grava as 24 linhas numeradas pelo dialogs.save; cancelado → null', async () => {
     const save = vi.fn(async () => '/escolhido/chave.txt' as string | null)
-    const { vault, invoke } = setup({ dialogs: { save } })
+    const { vault, invoke } = setup({ dialogs: { save, open: vi.fn(async () => null) } })
     await vault.boot()
     expect(await invoke(ch.firstRunSaveWords.name)).toMatchObject({
       ok: false,
@@ -254,6 +261,72 @@ describe('canais do vault', () => {
     expect(await invoke(ch.firstRunSaveWords.name)).toEqual({ ok: true, data: null })
     vault.close()
   }, 20_000)
+
+  it('firstRun.restore com palavra errada → VALIDATION e o Result não leva as palavras', async () => {
+    const a = tmpDir()
+    const words = await committed(a)
+    const file = join(a, 'backups', dailyName(new Date()))
+    expect(existsSync(file)).toBe(true)
+    const { vault, invoke, dir } = setup()
+    await vault.boot()
+    const bad = [...words]
+    bad[4] = 'xyzzy'
+    const r = await invoke(ch.firstRunRestore.name, {
+      backupPath: file,
+      words: bad.join(' '),
+      password: PASSWORD
+    })
+    expect(r).toEqual({
+      ok: false,
+      error: {
+        code: 'VALIDATION',
+        message: 'A palavra 5 não existe na lista',
+        details: { index: 4 }
+      }
+    })
+    const json = JSON.stringify(r)
+    for (const w of words) expect(json, `vazou "${w}"`).not.toContain(w)
+    expect(readdirSync(dir)).toEqual([])
+    expect(
+      await invoke(ch.firstRunRestore.name, {
+        backupPath: file,
+        words: words.join(' '),
+        password: PASSWORD
+      })
+    ).toEqual(bootOk('ready'))
+    vault.close()
+  }, 60_000)
+
+  it('firstRun.restore de arquivo que não é backup → VALIDATION', async () => {
+    const file = join(tmpDir(), 'nota.db')
+    writeFileSync(file, 'texto\n')
+    const { vault, invoke } = setup()
+    await vault.boot()
+    expect(
+      await invoke(ch.firstRunRestore.name, {
+        backupPath: file,
+        words: dekToWords(Buffer.alloc(32, 1)).join(' '),
+        password: PASSWORD
+      })
+    ).toEqual({
+      ok: false,
+      error: { code: 'VALIDATION', message: VAULT_COPY.errors.NOT_A_BACKUP }
+    })
+    vault.close()
+  })
+
+  it('firstRun.pickBackup devolve o caminho do dialogs.open; cancelado → null', async () => {
+    const open = vi.fn(async () => '/escolhido/backup.db' as string | null)
+    const { vault, invoke } = setup({ dialogs: { save: vi.fn(async () => null), open } })
+    await vault.boot()
+    expect(await invoke(ch.firstRunPickBackup.name)).toEqual({
+      ok: true,
+      data: { path: '/escolhido/backup.db' }
+    })
+    open.mockResolvedValueOnce(null)
+    expect(await invoke(ch.firstRunPickBackup.name)).toEqual({ ok: true, data: null })
+    vault.close()
+  })
 
   it('wireVaultEvents: cada transição emite o Boot igual ao boot.get do momento', async () => {
     const emitted: Boot[] = []

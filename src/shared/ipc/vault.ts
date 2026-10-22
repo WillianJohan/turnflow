@@ -49,6 +49,22 @@ export const firstRunCommit = defineChannel(
   z.object({ saved: z.literal(true) }).strict(),
   BootZ
 )
+export const firstRunPickBackup = defineChannel(
+  'firstRun.pickBackup',
+  NoInput,
+  z.object({ path: z.string() }).nullable()
+)
+export const firstRunRestore = defineChannel(
+  'firstRun.restore',
+  z
+    .object({
+      backupPath: z.string().min(1).max(4096),
+      words: Words,
+      password: NewPassword.optional()
+    })
+    .strict(),
+  BootZ
+)
 export const vaultUnlock = defineChannel(
   'vault.unlock',
   z.object({ password: Password.refine((s) => s.length > 0, VAULT_COPY.passwordEmpty) }).strict(),

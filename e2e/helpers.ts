@@ -28,10 +28,13 @@ export async function launch(dir: string, keyring: Keyring): Promise<Launched> {
 }
 
 /**
- * `dir`: pasta de configuração do teste, apagada no fim. `launch`: abre o app nela; o que o teste
- * não fechou (falha no meio) é fechado no teardown.
+ * `dir`: pasta de configuração do teste, apagada no fim. `launch`: abre o app nela (ou em `at`, uma
+ * segunda instalação dentro de `dir`); o que o teste não fechou (falha no meio) é fechado no teardown.
  */
-export const test = base.extend<{ dir: string; launch: (keyring: Keyring) => Promise<Launched> }>({
+export const test = base.extend<{
+  dir: string
+  launch: (keyring: Keyring, at?: string) => Promise<Launched>
+}>({
   // eslint-disable-next-line no-empty-pattern
   dir: async ({}, provide) => {
     const dir = mkdtempSync(join(tmpdir(), 'tf-e2e-'))
@@ -44,8 +47,8 @@ export const test = base.extend<{ dir: string; launch: (keyring: Keyring) => Pro
   launch: async ({ dir }, provide) => {
     const open = new Set<ElectronApplication>()
     try {
-      await provide(async (keyring) => {
-        const l = await launch(dir, keyring)
+      await provide(async (keyring, at = dir) => {
+        const l = await launch(at, keyring)
         open.add(l.app)
         l.app.on('close', () => open.delete(l.app))
         return l

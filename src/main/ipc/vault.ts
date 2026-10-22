@@ -9,8 +9,14 @@ import { recoveryFileText } from '../../core/key/recovery'
 import type { Vault } from '../../core/key/vault'
 import { IpcError, type Handler } from './handle'
 
-/** Diálogos nativos que os canais do vault usam. `save` grava `text` (0600) e devolve o caminho, ou null se cancelado. */
-export type VaultDialogs = { save(defaultName: string, text: string): Promise<string | null> }
+/**
+ * Diálogos nativos que os canais do vault usam. `save` grava `text` (0600) e devolve o caminho;
+ * `open` escolhe um backup (`*.db`). Os dois devolvem null se cancelado.
+ */
+export type VaultDialogs = {
+  save(defaultName: string, text: string): Promise<string | null>
+  open(): Promise<string | null>
+}
 
 type Register = <C extends Channel>(ch: C, fn: Handler<C>) => void
 
@@ -94,6 +100,15 @@ export function registerVaultIpc(
   )
   // `saved: true` é exigido pelo contrato: o zod barra antes de chegar aqui
   h(V.firstRunCommit, () => guarded(() => vault.commitFirstRun()).then(boot))
+  h(V.firstRunPickBackup, () =>
+    guarded(async () => {
+      const path = await dialogs.open()
+      return path === null ? null : { path }
+    })
+  )
+  h(V.firstRunRestore, ({ backupPath, words, password }) =>
+    guarded(() => vault.restore(backupPath, words, password)).then(boot)
+  )
   h(V.vaultUnlock, ({ password }) => guarded(() => vault.unlockWithPassword(password)).then(boot))
   h(V.vaultRecover, ({ words, newPassword }) =>
     guarded(() => vault.recover(words, newPassword)).then(boot)

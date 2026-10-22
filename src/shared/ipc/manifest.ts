@@ -33,6 +33,8 @@ export const MANIFEST = {
   firstRunBegin: ['firstRun.begin', 'invoke'],
   firstRunSaveWords: ['firstRun.saveWords', 'invoke'],
   firstRunCommit: ['firstRun.commit', 'invoke'],
+  firstRunPickBackup: ['firstRun.pickBackup', 'invoke'],
+  firstRunRestore: ['firstRun.restore', 'invoke'],
   vaultUnlock: ['vault.unlock', 'invoke'],
   vaultRecover: ['vault.recover', 'invoke'],
   searchQuery: ['search.query', 'invoke']

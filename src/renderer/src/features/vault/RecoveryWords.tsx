@@ -13,7 +13,8 @@ export function RecoveryWords({
   onCopy,
   onWipe,
   onSave,
-  onContinue
+  onContinue,
+  onRestore
 }: {
   words: string[] | null
   error: string | null
@@ -22,6 +23,7 @@ export function RecoveryWords({
   onWipe: (text: string) => void
   onSave: () => Promise<string | null>
   onContinue: () => Promise<unknown>
+  onRestore: () => void
 }): React.JSX.Element {
   const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -105,6 +107,9 @@ export function RecoveryWords({
         }}
       >
         {COPY.continue}
+      </button>
+      <button type="button" data-testid="restore-link" className="vault-link" onClick={onRestore}>
+        {COPY.restoreLink}
       </button>
     </div>
   )
