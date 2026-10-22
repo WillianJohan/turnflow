@@ -64,6 +64,7 @@ export type ActivityOp =
   | 'checkpoint_add'
   | 'stage_remap'
   | 'project_delete'
+  | 'task_import'
   | 'undo'
 
 /**

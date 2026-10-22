@@ -7,6 +7,11 @@ import type { Tx } from './tx'
  */
 export function purgeTask(db: Db, taskId: string, tx: Tx): boolean {
   const removed = tx((emit) => {
+    // o que veio do markdown não sobra: label da sessão e path/hashes do registro (Decisão 16)
+    db.prepare('update ai_session set label = null where task_id = ?').run(taskId)
+    db.prepare(
+      "update import_record set source_path = '', file_hash = '', field_hashes = '{}' where task_id = ?"
+    ).run(taskId)
     const n = db.prepare('delete from task where id = ?').run(taskId).changes
     if (n > 0) emit({ entity: 'task', ids: [taskId], op: 'delete' })
     return n > 0

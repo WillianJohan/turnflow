@@ -46,10 +46,10 @@ const code = (fn: () => unknown): string => {
 }
 
 describe('migration 0004 domain', () => {
-  it('chega em LATEST = 4', () => {
+  it('chega em LATEST = 5', () => {
     const db = openTestDb()
-    expect(LATEST).toBe(4)
-    expect(db.pragma('user_version', { simple: true })).toBe(4)
+    expect(LATEST).toBe(5)
+    expect(db.pragma('user_version', { simple: true })).toBe(5)
     db.close()
   })
 
@@ -346,11 +346,64 @@ describe('migration 0004 domain', () => {
     const db = openDb({ file, dek: TEST_DEK, create: true, migrations: MIGRATIONS.slice(0, 3) })
     expect(db.pragma('user_version', { simple: true })).toBe(3)
     const id = insertTask(db, { key: 'T-1', title: 'antiga' })
-    expect(migrate(db, MIGRATIONS)).toEqual({ from: 3, to: 4 })
+    expect(migrate(db, MIGRATIONS.slice(0, 4))).toEqual({ from: 3, to: 4 })
     expect(db.pragma('user_version', { simple: true })).toBe(4)
     const r = db.prepare('select key, title from task where id = ?').get(id)
     expect(r).toEqual({ key: 'T-1', title: 'antiga' })
     expect((db.prepare('select count(*) as n from flow').get() as { n: number }).n).toBe(4)
+    db.close()
+  })
+})
+
+describe('migration 0005 import', () => {
+  it('cria import_record e import_project', () => {
+    const db = openTestDb()
+    const cols = (t: string): string[] =>
+      (db.prepare(`select name from pragma_table_info('${t}')`).all() as { name: string }[]).map(
+        (c) => c.name
+      )
+    expect(cols('import_record')).toEqual([
+      'source_key',
+      'source_path',
+      'task_id',
+      'file_hash',
+      'field_hashes',
+      'imported_at'
+    ])
+    expect(cols('import_project')).toEqual(['source_key', 'project_id', 'imported_at'])
+    const idx = db.prepare("select name from pragma_index_list('import_record')").all()
+    expect(JSON.stringify(idx)).toContain('import_record_task')
+    db.close()
+  })
+
+  it('apagar o projeto deixa import_project.project_id NULL', () => {
+    const db = openTestDb()
+    db.prepare("insert into project(id, name) values ('p', 'P')").run()
+    db.prepare(
+      "insert into import_project(source_key, project_id, imported_at) values ('key:ABC-1', 'p', 'x')"
+    ).run()
+    db.prepare("delete from project where id = 'p'").run()
+    expect(db.prepare('select project_id from import_project').get()).toEqual({ project_id: null })
+    db.close()
+  })
+
+  it('apagar a task deixa import_record.task_id NULL', () => {
+    const db = openTestDb()
+    const id = insertTask(db, { key: 'ABC-1' })
+    db.prepare(
+      "insert into import_record(source_key, source_path, task_id, file_hash, field_hashes, imported_at) values ('ABC-1', 'a', ?, 'h', '{}', 'x')"
+    ).run(id)
+    db.prepare('delete from task where id = ?').run(id)
+    expect(db.prepare('select task_id from import_record').get()).toEqual({ task_id: null })
+    db.close()
+  })
+
+  it('banco v4 migra para 5 com a task intacta', () => {
+    const file = join(tmpDir(), 'v4.db')
+    const db = openDb({ file, dek: TEST_DEK, create: true, migrations: MIGRATIONS.slice(0, 4) })
+    const id = insertTask(db, { key: 'T-1', title: 'antiga' })
+    expect(migrate(db, MIGRATIONS)).toEqual({ from: 4, to: 5 })
+    expect(db.prepare('select title from task where id = ?').get(id)).toEqual({ title: 'antiga' })
     db.close()
   })
 })

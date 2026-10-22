@@ -1,6 +1,8 @@
 // Textos que o core e o main produzem sobre o domínio (erros, resumo da Atividade, "mudou depois").
 // pt-BR; o E6.9 troca por i18n. Nunca interpolar título, descrição ou checkpoint de task aqui.
 
+import { IMPORT_COPY } from './import'
+
 export type NotFoundEntity = 'task' | 'project' | 'activity' | 'flow' | 'stage' | 'type'
 
 const ERRORS = {
@@ -74,6 +76,7 @@ const SUMMARY: Record<string, (d: Data) => string> = {
   checkpoint_add: () => 'registrou um checkpoint',
   stage_remap: (d) => `remapeou a etapa: ${arrow(d)}`,
   project_delete: (d) => `apagou o projeto ${str(d.name)}`,
+  task_import: (d) => (d.created ? IMPORT_COPY.activity.created : IMPORT_COPY.activity.updated),
   undo: () => 'desfez uma ação'
 }
 

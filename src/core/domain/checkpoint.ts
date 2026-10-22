@@ -8,6 +8,11 @@ import type { TaskCommandResult } from './task'
 
 type Source = 'user' | 'ai' | 'sync' | 'import'
 
+/** sha256 hex do texto em NFC e sem espaço nas pontas: a chave de dedup do checkpoint. */
+export function checkpointHash(text: string): string {
+  return createHash('sha256').update(text.trim().normalize('NFC')).digest('hex')
+}
+
 const sourceOf = (actor: Actor): Source =>
   actor.kind === 'user'
     ? 'user'
@@ -31,7 +36,7 @@ export function addCheckpoint(
     const rec = liveTask(d.db, i.task_id)
     const now = nowIso(d)
     const checkpoint_id = d.newId()
-    const hash = createHash('sha256').update(text.normalize('NFC')).digest('hex')
+    const hash = checkpointHash(text)
     d.db
       .prepare(
         'insert into checkpoint(id, task_id, at, text, source, text_hash) values (?, ?, ?, ?, ?, ?)'

@@ -93,6 +93,34 @@ describe('LGPD local', () => {
     db.close()
   })
 
+  it('purge de task importada deixa tombstone só com a key', () => {
+    const { db, id } = seeded()
+    db.prepare(
+      `insert into import_record(source_key, source_path, task_id, file_hash, field_hashes, imported_at)
+       values ('ABC-1', 'current/ABC-1/README.md', ?, 'abc', '{"title":{"md":"a","app":"b"}}', 'x')`
+    ).run(id)
+    db.prepare(
+      `insert into ai_session(id, task_id, tool, external_id, state, state_at, started_at, ended_at, label)
+       values ('s', ?, 'claude-code', 'uuid-1', 'unknown', 'x', 'x', 'x', 'texto do readme')`
+    ).run(id)
+    expect(purgeTask(db, id, createTx(db, noop))).toBe(true)
+    expect(db.prepare('select * from import_record').all()).toEqual([
+      {
+        source_key: 'ABC-1',
+        source_path: '',
+        task_id: null,
+        file_hash: '',
+        field_hashes: '{}',
+        imported_at: 'x'
+      }
+    ])
+    expect(db.prepare("select task_id, label from ai_session where id = 's'").get()).toEqual({
+      task_id: null,
+      label: null
+    })
+    db.close()
+  })
+
   it('o vocabulário tinha os trigramas antes do purge (o teste acima não é vácuo)', () => {
     const { db } = seeded()
     db.exec("create virtual table temp.vocab using fts5vocab(main, 'search_fts', 'row')")
