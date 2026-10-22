@@ -137,3 +137,68 @@ export const TaskPatch = z
   })
   .strict()
 export type TaskPatch = z.infer<typeof TaskPatch>
+
+const Name = z.string().trim().min(1).max(Limits.name)
+
+/** Etapa no editor de fluxo: `position` = ordinal 1-based entre as vivas; `task_count` = tasks vivas nela. */
+export const FlowStage = z.object({
+  id: z.string(),
+  position: z.number().int(),
+  name: z.string(),
+  short_name: z.string(),
+  waits_other: z.boolean(),
+  is_final: z.boolean(),
+  remote_star_status: z.string().nullable(),
+  task_count: z.number().int()
+})
+export type FlowStage = z.infer<typeof FlowStage>
+
+/** Fluxo com as etapas vivas, em ordem. */
+export const Flow = z.object({
+  id: z.string(),
+  name: z.string(),
+  is_default: z.boolean(),
+  stages: z.array(FlowStage)
+})
+export type Flow = z.infer<typeof Flow>
+
+export const TaskType = z.object({
+  id: z.string(),
+  name: z.string(),
+  flow_id: z.string(),
+  syncs: z.boolean(),
+  icon: z.string().nullable(),
+  guideline: z.string().nullable()
+})
+export type TaskType = z.infer<typeof TaskType>
+
+/** Etapa do fluxo de origem → etapa escolhida no fluxo de destino. */
+export const StageMapping = z.record(Id, Id)
+export type StageMapping = z.infer<typeof StageMapping>
+
+/** Linha da prévia de remapeamento: etapa de origem e o par sugerido (`null` = sem par). */
+export const StagePairing = z.object({
+  from: z.object({
+    id: z.string(),
+    name: z.string(),
+    short_name: z.string(),
+    position: z.number().int()
+  }),
+  to_stage_id: z.string().nullable()
+})
+export type StagePairing = z.infer<typeof StagePairing>
+
+/** Cria (sem `id`) ou atualiza uma etapa; `position` = ordinal desejado entre as vivas. */
+export const SaveStageInput = z
+  .object({
+    flow_id: Id,
+    id: Id.optional(),
+    name: Name,
+    short_name: Name,
+    waits_other: z.boolean(),
+    is_final: z.boolean(),
+    remote_star_status: z.string().max(Limits.name).nullable().optional(),
+    position: z.number().int().min(1).optional()
+  })
+  .strict()
+export type SaveStageInput = z.infer<typeof SaveStageInput>

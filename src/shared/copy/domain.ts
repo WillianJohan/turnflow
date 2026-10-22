@@ -5,6 +5,7 @@ export type NotFoundEntity = 'task' | 'project' | 'activity' | 'flow' | 'stage' 
 
 const ERRORS = {
   title_required: 'Dê um título para a task',
+  name_required: 'Dê um nome',
   reason_required: 'Diga o motivo do bloqueio',
   workdir_relative: 'A pasta de trabalho precisa ser um caminho absoluto',
   stage_not_in_flow: 'Essa etapa não é do fluxo da task',
