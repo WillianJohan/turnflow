@@ -664,6 +664,53 @@ describe('setStage e closeTask', () => {
     })
   })
 
+  it('avançar limpa: inverso restaura voltou e expect tem turn_* null', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinamento') })
+    const old = raw(h.db, id).turn_at as string
+    h.tick(MIN)
+    const r = setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
+    const inv = readActivity(h.db, r.activity_id!)!.inverse!
+    expect(inv.expect).toMatchObject({ turn_reason: null, turn_at: null })
+    expect(inv.restore).toMatchObject({ turn_reason: 'voltou', turn_at: old })
+  })
+
+  it('duas finais: final para final preserva done_at; closeTask escolhe a de menor posição', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h, 'Review')
+    h.db
+      .prepare(
+        "update flow_stage set is_final = 1 where flow_id = ? and name in ('Review', 'Entregue')"
+      )
+      .run(flow)
+    const impl = stageIdByName(h.db, flow, 'Implementação')
+    const review = stageIdByName(h.db, flow, 'Review')
+    const entregue = stageIdByName(h.db, flow, 'Entregue')
+    h.db.prepare('update task set stage_id = ? where id = ?').run(impl, id)
+    h.tick(MIN)
+    closeTask(h.d, USER, { id })
+    expect(raw(h.db, id)).toMatchObject({ stage_id: review, done_at: h.nowIso() })
+    const done = h.nowIso()
+    h.tick(MIN)
+    setStage(h.d, USER, { id, stage_id: entregue })
+    expect(raw(h.db, id)).toMatchObject({ stage_id: entregue, done_at: done })
+  })
+
+  it('outbox: closeTask vinculada gera linha; no-op vinculado não gera', () => {
+    const h = setup({ remote: { isLinked: () => true } })
+    const { id } = featureTask(h)
+    const count = (): number =>
+      (h.db.prepare('select count(*) as n from sync_outbox').get() as { n: number }).n
+    const r = closeTask(h.d, USER, { id })
+    expect(r.outbox).toBe('queued')
+    expect(count()).toBe(1)
+    const again = closeTask(h.d, USER, { id })
+    expect(again.outbox).toBe('none')
+    expect(again.activity_id).toBeNull()
+    expect(count()).toBe(1)
+  })
+
   it('toca touched_at', () => {
     const h = setup()
     const { id, flow } = featureTask(h)
