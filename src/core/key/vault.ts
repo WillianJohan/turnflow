@@ -1,0 +1,388 @@
+import { randomBytes } from 'node:crypto'
+import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import { basename, join } from 'node:path'
+import { VAULT_COPY } from '../../shared/copy/vault'
+import { ensureDailyBackup, preMigrationName, scheduleDailyBackup, writeBackup } from '../db/backup'
+import type { Migration } from '../db/migrate'
+import { DbOpenError, openDb, type Db } from '../db/open'
+import type { KeyBackend } from './backend'
+import { generateDek } from './dek'
+import { VaultError } from './errors'
+import {
+  readKeyFile,
+  unlockDek,
+  wrapWithKeyring,
+  wrapWithPassword,
+  writeKeyFile,
+  type KeyFile
+} from './keyfile'
+import type { VaultPaths } from './paths'
+import { dekToWords, wordsToDek } from './recovery'
+
+export type VaultState = 'first_run' | 'locked' | 'ready' | 'failed'
+export type VaultFailure = {
+  code: 'MIGRATION_FAILED' | 'NEWER_SCHEMA' | 'OPEN_FAILED'
+  message: string
+}
+export type VaultDeps = {
+  paths: VaultPaths
+  backend: KeyBackend
+  now?: () => Date
+  random?: (n: number) => Buffer
+  instrument?: (db: Db) => void
+  onReady?: (db: Db) => void
+  onChange?: () => void
+  migrations?: Migration[]
+}
+export interface Vault {
+  state(): VaultState
+  backend(): 'real' | 'basic_text'
+  lockReason(): 'password' | 'keyring_unavailable' | null
+  failure(): VaultFailure | null
+  boot(): Promise<VaultState>
+  beginFirstRun(password?: string): Promise<{ words: string[] }>
+  pendingWords(): string[] | null
+  commitFirstRun(): Promise<void>
+  unlockWithPassword(password: string): Promise<void>
+  recover(words: string, newPassword?: string): Promise<void>
+  db(): Db
+  close(): void
+}
+
+type LockReason = 'password' | 'keyring_unavailable'
+const DB_SIBLINGS = ['-wal', '-shm'] as const
+const p2 = (n: number): string => String(n).padStart(2, '0')
+const stamp = (d: Date): string =>
+  `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-` +
+  `${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`
+
+/**
+ * Converte qualquer erro em `VaultError`. `DbOpenError` mantém o código (`NOT_FOUND` vira
+ * `OPEN_FAILED`) e a mensagem de origem em `details.message`. Erro de FS/SQLite pode trazer o
+ * caminho do arquivo: vira `OPEN_FAILED` só com o texto do `VAULT_COPY`.
+ */
+function toVaultError(e: unknown): VaultError {
+  if (e instanceof VaultError) return e
+  if (e instanceof DbOpenError)
+    return new VaultError(e.code === 'NOT_FOUND' ? 'OPEN_FAILED' : e.code, {
+      message: e.message,
+      version: e.details?.version
+    })
+  return new VaultError('OPEN_FAILED')
+}
+
+/** Renomeia o banco e os irmãos; o arquivo principal por último (é ele que marca o passo). */
+function moveDbFiles(from: string, to: string): void {
+  for (const s of DB_SIBLINGS) if (existsSync(from + s)) renameSync(from + s, to + s)
+  if (existsSync(from)) renameSync(from, to)
+}
+
+export function createVault(deps: VaultDeps): Vault {
+  const { paths, backend } = deps
+  const now = deps.now ?? ((): Date => new Date())
+  // Antes do boot nada está aberto: `locked` sem motivo.
+  let state: VaultState = 'locked'
+  let lock: LockReason | null = null
+  let failure: VaultFailure | null = null
+  let handle: Db | null = null
+  let keyFile: KeyFile | null = null
+  let pending: { dek: Buffer; words: string[]; kf: KeyFile } | null = null
+  let stopBackups: (() => void) | null = null
+  let queue: Promise<unknown> = Promise.resolve()
+
+  /** Uma operação por vez: dois unlocks simultâneos não abrem o banco duas vezes. */
+  function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = queue.then(async () => {
+      try {
+        return await fn()
+      } catch (e) {
+        throw toVaultError(e)
+      }
+    })
+    queue = run.catch(() => undefined)
+    return run
+  }
+
+  function open(file: string, dek: Buffer, create: boolean, instrument: boolean): Db {
+    try {
+      return openDb({
+        file,
+        dek,
+        create,
+        migrations: deps.migrations,
+        // Primeiro uso (e restore) começam do zero: backup pré só de banco que já existia.
+        beforeMigrate: (db, from) => {
+          if (from > 0) writeBackup(db, paths.backups, preMigrationName(from, now()))
+        },
+        instrument: instrument ? deps.instrument : undefined
+      })
+    } catch (e) {
+      throw toVaultError(e)
+    }
+  }
+
+  function settle(next: VaultState, reason: LockReason | null = null): VaultState {
+    state = next
+    lock = reason
+    failure = null
+    deps.onChange?.()
+    return state
+  }
+
+  /** Registra o `failed` e devolve o erro que o chamador lança. */
+  function fail(e: VaultError): VaultError {
+    const known = e.code === 'MIGRATION_FAILED' || e.code === 'NEWER_SCHEMA'
+    const err = known || e.code === 'OPEN_FAILED' ? e : new VaultError('OPEN_FAILED')
+    state = 'failed'
+    lock = null
+    failure = { code: err.code as VaultFailure['code'], message: err.message }
+    deps.onChange?.()
+    return err
+  }
+
+  function enterReady(db: Db): void {
+    handle = db
+    state = 'ready'
+    lock = null
+    failure = null
+    try {
+      ensureDailyBackup(db, paths.backups, now())
+    } catch {
+      // backup do dia não impede abrir; o agendador tenta de novo a cada 30 min
+    }
+    stopBackups ??= scheduleDailyBackup({
+      getDb: () => (state === 'ready' ? handle : null),
+      dir: paths.backups,
+      now
+    })
+    deps.onReady?.(db)
+    deps.onChange?.()
+  }
+
+  /** Abre o `turnflow.db`; qualquer erro de abertura vira `failed`. */
+  function openReady(dek: Buffer): void {
+    let db: Db
+    try {
+      db = open(paths.db, dek, false, true)
+    } catch (e) {
+      throw fail(toVaultError(e))
+    }
+    enterReady(db)
+  }
+
+  function closeDb(): void {
+    stopBackups?.()
+    stopBackups = null
+    if (handle?.open) handle.close()
+    handle = null
+  }
+
+  function dropPending(): void {
+    pending?.dek.fill(0)
+    pending = null
+  }
+
+  function removeInit(): void {
+    if (!existsSync(paths.dir)) return
+    const prefix = basename(paths.dbInit)
+    for (const n of readdirSync(paths.dir))
+      if (n.startsWith(prefix)) rmSync(join(paths.dir, n), { force: true })
+  }
+
+  /** Banco sem `key.enc` nunca é apagado: vai para `backups/orphan-<data>/`, onde o Restaurar o acha. */
+  function moveOrphan(): void {
+    if (![paths.db, ...DB_SIBLINGS.map((s) => paths.db + s)].some((f) => existsSync(f))) return
+    mkdirSync(paths.backups, { recursive: true, mode: 0o700 })
+    const base = join(paths.backups, `orphan-${stamp(now())}`)
+    let target = base
+    for (let i = 1; ; i++) {
+      try {
+        mkdirSync(target, { mode: 0o700 })
+        break
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+        target = `${base}-${i}`
+      }
+    }
+    chmodSync(target, 0o700) // o mode do mkdir passa pelo umask
+    // irmãos antes do principal: um -wal largado no diretório iria parar no próximo banco
+    moveDbFiles(paths.db, join(target, basename(paths.db)))
+  }
+
+  function ensureDir(): void {
+    if (existsSync(paths.dir)) return
+    mkdirSync(paths.dir, { recursive: true, mode: 0o700 })
+    chmodSync(paths.dir, 0o700)
+  }
+
+  function keyringRoundTrips(): boolean {
+    const probe = randomBytes(32)
+    try {
+      return backend.decrypt(backend.encrypt(probe)).equals(probe)
+    } catch {
+      return false
+    }
+  }
+
+  function wrapKeyring(dek: Buffer): KeyFile {
+    try {
+      return wrapWithKeyring(dek, backend)
+    } catch (e) {
+      if (e instanceof VaultError) throw e
+      throw new VaultError('KEYRING_UNAVAILABLE')
+    }
+  }
+
+  async function bootSteps(): Promise<VaultState> {
+    closeDb()
+    dropPending()
+    keyFile = null
+    if (existsSync(paths.wipeMarker)) return settle('first_run') // o Task 11 termina o wipe aqui
+    let kf: KeyFile | null
+    try {
+      kf = readKeyFile(paths.keyFile)
+    } catch (e) {
+      // Corrompido: só as palavras abrem. Outro erro de leitura: a mensagem traria o caminho.
+      if (e instanceof VaultError && e.code === 'KEYFILE_CORRUPT')
+        return settle('locked', 'keyring_unavailable')
+      throw fail(new VaultError('OPEN_FAILED'))
+    }
+    if (!kf) {
+      rmSync(paths.keyTmp, { force: true })
+      removeInit()
+      rmSync(paths.restoreTmp, { recursive: true, force: true })
+      moveOrphan()
+      return settle('first_run')
+    }
+    keyFile = kf
+    if (!existsSync(paths.db)) {
+      // crash entre gravar o key.enc e o rename: o .init já está migrado e fechado
+      if (existsSync(paths.dbInit)) moveDbFiles(paths.dbInit, paths.db)
+      else throw fail(new VaultError('OPEN_FAILED', { message: VAULT_COPY.dbNotFound }))
+    }
+    if (kf.mode === 'password') return settle('locked', 'password')
+    let dek: Buffer
+    try {
+      dek = await unlockDek(kf, { keyring: backend })
+    } catch (e) {
+      if (e instanceof VaultError && e.code === 'KEYRING_UNAVAILABLE')
+        return settle('locked', 'keyring_unavailable')
+      throw e
+    }
+    try {
+      openReady(dek)
+    } finally {
+      dek.fill(0)
+    }
+    return state
+  }
+
+  return {
+    state: () => state,
+    backend: () => backend.kind(),
+    lockReason: () => lock,
+    failure: () => (failure ? { ...failure } : null),
+    pendingWords: () => (pending ? [...pending.words] : null),
+
+    boot: () =>
+      exclusive(async () => {
+        try {
+          return await bootSteps()
+        } catch (e) {
+          if (state === 'failed') return state
+          if (state === 'ready') throw e // veio do onReady: o banco está aberto e é do chamador
+          fail(new VaultError('OPEN_FAILED'))
+          return state
+        }
+      }),
+
+    beginFirstRun: (password) =>
+      exclusive(async () => {
+        if (state !== 'first_run') throw new VaultError('BAD_STATE')
+        const real = backend.kind() === 'real'
+        if (!real && !password) throw new VaultError('PASSWORD_REQUIRED')
+        // Repetir o begin reaproveita a DEK (mesmas palavras) e só troca a senha. Nada vai ao disco.
+        const dek = pending?.dek ?? generateDek(deps.random)
+        const kf = real ? wrapKeyring(dek) : await wrapWithPassword(dek, password as string)
+        if (pending) pending.kf = kf
+        else pending = { dek, words: dekToWords(dek), kf }
+        return { words: [...pending.words] }
+      }),
+
+    commitFirstRun: () =>
+      exclusive(async () => {
+        if (state !== 'first_run' || !pending) throw new VaultError('BAD_STATE')
+        const { dek, kf } = pending
+        // Decisão 8: .init migrado e fechado → key.enc atômico → rename. O boot resolve cada passo.
+        ensureDir()
+        removeInit()
+        try {
+          open(paths.dbInit, dek, true, false).close()
+          writeKeyFile(paths.keyFile, kf)
+        } catch (e) {
+          removeInit()
+          throw e
+        }
+        keyFile = kf
+        moveDbFiles(paths.dbInit, paths.db)
+        try {
+          openReady(dek)
+        } finally {
+          dropPending()
+        }
+      }),
+
+    unlockWithPassword: (password) =>
+      exclusive(async () => {
+        if (state !== 'locked' || lock !== 'password' || !keyFile) throw new VaultError('BAD_STATE')
+        const dek = await unlockDek(keyFile, { password })
+        try {
+          openReady(dek)
+        } finally {
+          dek.fill(0)
+        }
+      }),
+
+    recover: (words, newPassword) =>
+      exclusive(async () => {
+        if (state !== 'locked') throw new VaultError('BAD_STATE')
+        const dek = wordsToDek(words)
+        try {
+          // Decisão 9: o chaveiro só serve se a ida e volta funcionar; senão, senha nova.
+          let kf: KeyFile
+          if (backend.kind() === 'real' && keyringRoundTrips()) kf = wrapKeyring(dek)
+          else if (!newPassword) throw new VaultError('PASSWORD_REQUIRED')
+          else kf = await wrapWithPassword(dek, newPassword)
+          let db: Db
+          try {
+            db = open(paths.db, dek, false, true)
+          } catch (e) {
+            const err = toVaultError(e)
+            if (err.code === 'WRONG_KEY') throw err // palavras de outra DEK: segue locked
+            throw fail(err)
+          }
+          try {
+            writeKeyFile(paths.keyFile, kf)
+          } catch (e) {
+            db.close()
+            throw e
+          }
+          keyFile = kf
+          enterReady(db)
+        } finally {
+          dek.fill(0)
+        }
+      }),
+
+    db: () => {
+      if (state !== 'ready' || !handle) throw new VaultError('LOCKED')
+      return handle
+    },
+
+    // Idempotente: o will-quit pode rodar duas vezes.
+    close: () => {
+      closeDb()
+      dropPending()
+    }
+  }
+}

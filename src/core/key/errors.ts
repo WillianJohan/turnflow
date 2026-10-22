@@ -23,6 +23,7 @@ export type VaultErrorDetails = { index?: number; version?: number; message?: st
 // Só estes levam a mensagem de origem (erro de abertura/migração ou de estado), que nunca tem segredo.
 const PASS_THROUGH: ReadonlySet<VaultErrorCode> = new Set([
   'MIGRATION_FAILED',
+  'NEWER_SCHEMA',
   'OPEN_FAILED',
   'BAD_STATE'
 ])

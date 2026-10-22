@@ -7,6 +7,9 @@ export const VAULT_COPY = {
   newerSchema: (found: number, supported: number): string =>
     `Este banco foi criado por uma versão mais nova (esquema ${found}; esta versão entende até ${supported}). Atualize o app.`,
 
+  /** `failure` do vault quando existe `key.enc` mas o banco sumiu. */
+  dbNotFound:
+    'Banco não encontrado. Recoloque o arquivo do banco na pasta de configuração ou use Apagar tudo.',
   /** Texto de cada `VaultErrorCode`. Nunca interpolar senha, palavra ou DEK. */
   errors: {
     PASSWORD_REQUIRED: 'Defina uma senha mestra',
