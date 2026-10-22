@@ -164,7 +164,8 @@ export async function registerIpc(
   let defaultWorkdir = (await readConfig(cfgDir)).config.defaultWorkdir
   const configState = async (): Promise<ConfigState> => {
     const { config, error } = await readConfig(cfgDir)
-    defaultWorkdir = config.defaultWorkdir
+    // JSON inválido devolve os padrões: a pasta padrão em uso fica a anterior até o arquivo voltar
+    if (!error) defaultWorkdir = config.defaultWorkdir
     const t = await readTheme(cfgDir, config.theme)
     return {
       dir: cfgDir,

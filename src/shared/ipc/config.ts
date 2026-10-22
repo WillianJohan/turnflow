@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { Limits } from '../contracts'
+import { DOMAIN_COPY } from '../copy/domain'
+import { isAbsolutePath } from '../pathSyntax'
 import type { AppConfig, ConfigState, Theme } from '../types'
 import { defineChannel } from './define'
 import { Id, NoInput } from './common'
@@ -18,7 +21,12 @@ export const AppConfigZ = z.object({
   appFont: z.string(),
   appFontSize: z.number(),
   statusIcons: z.record(z.string()),
-  defaultWorkdir: z.string().max(4096).nullable()
+  // só absoluta ou null: '' não limpa aqui (o `Workdir` da task aceita '' e não serve)
+  defaultWorkdir: z
+    .string()
+    .max(Limits.workdir)
+    .refine(isAbsolutePath, DOMAIN_COPY.errors.workdir_relative)
+    .nullable()
 }) satisfies z.ZodType<AppConfig>
 
 export const ConfigStateZ = z.object({

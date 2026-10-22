@@ -11,6 +11,9 @@ describe('testNow', () => {
 
   it('inválido ou ausente → null', () => {
     expect(testNow({ TURNFLOW_TEST_NOW: 'ontem' })).toBeNull()
+    // Date.parse aceitaria os dois; só ISO-8601 completo com Z vale
+    expect(testNow({ TURNFLOW_TEST_NOW: '2026-01-02' })).toBeNull()
+    expect(testNow({ TURNFLOW_TEST_NOW: 'Jan 2 2026' })).toBeNull()
     expect(testNow({})).toBeNull()
   })
 })

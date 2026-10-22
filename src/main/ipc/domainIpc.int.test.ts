@@ -188,6 +188,19 @@ describe('canais do domínio', () => {
     expect(afterCommit).not.toHaveBeenCalled()
   })
 
+  it('falha dentro da transação não emite domain.changed', async () => {
+    const { db, call, afterCommit } = ready()
+    const s = seedIds(db)
+    const row = await create(call)
+    afterCommit.mockClear()
+    // stage_not_in_flow é conferido dentro do d.tx (setStageIn), não no zod
+    expect(await call('taskSetStage', { id: row.id, stage_id: s.stages.Bugfix[0] })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION', details: { reason: 'stage_not_in_flow' } }
+    })
+    expect(afterCommit).not.toHaveBeenCalled()
+  })
+
   it('task.get por key e por id devolvem o mesmo TaskDetail, dentro do contrato', async () => {
     const { call } = ready()
     const row = await create(call, 'primeira')
