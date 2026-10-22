@@ -93,9 +93,10 @@ describe('recovery', () => {
     unknown[4] = 'xyzzy'
     for (const words of [base.slice(0, 23), unknown, withWrongChecksum(base)]) {
       const e = vaultError(() => wordsToDek(words.join(' ')))
-      // Compara por palavra inteira: "lista" na mensagem não é a palavra "list".
+      // Compara por palavra inteira ("lista" na mensagem não é "list") e só nos valores:
+      // a chave `index` do details é palavra do BIP39 e fazia o teste falhar ao acaso.
       const tokens = new Set(
-        JSON.stringify({ message: e.message, details: e.details }).match(/\p{L}+/gu)
+        [e.message, ...Object.values(e.details ?? {}).map(String)].join(' ').match(/\p{L}+/gu)
       )
       for (const w of words) expect(tokens.has(w)).toBe(false)
     }
