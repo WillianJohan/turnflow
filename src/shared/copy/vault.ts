@@ -30,6 +30,13 @@ export const VAULT_COPY = {
     LOCKED: `${BRAND.name} está bloqueado`,
     BAD_STATE: 'Operação inválida neste estado'
   },
+  /** Por que o vault está bloqueado (`lockReason`). */
+  lockReason: {
+    password: 'Digite a senha mestra para abrir',
+    keyring_unavailable:
+      'Não consegui ler a chave no chaveiro do sistema. Use a chave de recuperação.',
+    keyfile_corrupt: 'O arquivo da chave está corrompido. Use a chave de recuperação.'
+  },
   /** `details.message` dos `BAD_STATE` do módulo de chave. */
   badState: {
     keyringNotReal: 'O chaveiro do sistema não protege a chave; use uma senha mestra',

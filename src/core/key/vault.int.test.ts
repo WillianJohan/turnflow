@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync
 } from 'node:fs'
@@ -14,7 +15,7 @@ import { VAULT_COPY } from '../../shared/copy/vault'
 import { PRE_RE } from '../db/backup'
 import { MIGRATIONS, LATEST } from '../db/migrations'
 import type { Migration } from '../db/migrate'
-import { openDb } from '../db/open'
+import { openDb, type Db } from '../db/open'
 import { tmpDir } from '../testing/db'
 import { fakeKeyBackend } from '../testing/fakeKeyBackend'
 import type { KeyBackend } from './backend'
@@ -179,13 +180,15 @@ describe('vault', () => {
     expect(JSON.stringify(vault.failure())).not.toContain(dir)
   })
 
-  it('key.enc corrompido → locked, e as palavras recuperam', async () => {
+  it('key.enc corrompido → locked/keyfile_corrupt, e as palavras recuperam', async () => {
     const backend = fakeKeyBackend('real')
     const { words, paths } = await committed(tmpDir(), backend)
     writeFileSync(paths.keyFile, '{')
     const { vault } = vaultAt(paths.dir, backend)
     expect(await vault.boot()).toBe('locked')
-    expect(vault.lockReason()).toBe('keyring_unavailable')
+    expect(vault.lockReason()).toBe('keyfile_corrupt')
+    expect(VAULT_COPY.lockReason.keyfile_corrupt).toBe(VAULT_COPY.errors.KEYFILE_CORRUPT)
+    await rejectsWith(vault.unlockWithPassword(PASSWORD), 'BAD_STATE')
     await vault.recover(words.join(' '))
     expect(vault.state()).toBe('ready')
     expect(readKeyFile(paths.keyFile)?.mode).toBe('keyring')
@@ -383,5 +386,141 @@ describe('vault', () => {
     expect(onReady).toHaveBeenCalledTimes(2)
     expect(instrument).toHaveBeenCalledWith(next.db())
     next.close()
+  })
+
+  describe('concorrência e close', () => {
+    const backend = fakeKeyBackend('basic_text')
+    let dir = ''
+    beforeAll(async () => {
+      dir = (await committed(tmpDir(), backend, PASSWORD)).paths.dir
+    }, 20_000)
+
+    it('dois unlocks simultâneos: um ready, outro BAD_STATE, banco aberto 1x', async () => {
+      const instrument = vi.fn()
+      const { vault } = vaultAt(dir, backend, { instrument })
+      await vault.boot()
+      const [a, b] = await Promise.allSettled([
+        vault.unlockWithPassword(PASSWORD),
+        vault.unlockWithPassword(PASSWORD)
+      ])
+      expect(a.status).toBe('fulfilled')
+      expect(b.status).toBe('rejected')
+      expect((b as PromiseRejectedResult).reason).toMatchObject({ code: 'BAD_STATE' })
+      expect(vault.state()).toBe('ready')
+      expect(instrument).toHaveBeenCalledTimes(1)
+      vault.close()
+    }, 20_000)
+
+    it('close com unlock em voo: nenhum banco aberto e db() lança', async () => {
+      const instrument = vi.fn()
+      const onReady = vi.fn()
+      const { vault } = vaultAt(dir, backend, { instrument, onReady })
+      await vault.boot()
+      const inFlight = vault.unlockWithPassword(PASSWORD)
+      // espera o Argon2 começar (~0,6 s com o KDF padrão): o close chega com a operação em voo
+      await new Promise((r) => setTimeout(r, 100))
+      vault.close()
+      await rejectsWith(inFlight, 'LOCKED')
+      expect(instrument).not.toHaveBeenCalled()
+      expect(onReady).not.toHaveBeenCalled()
+      expect(vault.state()).not.toBe('ready')
+      expect(() => vault.db()).toThrow(expect.objectContaining({ code: 'LOCKED' }))
+      await rejectsWith(vault.unlockWithPassword(PASSWORD), 'LOCKED')
+    }, 20_000)
+
+    it('close depois do ready: state() deixa de ser ready', async () => {
+      const { vault } = vaultAt(dir, backend)
+      await vault.boot()
+      await vault.unlockWithPassword(PASSWORD)
+      vault.close()
+      expect(vault.state()).toBe('locked')
+    }, 20_000)
+  })
+
+  describe('recover escolhe o modo (Decisão 9)', () => {
+    it('lock por senha com chaveiro real funcionando: exige senha nova e fica em modo senha', async () => {
+      const { words, paths } = await committed(tmpDir(), fakeKeyBackend('basic_text'), PASSWORD)
+      const { vault } = vaultAt(paths.dir, fakeKeyBackend('real'))
+      expect(await vault.boot()).toBe('locked')
+      expect(vault.lockReason()).toBe('password')
+      await rejectsWith(vault.recover(words.join(' ')), 'PASSWORD_REQUIRED')
+      await vault.recover(words.join(' '), 'senha-nova-123')
+      expect(readKeyFile(paths.keyFile)?.mode).toBe('password')
+      vault.close()
+    }, 20_000)
+
+    it('key.enc corrompido com senha nova: modo senha mesmo com o chaveiro real', async () => {
+      const { words, paths } = await committed(tmpDir(), fakeKeyBackend('real'))
+      writeFileSync(paths.keyFile, '{')
+      const { vault } = vaultAt(paths.dir, fakeKeyBackend('real'))
+      await vault.boot()
+      await vault.recover(words.join(' '), 'senha-nova-123')
+      expect(readKeyFile(paths.keyFile)?.mode).toBe('password')
+      vault.close()
+    }, 20_000)
+  })
+
+  describe('falhas laterais', () => {
+    it('backup do dia que falha é logado sem caminho e não impede o ready', async () => {
+      const dir = tmpDir()
+      writeFileSync(join(dir, 'backups'), 'não é diretório')
+      const log = vi.fn()
+      const { vault } = vaultAt(dir, fakeKeyBackend('real'), { log })
+      await vault.boot()
+      await vault.beginFirstRun()
+      await vault.commitFirstRun()
+      expect(vault.state()).toBe('ready')
+      expect(log).toHaveBeenCalledTimes(1)
+      const [level, line] = log.mock.calls[0]
+      expect(level).toBe('error')
+      expect(line).toMatch(/backup diário falhou: E[A-Z]+/)
+      expect(line).not.toContain(dir)
+      vault.close()
+    })
+
+    it('backup pré-migration que falha é logado e a migration não roda', async () => {
+      const backend = fakeKeyBackend('real')
+      const { paths } = await committed(tmpDir(), backend)
+      rmSync(paths.backups, { recursive: true, force: true })
+      writeFileSync(paths.backups, 'não é diretório')
+      const extra: Migration = {
+        version: LATEST + 1,
+        name: 'nova',
+        up: (db) => db.exec('create table x(a)')
+      }
+      const log = vi.fn()
+      const { vault } = vaultAt(paths.dir, backend, { migrations: [...MIGRATIONS, extra], log })
+      expect(await vault.boot()).toBe('failed')
+      expect(vault.failure()?.code).toBe('OPEN_FAILED')
+      expect(log.mock.calls.map((c) => c[1]).join('\n')).toMatch(
+        /backup pré-migration falhou: E[A-Z]+/
+      )
+      expect(JSON.stringify(log.mock.calls)).not.toContain(paths.dir)
+    })
+
+    it('onReady que lança: banco fechado e estado failed', async () => {
+      const instrumented: Db[] = []
+      const { vault } = vaultAt(tmpDir(), fakeKeyBackend('real'), {
+        instrument: (db) => instrumented.push(db),
+        onReady: () => {
+          throw new Error('consumidor quebrou')
+        }
+      })
+      await vault.boot()
+      await vault.beginFirstRun()
+      await rejectsWith(vault.commitFirstRun(), 'OPEN_FAILED')
+      expect(vault.state()).toBe('failed')
+      expect(instrumented).toHaveLength(1)
+      expect(instrumented[0].open).toBe(false)
+      expect(() => vault.db()).toThrow(expect.objectContaining({ code: 'LOCKED' }))
+    })
+
+    it('begin com senha curta zera a DEK nova', async () => {
+      const dek = Buffer.alloc(32, 5)
+      const { vault } = vaultAt(tmpDir(), fakeKeyBackend('basic_text'), { random: () => dek })
+      await vault.boot()
+      await rejectsWith(vault.beginFirstRun('curta'), 'PASSWORD_TOO_SHORT')
+      expect(dek.equals(Buffer.alloc(32))).toBe(true)
+    })
   })
 })

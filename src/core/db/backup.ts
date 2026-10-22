@@ -100,7 +100,10 @@ export function scheduleDailyBackup(o: {
       const db = o.getDb()
       if (db) ensureDailyBackup(db, o.dir, now())
     } catch (e) {
-      o.log?.(`backup diário falhou: ${e instanceof Error ? e.message : String(e)}`)
+      // erro de FS traz o caminho na mensagem: loga só o código
+      const code = (e as { code?: unknown } | null)?.code
+      const detail = typeof code === 'string' ? code : e instanceof Error ? e.message : String(e)
+      o.log?.(`backup diário falhou: ${detail}`)
     }
   }
   const timer = setTimer(tick, o.everyMs ?? 30 * 60 * 1000)
