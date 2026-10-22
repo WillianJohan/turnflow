@@ -249,3 +249,16 @@ export const MoveInput = z
   })
   .strict()
 export type MoveInput = z.infer<typeof MoveInput>
+
+/** Linha da Atividade (§3). `undo_blocked_reason` só quando o motivo diz algo ao usuário. */
+export const ActivityRow = z.object({
+  id: z.string(),
+  at: z.string(),
+  actor: z.enum(['user', 'mcp', 'sync', 'assistant', 'import']),
+  op: z.string(),
+  task_id: z.string().nullable(),
+  summary: z.string(),
+  undoable: z.boolean(),
+  undo_blocked_reason: z.string().optional()
+})
+export type ActivityRow = z.infer<typeof ActivityRow>
