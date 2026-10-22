@@ -1,5 +1,10 @@
 import type { z } from 'zod'
-import type { ImportConflict, StatusRoleZ, StatusTargetZ } from '../../../../shared/contracts'
+import type {
+  ImportConflict,
+  ImportPreview,
+  StatusRoleZ,
+  StatusTargetZ
+} from '../../../../shared/contracts'
 import type { ImportApplyInput, ImportDryRunInput } from '../../../../shared/ipc/import'
 
 export type StatusTarget = z.infer<typeof StatusTargetZ>
@@ -81,4 +86,41 @@ export function parseTarget(v: string): StatusTarget | null {
   const role = v.slice(5) as StatusRole
   if (v.startsWith('role:') && ROLES.includes(role)) return { role }
   return null
+}
+
+/** Conflitos conhecidos pela tela, por `'KEY|field'`. */
+export type KnownConflicts = Record<string, ImportConflict>
+
+const FIELD_ORDER: readonly Field[] = ['title', 'description', 'project', 'stage']
+
+/**
+ * Reconcilia os conflitos conhecidos com uma prévia nova (feita com `take`). Os da prévia entram
+ * com os valores dela. Um conflito resolvido com o markdown some da prévia (o core já não o vê
+ * como conflito): fica enquanto a task segue na prévia escrevendo aquele campo, e sai quando a
+ * task some, fica inválida ou o markdown converge com o app.
+ */
+export function reconcileConflicts(
+  known: KnownConflicts,
+  p: ImportPreview,
+  take: Set<string>
+): KnownConflicts {
+  const rows = new Map(p.tasks.map((t) => [t.key, t]))
+  const out: KnownConflicts = {}
+  for (const [k, c] of Object.entries(known)) {
+    const t = rows.get(c.key)
+    if (take.has(k) && t && t.action !== 'invalid' && t.fields.includes(c.field)) out[k] = c
+  }
+  for (const t of p.tasks) for (const c of t.conflicts) out[takeKey(c.key, c.field)] = c
+  return out
+}
+
+/** Conflitos a mostrar numa task, em ordem fixa de campo (trocar a escolha não reordena). */
+export function conflictsFor(
+  t: ImportPreview['tasks'][number],
+  known: KnownConflicts
+): ImportConflict[] {
+  const byField = new Map(t.conflicts.map((c) => [c.field, c]))
+  for (const c of Object.values(known))
+    if (c.key === t.key && !byField.has(c.field)) byField.set(c.field, c)
+  return FIELD_ORDER.flatMap((f) => byField.get(f) ?? [])
 }

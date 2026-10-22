@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ImportPreview, ImportReport } from '../../../../shared/contracts'
 import { IMPORT_COPY } from '../../../../shared/copy/import'
 import type { ImportApplyInput, ImportDryRunInput } from '../../../../shared/ipc/import'
@@ -345,4 +345,75 @@ it('conflito resolvido com o markdown continua na tela (a prévia nova não o li
   await act(async () => radio('app').click())
   expect(api.importDryRun).toHaveBeenLastCalledWith(expect.objectContaining({ take_markdown: [] }))
   expect(radio('app').checked).toBe(true)
+})
+
+describe('conflitos resolvidos com o markdown, reconciliados com cada prévia', () => {
+  const radio = (v: string): HTMLInputElement =>
+    host.querySelector(`input[type=radio][value=${v}]`) as HTMLInputElement
+  type Shape = { conflict?: { app: string; markdown: string }; fields?: string[] }
+  // como o core: campo em take_markdown não aparece como conflito, mas entra em `fields`
+  function core(next: () => Shape): void {
+    let n = 0
+    api.importDryRun.mockImplementation(async (i: ImportDryRunInput) => {
+      const p = preview(`r${++n}`)
+      const s = next()
+      const taken = !!i.take_markdown?.length
+      p.tasks[0] = {
+        ...p.tasks[0]!,
+        conflicts: taken || !s.conflict ? [] : [{ key: 'ABC-1', field: 'title', ...s.conflict }],
+        fields: s.fields ?? (taken ? ['title'] : [])
+      }
+      return { ok: true, data: p }
+    })
+  }
+
+  it('Keep não desmonta o conflito antes da prévia nova: o foco fica no radio', async () => {
+    core(() => ({ conflict: { app: 'App title', markdown: 'Md title' } }))
+    await render()
+    await clickPreview()
+    await act(async () => radio('markdown').click())
+    let answer!: () => void
+    const pending = api.importDryRun.getMockImplementation()!
+    api.importDryRun.mockImplementationOnce(
+      (i) => new Promise((r) => (answer = () => void pending(i).then(r)))
+    )
+    const keep = radio('app')
+    keep.focus()
+    await act(async () => keep.click())
+    expect(radio('app')).toBe(keep)
+    expect(document.activeElement).toBe(keep)
+    await act(async () => answer())
+    expect(radio('app')).toBe(keep)
+    expect(document.activeElement).toBe(keep)
+    expect(keep.checked).toBe(true)
+    expect(host.querySelectorAll('.import-conflict')).toHaveLength(1)
+  })
+
+  it('valores do conflito vêm da prévia mais nova', async () => {
+    let shape: Shape = { conflict: { app: 'App title', markdown: 'Md title' } }
+    core(() => shape)
+    await render()
+    await clickPreview()
+    await act(async () => radio('markdown').click())
+    shape = { conflict: { app: 'App title', markdown: 'Md title v2' } }
+    await act(async () => radio('app').click())
+    const values = [...host.querySelectorAll('.import-conflict .import-value')].map(
+      (e) => e.textContent
+    )
+    expect(values).toEqual(['App title', 'Md title v2'])
+    expect(host.querySelectorAll('.import-conflict')).toHaveLength(1)
+  })
+
+  it('conflito que deixou de existir sai da tela', async () => {
+    let shape: Shape = { conflict: { app: 'App title', markdown: 'Md title' } }
+    core(() => shape)
+    await render()
+    await clickPreview()
+    await act(async () => radio('markdown').click())
+    expect(host.querySelectorAll('.import-conflict')).toHaveLength(1)
+    // o markdown agora é igual ao app: o campo não é mais escrito nem é conflito
+    shape = { fields: [] }
+    await choose(byTest('import-status-weird status'), 'stage:Doing')
+    expect(host.querySelectorAll('.import-conflict')).toHaveLength(0)
+  })
 })

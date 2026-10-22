@@ -1,22 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import type {
-  ImportConflict,
-  ImportPreview,
-  ImportReport,
-  TaskType
-} from '../../../../shared/contracts'
+import type { ImportPreview, ImportReport, TaskType } from '../../../../shared/contracts'
 import { IMPORT_COPY } from '../../../../shared/copy/import'
 import {
   applyInput,
+  conflictsFor,
   emptyChoices,
   parseTarget,
   previewInput,
+  reconcileConflicts,
   takeKey,
   targetValue,
   withStatus,
   withTake,
   withWorkdir,
-  type ImportChoices
+  type ImportChoices,
+  type KnownConflicts
 } from './choices'
 import { reasonText, sizeText } from './format'
 import './import.css'
@@ -33,9 +31,9 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
   const [root, setRoot] = useState(brainDir ?? '')
   const [choices, setChoices] = useState<ImportChoices>(emptyChoices)
   const [choicesRoot, setChoicesRoot] = useState<string | null>(null)
-  // conflitos resolvidos com o markdown saem da prévia nova (o core já não os vê como conflito):
-  // a tela guarda cada um para continuar mostrando a escolha e deixar desfazer
-  const [taken, setTaken] = useState<Record<string, ImportConflict>>({})
+  // conflito resolvido com o markdown sai da prévia nova (o core já não o vê como conflito): a
+  // tela guarda os conhecidos, reconciliados a cada prévia, para mostrar a escolha e deixar desfazer
+  const [known, setKnown] = useState<KnownConflicts>({})
   const [shown, setShown] = useState<Shown | null>(null)
   const [report, setReport] = useState<ImportReport | null>(null)
   const [busy, setBusy] = useState<'preview' | 'apply' | null>(null)
@@ -56,8 +54,10 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
     const r = await window.turnflow.importDryRun(previewInput(dir, c))
     if (n !== seq.current) return
     setBusy(null)
-    if (r.ok) setShown({ root: dir, p: r.data })
-    else {
+    if (r.ok) {
+      setShown({ root: dir, p: r.data })
+      setKnown((m) => reconcileConflicts(m, r.data, c.take_markdown))
+    } else {
       setShown(null)
       // o aviso de "prévia refeita" não vale para uma prévia que falhou
       setNotice(null)
@@ -75,7 +75,7 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
     const dir = root.trim()
     const same = choicesRoot === dir
     const c = same ? choices : emptyChoices()
-    if (!same) setTaken({})
+    if (!same) setKnown({})
     setChoices(c)
     setChoicesRoot(dir)
     setReport(null)
@@ -88,17 +88,6 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
     setChoices(c)
     setNotice(null)
     void runPreview(shown.root, c)
-  }
-
-  const takeConflict = (c: ImportConflict, take: boolean): void => {
-    const k = takeKey(c.key, c.field)
-    setTaken((m) => {
-      const next = { ...m }
-      if (take) next[k] = c
-      else delete next[k]
-      return next
-    })
-    change(withTake(choices, c.key, c.field, take))
   }
 
   const browse = async (): Promise<void> => {
@@ -117,7 +106,7 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
       setReport(r.data)
       setShown(null)
       setChoices(emptyChoices())
-      setTaken({})
+      setKnown({})
       return
     }
     const reason = (r.error.details as { reason?: unknown } | undefined)?.reason
@@ -175,8 +164,7 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
           types={types}
           choices={choices}
           onChange={change}
-          taken={taken}
-          onTake={takeConflict}
+          known={known}
           locked={busy === 'apply'}
         />
       )}
@@ -204,17 +192,14 @@ function PreviewView({
   types,
   choices,
   onChange,
-  taken,
-  onTake,
+  known,
   locked
 }: {
   p: ImportPreview
   types: TaskType[]
   choices: ImportChoices
   onChange(c: ImportChoices): void
-  /** Conflitos já resolvidos com o markdown, por `'KEY|field'`. */
-  taken: Record<string, ImportConflict>
-  onTake(c: ImportConflict, take: boolean): void
+  known: KnownConflicts
   /** Só durante o apply: na prévia refeita os controles seguem usáveis (e com o foco). */
   locked: boolean
 }): React.JSX.Element {
@@ -301,8 +286,8 @@ function PreviewView({
                 </span>
               </div>
               {t.action === 'invalid' && <p className="import-dim">{reasonText(t.reason)}</p>}
-              {conflictsOf(t, taken).map((c) => {
-                const taken = choices.take_markdown.has(takeKey(t.key, c.field))
+              {conflictsFor(t, known).map((c) => {
+                const isTaken = choices.take_markdown.has(takeKey(t.key, c.field))
                 const name = takeKey(t.key, c.field)
                 return (
                   <fieldset key={c.field} className="import-conflict" disabled={locked}>
@@ -312,8 +297,8 @@ function PreviewView({
                         type="radio"
                         name={name}
                         value="app"
-                        checked={!taken}
-                        onChange={() => onTake(c, false)}
+                        checked={!isTaken}
+                        onChange={() => onChange(withTake(choices, t.key, c.field, false))}
                       />
                       {COPY.keepApp}
                       <span className="import-value">{c.app}</span>
@@ -323,8 +308,8 @@ function PreviewView({
                         type="radio"
                         name={name}
                         value="markdown"
-                        checked={taken}
-                        onChange={() => onTake(c, true)}
+                        checked={isTaken}
+                        onChange={() => onChange(withTake(choices, t.key, c.field, true))}
                       />
                       {COPY.useMarkdown}
                       <span className="import-value">{c.markdown}</span>
@@ -381,17 +366,6 @@ function PreviewView({
       )}
     </div>
   )
-}
-
-/** Conflitos da prévia + os resolvidos com o markdown, que a prévia nova já não lista. */
-function conflictsOf(
-  t: ImportPreview['tasks'][number],
-  taken: Record<string, ImportConflict>
-): ImportConflict[] {
-  const more = Object.values(taken).filter(
-    (c) => c.key === t.key && !t.conflicts.some((x) => x.field === c.field)
-  )
-  return [...t.conflicts, ...more]
 }
 
 function StatusSelect({
