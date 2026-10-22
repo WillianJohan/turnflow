@@ -22,9 +22,9 @@ const DATE_SRC =
   '\\d{4}-\\d{2}-\\d{2}(?:[T ]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?(?:Z|[+-]\\d{2}:?\\d{2})?)?'
 const DATE_PARTS =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3})\d*)?)?(Z|[+-]\d{2}:?\d{2})?)?$/
-// [1] ** de abertura, [2] data, [3] ** depois da data, [4] ** depois do qualificador, [5] ** depois do separador, [6] texto
+// [1] ** de abertura, [2] data, [3] ** depois da data, [4] qualificador, [5] ** depois dele, [6] ** depois do separador, [7] texto
 const CHECKPOINT_HEAD = new RegExp(
-  `^(\\*\\*)?(${DATE_SRC})(\\*\\*)?(?:\\s*\\([^)]*\\))?(\\*\\*)?(?:\\s*[:—–]|\\s+-(?=\\s))(\\*\\*)?\\s*(.*)$`
+  `^(\\*\\*)?(${DATE_SRC})(\\*\\*)?(\\s*\\([^)]*\\))?(\\*\\*)?(?:\\s*[:—–]|\\s+-(?=\\s))(\\*\\*)?\\s*(.*)$`
 )
 const SESSION_HEAD = new RegExp(`^(?:\\*\\*)?(${DATE_SRC})`)
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -33,7 +33,11 @@ const META =
 const ITEM = /^[-*+]\s+(.*)$/
 const H2 = /^##\s+(.*)$/
 const H3_PLUS = /^#{3,}\s+(.*)$/
-const FENCE = /^\s*(```|~~~)/
+const FENCE = /^\s*(`{3,}|~{3,})/
+const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/
+
+/** 12:00:00Z + 43199 s = 23:59:59Z: o índice nunca empurra o dia. */
+const MAX_INDEX_SECONDS = 43199
 
 const calendarOk = (y: number, mo: number, d: number): boolean => {
   const t = new Date(Date.UTC(y, mo - 1, d))
@@ -50,7 +54,10 @@ export function parseDate(s: string, index: number): string | null {
   if (!m) return null
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
   if (!calendarOk(y, mo, d)) return null
-  if (m[4] === undefined) return new Date(Date.UTC(y, mo - 1, d, 12, 0, index)).toISOString()
+  if (m[4] === undefined)
+    return new Date(
+      Date.UTC(y, mo - 1, d, 12, 0, Math.min(Math.max(index, 0), MAX_INDEX_SECONDS))
+    ).toISOString()
   const [h, mi, sec] = [Number(m[4]), Number(m[5]), Number(m[6] ?? 0)]
   const ms = Number((m[7] ?? '0').padEnd(3, '0'))
   if (h > 23 || mi > 59 || sec > 59) return null
@@ -107,8 +114,11 @@ function parseSession(content: string, index: number): ParsedTask['sessions'][nu
   if (!head || !id) return null
   const at = parseDate(head[1]!, index)
   if (at === null) return null
-  const after = content.slice(id.index + id[0].length)
-  const label = after.replace(/^[\s`"')\]*—–:-]+/, '').trim()
+  const edge = /^[\s`"'()[\]*—–:-]+|[\s`"'()[\]*—–:-]+$/g
+  // o que vem entre a data e o UUID não se perde: entra no rótulo, antes do que vem depois
+  const before = content.slice(head[0].length, id.index).replace(edge, '')
+  const after = content.slice(id.index + id[0].length).replace(edge, '')
+  const label = [before, after].filter((x) => x !== '').join(' — ')
   return { at, external_id: id[0].toLowerCase(), label: label === '' ? null : label }
 }
 
@@ -118,12 +128,18 @@ function parseCheckpointItem(content: string, index: number): { at: string; text
   const at = parseDate(m[2]!, index)
   if (at === null) return null
   // `**data:** texto`: o ** depois do separador fecha o negrito aberto na data; senão é do texto.
-  const closesBold = m[1] !== undefined && m[3] === undefined && m[4] === undefined
-  const text = (m[5] !== undefined && !closesBold ? m[5] : '') + m[6]!
+  const unclosed = m[1] !== undefined && m[3] === undefined && m[5] === undefined
+  const closesBold = unclosed && m[6] !== undefined
+  let rest = (m[6] !== undefined && !closesBold ? m[6] : '') + m[7]!
+  // `**data — tudo em negrito**`: o ** de abertura foi consumido, então tira o do fim também
+  if (unclosed && !closesBold && (rest.match(/\*\*/g)?.length ?? 0) % 2 === 1)
+    rest = rest.replace('**', '')
+  const qualifier = m[4]?.trim()
+  const text = qualifier ? `${qualifier} ${rest}`.trim() : rest
   return { at, text }
 }
 
-type Open = { at: string; lines: string[]; heading: boolean }
+type Open = { at: string; lines: string[]; raw: string[]; heading: boolean }
 
 function parseCheckpoints(lines: Line[], out: ParsedTask['checkpoints'], left: Leftover): void {
   let cur: Open | null = null
@@ -135,7 +151,7 @@ function parseCheckpoints(lines: Line[], out: ParsedTask['checkpoints'], left: L
       ? [first, ...trimBlank(rest)].join('\n').trim()
       : trimBlank(cur.lines).join('\n').trim()
     if (text === '') {
-      for (const l of cur.lines) left.add(l)
+      for (const l of cur.raw) left.add(l)
     } else {
       out.push({ at: cur.at, text })
     }
@@ -149,7 +165,7 @@ function parseCheckpoints(lines: Line[], out: ParsedTask['checkpoints'], left: L
         h[1]!.replace(/^\*\*(.*?)\*\*/, '$1')
       )
       const at = dm ? parseDate(dm[1]!, out.length) : null
-      if (dm && at !== null) cur = { at, lines: [dm[2]!], heading: true }
+      if (dm && at !== null) cur = { at, lines: [dm[2]!], raw: [t], heading: true }
       else left.add(t)
       continue
     }
@@ -157,12 +173,14 @@ function parseCheckpoints(lines: Line[], out: ParsedTask['checkpoints'], left: L
     if (item) {
       close()
       const cp = parseCheckpointItem(item[1]!, out.length)
-      if (cp) cur = { at: cp.at, lines: [cp.text], heading: false }
+      if (cp) cur = { at: cp.at, lines: [cp.text], raw: [t], heading: false }
       else left.add(t)
       continue
     }
-    if (cur) cur.lines.push(cur.heading ? t : stripIndent(t))
-    else left.add(t)
+    if (cur) {
+      cur.lines.push(cur.heading || fenced ? t : stripIndent(t))
+      cur.raw.push(t)
+    } else left.add(t)
   }
   close()
 }
@@ -171,14 +189,18 @@ function parseCheckpoints(lines: Line[], out: ParsedTask['checkpoints'], left: L
 export function parseTaskReadme(text: string, key: string): ParsedTask {
   const raw = text
     .replace(/^\uFEFF/, '')
-    .replace(/\r\n/g, '\n')
+    .replace(/\r\n?/g, '\n')
     .split('\n')
-  let fence = false
+  let open: { ch: string; len: number } | null = null
   const lines: Line[] = raw.map((t) => {
-    const isFence = FENCE.test(t)
-    const fenced = fence || isFence
-    if (isFence) fence = !fence
-    return { t, fenced }
+    if (open) {
+      const c = FENCE_CLOSE.exec(t)?.[1]
+      if (c && c[0] === open.ch && c.length >= open.len) open = null
+      return { t, fenced: true }
+    }
+    const f = FENCE.exec(t)?.[1]
+    if (f) open = { ch: f[0]!, len: f.length }
+    return { t, fenced: f !== undefined }
   })
 
   const task: ParsedTask = {
@@ -222,15 +244,18 @@ export function parseTaskReadme(text: string, key: string): ParsedTask {
         const name = meta[1]!.toLowerCase()
         let used: boolean
         if (name === 'status') used = set('status', v === '' ? null : v)
-        else if (name === 'pai' || name === 'parent')
-          used = set('parent', /[A-Za-z][A-Za-z0-9]*-\d+/.exec(v)?.[0] ?? null)
-        else if (name === 'project') used = set('project_name', v === '' ? null : v)
+        else if (name === 'pai' || name === 'parent') {
+          const parent = /[A-Za-z][A-Za-z0-9]*-\d+/.exec(v)?.[0] ?? null
+          // resto da linha (ex.: "(épico ...)") não se perde: a linha original fica na descrição
+          used = set('parent', parent) && parent === v
+        } else if (name === 'project') used = set('project_name', v === '' ? null : v)
         else if (name === 'type') used = set('type_name', v === '' ? null : v)
         else if (name === 'blocked') used = set('blocked', v === '' ? null : v)
         else {
           // workdir/worktree/branch: a linha sai da descrição, o path vira dica
-          task.workdir_hint ??= /(?:^|[\s`'"(])(\/[^\s`'")]+)/.exec(v)?.[1] ?? null
-          used = true
+          const path = /(?:^|[\s`'"(])(\/[^\s`'")]+)/.exec(v)?.[1] ?? null
+          used = task.workdir_hint === null && path !== null
+          if (used) task.workdir_hint = path
         }
         if (used) continue
       }
@@ -279,6 +304,9 @@ export function parseTaskReadme(text: string, key: string): ParsedTask {
     if (piece !== null) pieces.push(piece)
   }
 
-  task.description = pieces.join('\n\n').trim()
+  task.description = pieces
+    .join('\n\n')
+    .replace(/^(?:[ \t]*\n)+/, '')
+    .trimEnd()
   return task
 }

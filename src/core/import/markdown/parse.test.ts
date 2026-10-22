@@ -68,13 +68,76 @@ describe('parseTaskReadme', () => {
     ['- 2026-01-02 — a', '2026-01-02T12:00:00.000Z'],
     ['- **2026-01-02** — a', '2026-01-02T12:00:00.000Z'],
     ['- **2026-01-02:** a', '2026-01-02T12:00:00.000Z'],
-    ['- 2026-01-02 (afternoon): a', '2026-01-02T12:00:00.000Z'],
+
     ['- 2026-01-02T08:30:00.000Z — a', '2026-01-02T08:30:00.000Z'],
     ['- 2026-01-02 14:30: a', new Date(2026, 0, 2, 14, 30).toISOString()]
   ])('variações de checkpoint: %s', (line, at) => {
     const p = parseTaskReadme(`## Checkpoints\n${line}\n`, 'ABC-1')
     expect(p.checkpoints).toEqual([{ at, text: 'a' }])
     expect(p.description).toBe('')
+  })
+
+  it('qualificador da data entra no texto do checkpoint', () => {
+    const p = parseTaskReadme('## Checkpoints\n- 2026-01-02 (afternoon): a\n', 'ABC-1')
+    expect(p.checkpoints).toEqual([{ at: '2026-01-02T12:00:00.000Z', text: '(afternoon) a' }])
+  })
+
+  it('negrito desbalanceado não deixa ** sobrando', () => {
+    const p = parseTaskReadme(
+      '## Checkpoints\n- **2026-01-02 — all bold**\n- **2026-01-03:** ok\n',
+      'ABC-1'
+    )
+    expect(p.checkpoints.map((c) => c.text)).toEqual(['all bold', 'ok'])
+  })
+
+  it('checkpoint com data e sem texto volta para a descrição', () => {
+    const p = parseTaskReadme(
+      '## Checkpoints\n- 2026-01-02:\n- 2026-01-03: b\n### 2026-01-04 —\n',
+      'ABC-1'
+    )
+    expect(p.checkpoints).toEqual([{ at: '2026-01-03T12:00:00.000Z', text: 'b' }])
+    expect(p.description).toContain('- 2026-01-02:')
+    expect(p.description).toContain('### 2026-01-04 —')
+  })
+
+  it('CR isolado vira quebra de linha', () => {
+    const p = parseTaskReadme('Status: x\r## Checkpoints\r- 2026-01-02: a\r', 'ABC-1')
+    expect(p.status).toBe('x')
+    expect(p.checkpoints).toHaveLength(1)
+  })
+
+  it('cerca só fecha com o mesmo delimitador e tamanho igual ou maior', () => {
+    const inside = '## Checkpoints\n- 2026-01-02: a'
+    const long = parseTaskReadme(`## Notes\n\`\`\`\`\n\`\`\`\n${inside}\n\`\`\`\`\n`, 'ABC-1')
+    expect(long.checkpoints).toEqual([])
+    expect(long.description).toContain(inside)
+    const tilde = parseTaskReadme(`## Notes\n~~~\n\`\`\`\n${inside}\n~~~\n`, 'ABC-1')
+    expect(tilde.checkpoints).toEqual([])
+    expect(tilde.description).toContain(inside)
+  })
+
+  it('indentação dentro da cerca e na 1ª linha da descrição é preservada', () => {
+    const p = parseTaskReadme(
+      '    indented first\n## Checkpoints\n- 2026-01-02: a\n  ```\n    code\n  ```\n',
+      'ABC-1'
+    )
+    expect(p.description).toBe('    indented first')
+    expect(p.checkpoints[0]?.text).toBe('a\n  ```\n    code\n  ```')
+  })
+
+  it('resto da linha de Pai e Branch sem path ficam na descrição', () => {
+    const p = parseTaskReadme(
+      '**Pai:** ABC-9 (epic text)\n**Branch:** `feat/ABC-1`\n**Worktree:** /tmp/wt\n',
+      'ABC-1'
+    )
+    expect(p.parent).toBe('ABC-9')
+    expect(p.workdir_hint).toBe('/tmp/wt')
+    expect(p.description).toBe('**Pai:** ABC-9 (epic text)\n**Branch:** `feat/ABC-1`')
+  })
+
+  it('texto entre a data e o UUID da sessão vai para o rótulo', () => {
+    const p = parseTaskReadme(`## Sessions\n- 2026-01-02 — claude ${U1} — scope\n`, 'ABC-1')
+    expect(p.sessions[0]?.label).toBe('claude — scope')
   })
 
   it('texto do checkpoint que começa em negrito não perde os asteriscos', () => {
@@ -170,7 +233,7 @@ describe('parseTaskReadme', () => {
     const p = parseTaskReadme('**Parent:** ABC-2 (epic)\n**Branch:** `feat/ABC-1`\n', 'ABC-1')
     expect(p.parent).toBe('ABC-2')
     expect(p.workdir_hint).toBeNull()
-    expect(p.description).toBe('')
+    expect(p.description).toBe('**Parent:** ABC-2 (epic)\n**Branch:** `feat/ABC-1`')
   })
 
   it('metadado só vale antes do primeiro ##', () => {
@@ -267,6 +330,9 @@ describe('parseDate', () => {
   it('dia sozinho: meio-dia UTC mais o índice em segundos', () => {
     expect(parseDate('2026-01-02', 0)).toBe('2026-01-02T12:00:00.000Z')
     expect(parseDate('2026-01-02', 61)).toBe('2026-01-02T12:01:01.000Z')
+  })
+  it('o índice nunca empurra o dia (teto 43199 s)', () => {
+    expect(parseDate('2026-01-02', 50_000)).toBe('2026-01-02T23:59:59.000Z')
   })
   it('ISO com Z ou offset é exato e ignora o índice', () => {
     expect(parseDate('2026-01-02T08:30:00.000Z', 5)).toBe('2026-01-02T08:30:00.000Z')
