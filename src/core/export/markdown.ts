@@ -17,7 +17,8 @@ export type ExportFs = {
 
 // Pasta e arquivos só do dono: é o conteúdo inteiro do banco em texto claro.
 export const nodeExportFs: ExportFs = {
-  mkdir: async (p) => void (await mkdir(p, { recursive: true, mode: 0o700 })),
+  // sem `recursive`: pasta que já existe é EEXIST, nunca reaproveitada
+  mkdir: (p) => mkdir(p, { mode: 0o700 }),
   // `wx`: nunca sobrescreve
   writeFile: (p, data) => writeFile(p, data, { mode: 0o600, flag: 'wx' }),
   rename,
@@ -81,6 +82,11 @@ const stamp = (d: Date): string =>
  * Exporta todas as tasks para `<dest>/<id>-export-YYYYMMDD-HHMMSS/{current,done}/<KEY>/README.md`.
  * A pasta nasce como `.<nome>.partial` e só ganha o nome final no fim; erro no meio apaga o parcial.
  * Nunca escreve em pasta que já existe nem fora da pasta nova.
+ *
+ * Limitações aceitas: a key vira nome de pasta sanitizado e o import lê a key do nome da pasta, então
+ * uma key com caracteres fora de `[A-Za-z0-9._-]` volta diferente; rótulo de sessão com pontuação nas pontas perde a
+ * pontuação no import; o import lê no máximo 1 MiB por README e 5000 tasks, então um export maior
+ * que isso não reimporta inteiro. O Summary é gravado, mas não volta (é derivado).
  */
 export async function exportMarkdown(
   d: DomainDeps,
@@ -97,8 +103,10 @@ export async function exportMarkdown(
   const final = join(dest, name)
   const partial = join(dest, `.${name}.partial`)
 
+  let created = false
   try {
     await fs.mkdir(partial)
+    created = true
     for (const [sub, tasks] of [
       ['current', live],
       ['done', done]
@@ -118,7 +126,8 @@ export async function exportMarkdown(
     }
     await fs.rename(partial, final)
   } catch (e) {
-    await fs.rm(partial).catch(() => undefined)
+    // só apaga o que este processo criou (EEXIST não chega aqui com `created`)
+    if (created) await fs.rm(partial).catch(() => undefined)
     throw e
   }
   return { dir: final, tasks: live.length + done.length }

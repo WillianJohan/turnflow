@@ -219,6 +219,33 @@ describe('exportMarkdown', () => {
     expect(md.indexOf(UUID1)).toBeLessThan(md.indexOf(UUID2))
   })
 
+  it('Summary: exportar, importar e exportar de novo não duplica', async () => {
+    const d1 = domain()
+    const id = task(d1, 'A', 'body')
+    d1.db
+      .prepare("update task set sum_what='w', sum_next='n', sum_source='user' where id = ?")
+      .run(id)
+    const first = await exportMarkdown(d1, tmpDir())
+    expect(read(first.dir, 'current', getTask(d1, id).key, 'README.md')).toContain('## Summary')
+    const d2 = domain()
+    await importBrain(d2, first.dir)
+    const second = await exportMarkdown(d2, tmpDir())
+    const md = read(second.dir, 'current', getTask(d1, id).key, 'README.md')
+    expect(md).not.toContain('## Summary')
+    expect(getTask(d2, getTask(d1, id).key).description).toBe('body')
+  })
+
+  it('pasta .partial que já existe aborta sem apagar nada', async () => {
+    const d = domain()
+    task(d, 'A')
+    const dest = tmpDir()
+    const partial = join(dest, '.turnflow-export-20261022-123456.partial')
+    mkdirSync(partial)
+    writeBrain(partial, { 'keep.txt': 'mine' })
+    await expect(exportMarkdown(d, dest)).rejects.toMatchObject({ code: 'EEXIST' })
+    expect(read(partial, 'keep.txt')).toBe('mine')
+  })
+
   it('segundo export no mesmo segundo ganha -2 e não toca no primeiro', async () => {
     const d = domain()
     task(d, 'A')

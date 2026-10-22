@@ -46,8 +46,8 @@ describe('renderReadme', () => {
     expect(md).toContain('- 2026-01-02T10:00:00.000Z — first line\n  second line\n')
     expect(md.indexOf('2026-01-02T')).toBeLessThan(md.indexOf('2026-01-03T'))
     expect(md).toContain('## Sessions')
-    expect(md).toContain(`- 2026-01-01 — ${UUID} — scope`)
-    expect(md).toContain('- 2026-01-01 — codex\n')
+    expect(md).toContain(`- 2026-01-01T09:00:00.000Z — ${UUID} — scope`)
+    expect(md).toContain('- 2026-01-01T09:00:00.000Z — codex\n')
   })
 
   it('só os metadados presentes', () => {
@@ -76,6 +76,11 @@ describe('renderReadme', () => {
     expect(safeDirName('..')).toBe('__')
     expect(safeDirName('')).toBe('_')
     expect(safeDirName('a\\b:c')).toBe('a_b_c')
+    for (const n of ['CON', 'nul', 'Com1', 'LPT9', 'aux.txt', 'PRN.md'])
+      expect(safeDirName(n)).toBe(`${n}_`)
+    expect(safeDirName('ABC-1.')).toBe('ABC-1._')
+    expect(safeDirName('CONSOLE')).toBe('CONSOLE')
+    expect(safeDirName('COM10')).toBe('COM10')
   })
 
   it('ida e volta pelo parser: descrição com metadado, `## Notes` e `## Sessions` voltam iguais', () => {
@@ -101,5 +106,55 @@ describe('renderReadme', () => {
       expect(p.sessions.map((s) => s.external_id)).toEqual([UUID])
       expect(p.checkpoints.map((c) => c.text)).toEqual(['cp'])
     }
+  })
+
+  const cp = (text: string, n = 1): ExportTask['checkpoints'][number] => ({
+    at: `2026-01-0${n}T10:00:00.000Z`,
+    text
+  })
+
+  it('cerca aberta na descrição ou no checkpoint não engole o que vem depois', () => {
+    const open = parseTaskReadme(
+      renderReadme(
+        task({ description: 'before\n```js\nunclosed', checkpoints: [cp('one'), cp('two', 2)] })
+      ),
+      'ABC-1'
+    )
+    expect(open.checkpoints.map((c) => c.text)).toEqual(['one', 'two'])
+    expect(open.description).toBe('before\n```js\nunclosed\n```')
+    const inCp = parseTaskReadme(
+      renderReadme(task({ checkpoints: [cp('a\n~~~~\nopen'), cp('next', 2)] })),
+      'ABC-1'
+    )
+    expect(inCp.checkpoints.map((c) => c.text)).toEqual(['a\n~~~~\nopen\n~~~~', 'next'])
+  })
+
+  it('checkpoint com cerca fechada volta exato, inclusive com a cerca na primeira linha', () => {
+    for (const text of ['intro\n```js\n  code\n\n  more\n```\nafter', '```\nx\n```\ntail']) {
+      const p = parseTaskReadme(
+        renderReadme(task({ checkpoints: [cp(text), cp('next', 2)] })),
+        'ABC-1'
+      )
+      expect(p.checkpoints.map((c) => c.text)).toEqual([text, 'next'])
+    }
+  })
+
+  it('o Summary não volta como descrição', () => {
+    const md = renderReadme(task({ description: 'd', sum: { what: 'w', where: 'x', next: 'n' } }))
+    expect(parseTaskReadme(md, 'ABC-1').description).toBe('d')
+  })
+})
+
+describe('renderReadme: checkpoints', () => {
+  it('uma linha só não ganha linha em branco depois', () => {
+    const md = renderReadme(
+      task({
+        checkpoints: [
+          { at: '2026-01-01T10:00:00.000Z', text: 'a' },
+          { at: '2026-01-02T10:00:00.000Z', text: 'b' }
+        ]
+      })
+    )
+    expect(md).toContain('— a\n- 2026-01-02T10:00:00.000Z — b\n')
   })
 })

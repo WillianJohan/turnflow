@@ -162,7 +162,7 @@ export const IMPORT_COPY = {
   export: {
     button: 'Export to markdown…',
     intro:
-      'Write every task, open and done, as a markdown README in the brain format, into a new folder you choose the location of. Nothing is overwritten.',
+      'Write every task, open and done, as a markdown README in the brain format, into a new folder you choose the location of. Nothing is overwritten. The files are plain text, not encrypted: store them somewhere you trust.',
     exporting: 'Exporting…',
     done: (n: number, dir: string): string =>
       `Exported ${n} ${n === 1 ? 'task' : 'tasks'} to ${dir}`
