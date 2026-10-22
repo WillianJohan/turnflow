@@ -1,17 +1,37 @@
-import { renameSync, mkdirSync, appendFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { createHash } from 'node:crypto'
+import {
+  appendFileSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync
+} from 'node:fs'
+import { join, relative } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { Limits, type ImportPreviewTask } from '../../shared/contracts'
+import {
+  Limits,
+  type ImportPreviewTask,
+  type ImportReport,
+  type TaskDetail
+} from '../../shared/contracts'
 import type { DomainChanged } from '../../shared/ipc/events'
 import type { Db } from '../db/open'
 import { createDomain, type DomainDeps } from '../domain/context'
 import { importCreateTaskIn, importUpdateTaskIn } from '../domain/importTask'
-import { createTask, updateTask } from '../domain/task'
-import { openTestDb, seedIds, tmpDir } from '../testing/db'
+import { purgeTask } from '../db/purge'
+import { DomainError } from '../domain/errors'
+import { deleteProject } from '../domain/project'
+import { getTask } from '../domain/rows'
+import { createTask, deleteTask, updateTask } from '../domain/task'
+import { listActivity } from '../domain/undo'
+import { dumpTables, openTestDb, seedIds, tmpDir } from '../testing/db'
+import { applyBrain, previewBrain } from './markdown'
+import { applyImport } from './markdown/apply'
 import { parseTaskReadme } from './markdown/parse'
 import { planImport, type ImportOptions, type ImportPlan, type PlannedTask } from './markdown/plan'
 import { readRecord, sha, writeRecordIn } from './markdown/record'
-import { scanBrain } from './markdown/scan'
+import { nodeBrainFs, scanBrain, type BrainFs } from './markdown/scan'
 import type { StatusMapFile } from './markdown/statusMap'
 import { readme, writeBrain } from './markdown/testing/brainFixture'
 
@@ -647,3 +667,408 @@ describe('prévia de reimport (record existente)', () => {
     expect(b.preview.token).not.toBe(a.preview.token)
   })
 })
+
+describe('aplicar', () => {
+  const SECOND = '0b5e2c1a-1111-4aaa-8bbb-000000000002'
+  const MR2 = 'repo => https://example.com/g/r/-/merge_requests/2'
+  const README = 'tasks/current/ABC-1/README.md'
+  const TABLES = [
+    'task',
+    'checkpoint',
+    'ai_session',
+    'activity',
+    'project',
+    'project_item',
+    'import_record',
+    'import_project',
+    'key_seq'
+  ]
+
+  const three = (): Record<string, string> => ({
+    'tasks/current/ABC-1/README.md': readme({
+      key: 'ABC-1',
+      title: 'Synthetic epic',
+      status: 'in progress',
+      body: 'Synthetic body.',
+      mrs: [MR1],
+      sessions: [`2026-01-01 — ${UUID1} — scope`],
+      checkpoints: ['2026-01-02 — first step']
+    }),
+    'tasks/current/ABC-2/README.md': readme({
+      key: 'ABC-2',
+      status: 'weird status',
+      parent: 'ABC-1'
+    }),
+    'tasks/done/ABC-3/README.md': readme({ key: 'ABC-3', status: 'weird status' })
+  })
+
+  /** Prévia + apply com o token que a prévia devolveu (o fluxo da tela). */
+  async function run(e: Env, o: Partial<ImportOptions> = {}, fs?: BrainFs): Promise<ImportReport> {
+    const opts = { status_map: EMPTY_MAP, ...o }
+    const preview = await previewBrain(e.d, e.root, opts, fs)
+    return applyBrain(e.d, e.root, opts, preview.token, fs)
+  }
+
+  const count = (db: Db, sql: string, ...args: unknown[]): number =>
+    (db.prepare(sql).get(...args) as { n: number }).n
+  const task = (e: Env, key: string): TaskDetail => getTask(e.d, key)
+
+  const md = (o: { title?: string; body?: string; mrs?: string[]; cps?: string[] } = {}): string =>
+    readme({
+      key: 'ABC-1',
+      title: o.title ?? 'First title',
+      status: 'in progress',
+      body: o.body,
+      mrs: o.mrs,
+      checkpoints: o.cps ?? ['2026-01-02 — a']
+    })
+
+  async function single(): Promise<Env & { id: string }> {
+    const e = setup({ [README]: md() })
+    await run(e)
+    return { ...e, id: task(e, 'ABC-1').id }
+  }
+
+  it('aplica e vira task', async () => {
+    const e = setup(three())
+    const r = await run(e)
+    expect(r).toEqual(
+      expect.objectContaining({ created: 3, updated: 0, unchanged: 0, projects_created: 1 })
+    )
+    const t = task(e, 'ABC-1')
+    expect(t.title).toBe('Synthetic epic')
+    expect(t.stage.name).toBe('Implementation')
+    expect(t.description).toBe(
+      '## Descrição\n\nSynthetic body.\n\n## Links\n\n- repo => https://example.com/g/r/-/merge_requests/1'
+    )
+    expect(t.checkpoints).toEqual([
+      expect.objectContaining({
+        source: 'import',
+        text: 'first step',
+        at: expect.stringMatching(/^2026-01-02T/)
+      })
+    ])
+    expect(t.sessions).toEqual([expect.objectContaining({ external_id: UUID1, label: 'scope' })])
+    const done = task(e, 'ABC-3')
+    expect(done.stage.id).toBe(e.ids.stages.Feature.at(-1))
+    expect(done.stage.is_final).toBe(true)
+    // ABC-1 traz 1; ABC-2 ganha o de status importado; ABC-3 em done/ já é mapeado pela pasta
+    expect(r.checkpoints_added).toBe(2)
+    expect(r.sessions_added).toBe(1)
+    expect(r.links_added).toBe(1)
+  })
+
+  it('Status sem mapeamento', async () => {
+    const e = setup(three())
+    await run(e)
+    const t = task(e, 'ABC-2')
+    expect(t.stage.id).toBe(e.ids.stages.Feature[0])
+    expect(t.checkpoints.map((c) => c.text)).toEqual(['Imported status: weird status'])
+    // o mesmo status em done/ vai para a etapa final
+    expect(task(e, 'ABC-3').stage.id).toBe(e.ids.stages.Feature.at(-1))
+  })
+
+  it('Pai, Sessões, Checkpoints e MRs', async () => {
+    const e = setup(three())
+    await run(e)
+    const a = task(e, 'ABC-1')
+    const b = task(e, 'ABC-2')
+    expect(b.project_id).not.toBeNull()
+    expect(a.project_id).toBe(b.project_id)
+    const p = e.db.prepare('select name from project where id = ?').get(b.project_id) as {
+      name: string
+    }
+    expect(p.name).toBe('Synthetic epic')
+    expect(listActivity(e.d, { task_id: b.id })[0]).toEqual(
+      expect.objectContaining({ actor: 'import', op: 'task_import' })
+    )
+    expect(e.db.prepare('select source_key, project_id from import_project').all()).toEqual([
+      { source_key: 'key:ABC-1', project_id: b.project_id }
+    ])
+    // o hash do app do projeto é o id que nasceu (não fica vazio)
+    expect(readRecord(e.db, 'ABC-2')!.field_hashes.project.app).toBe(sha(b.project_id!))
+  })
+
+  it('projeto criado no apply: trocar o Pai depois é update sem conflito de projeto', async () => {
+    const e = setup(three())
+    await run(e)
+    writeBrain(e.root, {
+      'tasks/current/ABC-2/README.md': readme({
+        key: 'ABC-2',
+        status: 'weird status',
+        parent: 'ABC-4'
+      })
+    })
+    const preview = await previewBrain(e.d, e.root, { status_map: EMPTY_MAP })
+    expect(preview.tasks.find((t) => t.key === 'ABC-2')).toEqual(
+      expect.objectContaining({ action: 'update', fields: ['project'], conflicts: [] })
+    )
+    const r = await applyBrain(e.d, e.root, { status_map: EMPTY_MAP }, preview.token)
+    expect(r.projects_created).toBe(1)
+    const b = task(e, 'ABC-2')
+    expect(b.project_id).not.toBe(task(e, 'ABC-1').project_id)
+    expect(readRecord(e.db, 'ABC-2')!.field_hashes.project.app).toBe(sha(b.project_id!))
+    // um Pai já importado é reusado, sem projeto novo
+    writeBrain(e.root, {
+      'tasks/current/ABC-5/README.md': readme({ key: 'ABC-5', parent: 'ABC-1' })
+    })
+    const again = await run(e)
+    expect(again.projects_created).toBe(0)
+    expect(task(e, 'ABC-5').project_id).toBe(task(e, 'ABC-1').project_id)
+  })
+
+  it('projeto apagado no app não volta: a task nova fica sem projeto', async () => {
+    const e = setup(three())
+    await run(e)
+    const pid = task(e, 'ABC-1').project_id!
+    deleteProject(e.d, { kind: 'user' }, { id: pid })
+    writeBrain(e.root, {
+      'tasks/current/ABC-5/README.md': readme({ key: 'ABC-5', parent: 'ABC-1' })
+    })
+    const r = await run(e)
+    expect(r).toEqual(expect.objectContaining({ created: 1, projects_created: 0 }))
+    expect(task(e, 'ABC-5').project_id).toBeNull()
+    expect(count(e.db, 'select count(*) as n from project')).toBe(0)
+  })
+
+  it('reimport sem mudança = zero escritas', async () => {
+    const e = setup(three())
+    await run(e)
+    const before = [
+      totalChanges(e.db),
+      e.after.mock.calls.length,
+      count(e.db, 'select count(*) as n from activity')
+    ]
+    const r = await run(e)
+    expect([
+      totalChanges(e.db),
+      e.after.mock.calls.length,
+      count(e.db, 'select count(*) as n from activity')
+    ]).toEqual(before)
+    expect(r).toEqual(
+      expect.objectContaining({ unchanged: 3, created: 0, updated: 0, record_only: 0 })
+    )
+  })
+
+  it('conteúdo mudou sem mudar campo: só o record, contado em record_only', async () => {
+    const e = await single()
+    const activities = count(e.db, 'select count(*) as n from activity')
+    appendFileSync(join(e.root, README), '\n\n')
+    const r = await run(e)
+    expect(r).toEqual(expect.objectContaining({ record_only: 1, updated: 0, unchanged: 0 }))
+    expect(count(e.db, 'select count(*) as n from activity')).toBe(activities)
+    expect((await previewBrain(e.d, e.root, { status_map: EMPTY_MAP })).counts.unchanged).toBe(1)
+  })
+
+  it('editado no app e mudado no md = conflito com o app mantido', async () => {
+    const e = await single()
+    updateTask(e.d, { kind: 'user' }, e.id, { title: 'app title' })
+    writeBrain(e.root, { [README]: md({ title: 'md title' }) })
+    const p = await previewBrain(e.d, e.root, { status_map: EMPTY_MAP })
+    expect(p.tasks[0]!.conflicts.map((c) => c.field)).toEqual(['title'])
+    const r = await applyBrain(e.d, e.root, { status_map: EMPTY_MAP }, p.token)
+    expect(task(e, 'ABC-1').title).toBe('app title')
+    expect(r.conflicts_kept).toEqual([{ key: 'ABC-1', field: 'title' }])
+    expect(r.taken_markdown).toEqual([])
+    const third = await previewBrain(e.d, e.root, { status_map: EMPTY_MAP })
+    expect(third.tasks[0]!.conflicts).toEqual([])
+  })
+
+  it('escolher o markdown sobrescreve só aquele campo', async () => {
+    const e = await single()
+    updateTask(e.d, { kind: 'user' }, e.id, { title: 'app title', description: 'app body' })
+    writeBrain(e.root, { [README]: md({ title: 'md title', body: 'md body' }) })
+    const take = [{ key: 'ABC-1', field: 'title' as const }]
+    const r = await run(e, { take_markdown: take })
+    const t = task(e, 'ABC-1')
+    expect(t.title).toBe('md title')
+    expect(t.description).toBe('app body')
+    expect(r.taken_markdown).toEqual(take)
+    expect(r.conflicts_kept).toEqual([{ key: 'ABC-1', field: 'description' }])
+  })
+
+  it('mudou só no md, o md vence', async () => {
+    const e = await single()
+    writeBrain(e.root, { [README]: md({ title: 'md title' }) })
+    const r = await run(e)
+    expect(task(e, 'ABC-1').title).toBe('md title')
+    expect(r).toEqual(expect.objectContaining({ updated: 1, conflicts_kept: [] }))
+  })
+
+  it('checkpoint não duplica com NFC e espaço', async () => {
+    const e = setup({ [README]: md({ cps: ['2026-01-02 — café'] }) })
+    await run(e)
+    writeBrain(e.root, {
+      [README]: md({ cps: ['2026-01-02 — café ', '2026-01-03 — next'] })
+    })
+    const r = await run(e)
+    expect(r.checkpoints_added).toBe(1)
+    expect(task(e, 'ABC-1').checkpoints.map((c) => c.text)).toEqual(['next', 'café'])
+  })
+
+  it('current→done move para a etapa final sem task nova', async () => {
+    const e = await single()
+    const tasks = taskCount(e.db)
+    mkdirSync(join(e.root, 'tasks/done'), { recursive: true })
+    renameSync(join(e.root, 'tasks/current/ABC-1'), join(e.root, 'tasks/done/ABC-1'))
+    const p = await previewBrain(e.d, e.root, { status_map: EMPTY_MAP })
+    expect(p.tasks[0]!.action).not.toBe('unchanged')
+    await applyBrain(e.d, e.root, { status_map: EMPTY_MAP }, p.token)
+    const t = task(e, 'ABC-1')
+    expect(t.id).toBe(e.id)
+    expect(t.stage.id).toBe(e.ids.stages.Feature.at(-1))
+    const row = e.db.prepare('select done_at from task where id = ?').get(e.id) as {
+      done_at: string | null
+    }
+    expect(row.done_at).not.toBeNull()
+    // source_path relativo à pasta das tasks (ruling do Task 3)
+    expect(readRecord(e.db, 'ABC-1')!.source_path).toBe('done/ABC-1/README.md')
+    expect(taskCount(e.db)).toBe(tasks)
+  })
+
+  it('links só acrescentam', async () => {
+    const e = await single()
+    updateTask(e.d, { kind: 'user' }, e.id, { description: 'user edit' })
+    writeBrain(e.root, { [README]: md({ mrs: [MR2] }) })
+    const r = await run(e)
+    expect(task(e, 'ABC-1').description).toBe(
+      'user edit\n\n## Links\n\n- repo => https://example.com/g/r/-/merge_requests/2'
+    )
+    expect(r.conflicts_kept).toEqual([])
+    expect(r.links_added).toBe(1)
+  })
+
+  it('apagada não ressuscita', async () => {
+    const e = await single()
+    deleteTask(e.d, { kind: 'user' }, { id: e.id })
+    const deletedAt = (
+      e.db.prepare('select deleted_at from task where id = ?').get(e.id) as { deleted_at: string }
+    ).deleted_at
+    const cps = count(e.db, 'select count(*) as n from checkpoint where task_id = ?', e.id)
+    writeBrain(e.root, { [README]: md({ title: 'md title', cps: ['2026-01-04 — new'] }) })
+    const r = await run(e)
+    expect(r.deleted_in_app).toContain('ABC-1')
+    const row = e.db.prepare('select deleted_at, title from task where id = ?').get(e.id)
+    expect(row).toEqual({ deleted_at: deletedAt, title: 'First title' })
+    expect(count(e.db, 'select count(*) as n from checkpoint where task_id = ?', e.id)).toBe(cps)
+  })
+
+  it('purgada não ressuscita', async () => {
+    const e = await single()
+    purgeTask(e.db, e.id, e.d.tx)
+    writeBrain(e.root, { [README]: md({ title: 'md title' }) })
+    const r = await run(e)
+    expect(r.deleted_in_app).toContain('ABC-1')
+    expect(count(e.db, "select count(*) as n from task where key = 'ABC-1'")).toBe(0)
+  })
+
+  it('key T-n importada sobe o key_seq: purgada não é reaproveitada', async () => {
+    const e = setup({ 'tasks/current/T-50/README.md': readme({ key: 'T-50' }) })
+    await run(e)
+    purgeTask(e.db, task(e, 'T-50').id, e.d.tx)
+    expect(createTask(e.d, { kind: 'user' }, { title: 'next' }).row!.key).toBe('T-51')
+  })
+
+  it('key criada pelo sync vincula', async () => {
+    const e = setup({
+      'tasks/current/ABC-7/README.md': readme({
+        key: 'ABC-7',
+        title: 'Markdown title',
+        sessions: [`2026-01-01 — ${SECOND} — scope`],
+        checkpoints: ['2026-01-02 — note']
+      })
+    })
+    const t = createTask(e.d, { kind: 'user' }, { title: 'App title' }).row!
+    e.db.prepare("update task set key = 'ABC-7' where id = ?").run(t.id)
+    const tasks = taskCount(e.db)
+    const r = await run(e)
+    expect(taskCount(e.db)).toBe(tasks)
+    expect(r).toEqual(expect.objectContaining({ linked: 1, created: 0 }))
+    const d = task(e, 'ABC-7')
+    expect(d.title).toBe('App title')
+    expect(d.checkpoints.map((c) => c.text)).toEqual(['note'])
+    expect(d.sessions.map((s) => s.external_id)).toEqual([SECOND])
+    expect(readRecord(e.db, 'ABC-7')!.task_id).toBe(t.id)
+    expect(r.conflicts_kept).toContainEqual({ key: 'ABC-7', field: 'title' })
+  })
+
+  it('credentials/ nunca é lido como conteúdo de task', async () => {
+    const secret = 'SYNTHETIC-SECRET-77c1d2'
+    const e = setup({
+      'credentials/service.md': `token: ${secret}`,
+      'tasks/current/ABC-1/README.md': readme({ key: 'ABC-1' })
+    })
+    const readFile = vi.fn(nodeBrainFs.readFile)
+    const fs: BrainFs = { ...nodeBrainFs, readFile }
+    await run(e, {}, fs)
+    expect(readFile).toHaveBeenCalled()
+    for (const [p] of readFile.mock.calls) expect(p).not.toMatch(/credentials/)
+    expect(JSON.stringify(dumpTables(e.db, TABLES))).not.toContain(secret)
+  })
+
+  it('falha no meio não deixa nada', async () => {
+    const e = setup(three())
+    const before = dumpTables(e.db, TABLES)
+    const plan = planImport(e.d, await scanBrain(e.root), { status_map: EMPTY_MAP })
+    const keys: string[] = []
+    expect(() =>
+      applyImport(e.d, plan, plan.preview.token, {
+        afterTask: (key) => {
+          keys.push(key)
+          if (keys.length === 2) throw new Error('injected failure')
+        }
+      })
+    ).toThrow('injected failure')
+    expect(count(e.db, 'select count(*) as n from task')).toBe(0)
+    expect(count(e.db, 'select count(*) as n from import_record')).toBe(0)
+    expect(count(e.db, 'select count(*) as n from import_project')).toBe(0)
+    expect(dumpTables(e.db, TABLES)).toEqual(before)
+    expect(e.after).toHaveBeenCalledTimes(0)
+  })
+
+  it('arquivo mudou depois da prévia: CONFLICT preview_stale e banco idêntico', async () => {
+    const e = setup(three())
+    const p = await previewBrain(e.d, e.root, { status_map: EMPTY_MAP })
+    writeBrain(e.root, {
+      'tasks/current/ABC-2/README.md': readme({ key: 'ABC-2', title: 'edited after preview' })
+    })
+    const n = totalChanges(e.db)
+    const err = await applyBrain(e.d, e.root, { status_map: EMPTY_MAP }, p.token).catch(
+      (x: unknown) => x
+    )
+    expect(err).toBeInstanceOf(DomainError)
+    expect(err).toEqual(
+      expect.objectContaining({ code: 'CONFLICT', details: { reason: 'preview_stale' } })
+    )
+    expect(totalChanges(e.db)).toBe(n)
+    expect(e.after).toHaveBeenCalledTimes(0)
+  })
+
+  it('origem byte a byte igual depois de prévia e apply', async () => {
+    const e = setup({
+      ...three(),
+      'tasks/current/ABC-1/notes.txt': 'synthetic attachment',
+      'credentials/service.md': 'token: synthetic'
+    })
+    const before = snapshot(e.root)
+    await run(e)
+    expect(snapshot(e.root)).toBe(before)
+  })
+})
+
+/** sha256 de toda a árvore: path, tipo, conteúdo e mtime de cada entrada. */
+function snapshot(root: string): string {
+  const h = createHash('sha256')
+  h.update(`${lstatSync(root).mtimeMs}\0`)
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir).sort()) {
+      const p = join(dir, name)
+      const st = lstatSync(p)
+      h.update(`${relative(root, p)}\0${st.mode}\0${st.mtimeMs}\0`)
+      if (st.isDirectory()) walk(p)
+      else h.update(readFileSync(p))
+    }
+  }
+  walk(root)
+  return h.digest('hex')
+}

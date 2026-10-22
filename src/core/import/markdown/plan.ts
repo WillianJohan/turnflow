@@ -81,6 +81,8 @@ export type PlannedTask =
         set?: Omit<NonNullable<ImportTaskUpdate['set']>, 'project_id'>
       }
       record: Omit<ImportRecord, 'imported_at'>
+      /** Conflitos resolvidos com o markdown (`take_markdown`): vão para o relatório. */
+      taken?: ScalarField[]
     }
   | { kind: 'none'; key: string }
 
@@ -618,6 +620,7 @@ function planMerge(
     links: [...base.links, ...newLinks.map((l) => l.url)]
   }
   const write = new Set<ScalarField>()
+  const taken: ScalarField[] = []
   const convergent = new Set<ScalarField>()
   const conflicts: ImportConflict[] = []
   for (const f of SCALAR_FIELDS) {
@@ -638,6 +641,7 @@ function planMerge(
       })
       continue
     }
+    if (editedInApp) taken.push(f)
     write.add(f)
     hashes[f].app = f === 'project' && keep && keep.id === null ? '' : sha(desired[f])
   }
@@ -728,7 +732,8 @@ function planMerge(
         task_id: task.id,
         file_hash: t.file_hash,
         field_hashes: hashes
-      }
+      },
+      ...(taken.length > 0 ? { taken } : {})
     },
     row: { ...outRow, action },
     project: projectOp !== undefined ? project : null

@@ -297,6 +297,8 @@ export const ImportReport = z.object({
   created: z.number().int(),
   updated: z.number().int(),
   linked: z.number().int(),
+  /** Só o `import_record` foi atualizado; a task ficou intocada. */
+  record_only: z.number().int(),
   unchanged: z.number().int(),
   deleted_in_app: z.array(z.string()),
   invalid: z.array(z.object({ key: z.string(), reason: z.string() })),
