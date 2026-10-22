@@ -140,7 +140,7 @@ export type TaskPatch = z.infer<typeof TaskPatch>
 
 const Name = z.string().trim().min(1).max(Limits.name)
 
-/** Etapa no editor de fluxo: `position` = ordinal 1-based entre as vivas; `task_count` = tasks vivas nela. */
+/** Etapa no editor de fluxo: `position` = ordinal 1-based entre as vivas; `live_task_count` = tasks vivas nela. */
 export const FlowStage = z.object({
   id: z.string(),
   position: z.number().int(),
@@ -149,7 +149,7 @@ export const FlowStage = z.object({
   waits_other: z.boolean(),
   is_final: z.boolean(),
   remote_star_status: z.string().nullable(),
-  task_count: z.number().int()
+  live_task_count: z.number().int()
 })
 export type FlowStage = z.infer<typeof FlowStage>
 

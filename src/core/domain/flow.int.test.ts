@@ -122,7 +122,7 @@ describe('listFlows e listTypes', () => {
       ['Pessoal', false]
     ])
     const feature = flows[0]
-    expect(feature.stages.map((s) => [s.name, s.position, s.task_count])).toEqual([
+    expect(feature.stages.map((s) => [s.name, s.position, s.live_task_count])).toEqual([
       ['Refinamento', 1, 0],
       ['Implementação', 2, 1],
       ['Review', 3, 0],
@@ -150,7 +150,12 @@ describe('deleteStage', () => {
 
     const e = errOf(() => deleteStage(h.d, USER, { id: impl }))
     expect(e.code).toBe('CONFLICT')
-    expect(e.details).toMatchObject({ reason: 'stage_has_tasks', task_count: 1, suggested: ref })
+    expect(e.details).toMatchObject({
+      reason: 'stage_has_tasks',
+      task_count: 1,
+      deleted_count: 0,
+      suggested: ref
+    })
     expect(dumpTables(h.db, DUMP)).toEqual(before)
     expect(h.events).toEqual([])
 
@@ -200,7 +205,7 @@ describe('deleteStage', () => {
 
     const e = errOf(() => deleteStage(h.d, USER, { id: impl }))
     expect(e.code).toBe('CONFLICT')
-    expect(e.details).toMatchObject({ reason: 'stage_has_tasks', task_count: 1 })
+    expect(e.details).toMatchObject({ reason: 'stage_has_tasks', task_count: 1, deleted_count: 1 })
 
     h.tick(MIN)
     deleteStage(h.d, USER, { id: impl, to_stage_id: entregue })
@@ -609,5 +614,15 @@ describe('remapTarget', () => {
     // par de outra etapa não conta
     const r = remapTarget(h.d, rec, h.ids.flows.Bugfix, { [h.ids.stages.Feature[0]]: corrigir })
     expect(r).toMatchObject({ missing: [impl] })
+  })
+
+  it('fluxo de destino inexistente: NOT_FOUND, com ou sem mapping', () => {
+    const h = setup()
+    const impl = h.ids.stages.Feature[1]
+    const rec = raw(h.db, featureAt(h, 1))
+    for (const m of [undefined, { [impl]: h.ids.stages.Bugfix[1] }]) {
+      const e = errOf(() => remapTarget(h.d, rec, 'nada', m))
+      expect([e.code, e.details?.entity]).toEqual(['NOT_FOUND', 'flow'])
+    }
   })
 })

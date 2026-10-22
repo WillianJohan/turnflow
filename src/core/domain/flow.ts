@@ -47,9 +47,6 @@ function requireFlow(db: Db, flowId: string): { id: string; name: string; is_def
 
 function flowView(db: Db, flowId: string): Flow {
   const f = requireFlow(db, flowId)
-  const count = db.prepare(
-    'select count(*) as n from task where stage_id = ? and deleted_at is null'
-  )
   return {
     id: f.id,
     name: f.name,
@@ -62,7 +59,7 @@ function flowView(db: Db, flowId: string): Flow {
       waits_other: s.waits_other === 1,
       is_final: s.is_final === 1,
       remote_star_status: s.remote_star_status,
-      task_count: (count.get(s.id) as { n: number }).n
+      live_task_count: liveTaskCount(db, s.id)
     }))
   }
 }
@@ -195,7 +192,7 @@ export function saveStage(d: DomainDeps, actor: Actor, i: SaveStageInput): Flow 
 /**
  * Apaga (soft) uma etapa. Checagens nesta ordem (Decisão 15): última etapa → `last_stage`; última
  * final → `last_final`; com task (viva ou apagada) e sem destino → `stage_has_tasks` com
- * `{ task_count, suggested }`. Com destino (etapa viva do mesmo fluxo, senão `VALIDATION`), move
+ * `{ task_count, deleted_count, suggested }` (`task_count` = total, apagadas incluídas). Com destino (etapa viva do mesmo fluxo, senão `VALIDATION`), move
  * todas as tasks sem tocar `touched_at` (Decisão 31), grava `stage_remap` por task viva e renumera.
  */
 export function deleteStage(
@@ -221,6 +218,7 @@ export function deleteStage(
         throw domainError('CONFLICT', 'stage_has_tasks', {
           stage_id: st.id,
           task_count: tasks.length,
+          deleted_count: tasks.filter((t) => t.deleted_at !== null).length,
           suggested
         })
       }
@@ -299,6 +297,7 @@ export function remapTarget(
   toFlowId: string,
   mapping: StageMapping | undefined
 ): { stage_id: string } | { preview: StagePairing[]; missing: string[] } {
+  requireFlow(d.db, toFlowId)
   const pick = mapping && Object.hasOwn(mapping, task.stage_id) ? mapping[task.stage_id] : null
   if (pick === null)
     return { preview: previewRemap(d, task.flow_id, toFlowId), missing: [task.stage_id] }
@@ -312,7 +311,8 @@ export function remapTarget(
 /**
  * Troca o fluxo da task. Mesmo fluxo é no-op; sem par para a etapa atual é
  * `CONFLICT remap_required` com `{ preview, missing }`. Aplica `flow_id`, `stage_id`, `done_at`,
- * toca, e grava `task_set_flow` sem inverso.
+ * toca, e grava `task_set_flow` sem inverso. Não mexe em `turn_*` de propósito: posição entre
+ * fluxos diferentes não se compara, então não há "voltou" nem "avançou".
  */
 export function setTaskFlow(
   d: DomainDeps,
