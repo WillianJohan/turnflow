@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { VaultError } from '../../core/key/errors'
@@ -266,8 +266,33 @@ describe('canais do import', () => {
     const p = data<ImportPreview>(await e.call('importDryRun', { root: e.root }))
     expect(
       data<ImportReport>(await e.call('importApply', { root: e.root, token: p.token }))
-    ).toMatchObject({ created: 2 })
+    ).toMatchObject({ created: 2, warnings: ['brain_dir_not_saved'] })
     expect(log).toHaveBeenCalledWith(expect.stringContaining('config.json quebrado'))
+  })
+
+  it('falha ao gravar o mapa depois do commit vira aviso no relatório', async () => {
+    const log = vi.fn()
+    const e = setup({ files: BRAIN, log })
+    mkdirSync(e.mapFile) // rename do arquivo temporário sobre uma pasta falha
+    const edits = { 'weird status': { role: 'review' } }
+    const p = data<ImportPreview>(
+      await e.call('importDryRun', { root: e.root, status_edits: edits })
+    )
+    expect(
+      data<ImportReport>(
+        await e.call('importApply', { root: e.root, status_edits: edits, token: p.token })
+      )
+    ).toMatchObject({ created: 2, warnings: ['status_map_not_saved'] })
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('status map not saved'))
+    expect(e.setBrainDir).toHaveBeenCalledWith(e.root)
+  })
+
+  it('apply sem falha não tem aviso', async () => {
+    const e = setup({ files: BRAIN })
+    const p = data<ImportPreview>(await e.call('importDryRun', { root: e.root }))
+    expect(
+      data<ImportReport>(await e.call('importApply', { root: e.root, token: p.token })).warnings
+    ).toEqual([])
   })
 
   it('pickFolder devolve o que o diálogo escolheu ou null', async () => {

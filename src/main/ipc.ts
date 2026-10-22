@@ -107,23 +107,30 @@ export async function registerIpc(
       send('pty:renamed', from, to)
     }
   }
+  // roda no watcher e na troca de pasta: falha ao ler o brain vai pro log e não derruba quem chamou
+  // (a leitura de config, o apply do import, o próprio registerIpc)
   const onBrainChange = async (): Promise<void> => {
-    send('tasks:changed', await reload())
-    adopt()
+    try {
+      send('tasks:changed', await reload())
+      adopt()
+    } catch (e) {
+      deps.log?.(`[tasks] brain not loaded: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
   let unwatch = watchTasks(brainRoot, onBrainChange)
   /**
    * Troca a pasta da lateral herdada (Decisão 25): solta o watcher antigo, arma o novo, recarrega e
-   * avisa a tela. Mesma pasta = nada. `TURNFLOW_BRAIN` (dev/teste) sempre vence.
+   * avisa a tela. Mesma pasta = nada (devolve false). `TURNFLOW_BRAIN` (dev/teste) sempre vence.
    */
-  const setLegacyBrain = async (brainDir: string | null): Promise<void> => {
-    if (process.env.TURNFLOW_BRAIN || !brainDir) return
+  const setLegacyBrain = async (brainDir: string | null): Promise<boolean> => {
+    if (process.env.TURNFLOW_BRAIN || !brainDir) return false
     const dir = existsSync(join(brainDir, 'tasks')) ? join(brainDir, 'tasks') : brainDir
-    if (dir === brainRoot) return
+    if (dir === brainRoot) return false
     unwatch()
     brainRoot = dir
     unwatch = watchTasks(dir, onBrainChange)
     await onBrainChange()
+    return true
   }
 
   const hooks = await startHookServer((raw, st, sid, info) => {
@@ -181,8 +188,8 @@ export async function registerIpc(
   // última pasta padrão lida do config.json: toda leitura (inclusive a do watch) atualiza
   const startConfig = (await readConfig(cfgDir)).config
   let defaultWorkdir = startConfig.defaultWorkdir
-  await setLegacyBrain(startConfig.brainDir)
-  await reload()
+  // sem pasta nova no config, carrega a padrão; os dois caminhos só logam se a leitura falhar
+  if (!(await setLegacyBrain(startConfig.brainDir))) await onBrainChange()
   const configState = async (): Promise<ConfigState> => {
     const { config, error } = await readConfig(cfgDir)
     // JSON inválido devolve os padrões: a pasta padrão e o brain em uso ficam os anteriores

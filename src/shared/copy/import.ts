@@ -15,6 +15,13 @@ export const IMPORT_COPY = {
       'The status map was saved by a newer version of the app and will not be overwritten.',
     flow_has_no_stages: 'This flow has no stages to map statuses to.'
   },
+  /** Avisos do relatório: o import foi gravado, mas uma escrita depois dele falhou. */
+  warnings: {
+    status_map_not_saved:
+      'The tasks were imported, but the status choices could not be saved for the next import.',
+    brain_dir_not_saved:
+      'The tasks were imported, but the brain folder could not be saved in the settings.'
+  },
   importedStatus: (status: string): string => `Imported status: ${status}`,
   /** Por que um caminho ficou de fora do import. */
   ignored: {

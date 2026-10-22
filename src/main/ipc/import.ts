@@ -12,6 +12,7 @@ import {
   type StatusMapFile
 } from '../../core/import/markdown/statusMap'
 import type { Vault } from '../../core/key/vault'
+import type { ImportWarning } from '../../shared/contracts'
 import * as I from '../../shared/ipc/import'
 import type { Register } from './handle'
 import { toIpcDomainError } from './domain'
@@ -81,15 +82,18 @@ export function registerImportIpc(h: Register, deps: ImportIpcDeps): void {
       // o mapa não seria gravado depois do commit: recusa antes de importar
       if (edited && newer) throw importError('CONFLICT', 'status_map_newer_version')
       const report = await applyBrain(d, input.root, o, token)
-      // Depois do commit, falha não vira erro do import (que já está no banco): só vai pro log.
-      // Sem edits o arquivo do usuário fica intocado (nem vai para `.bak`).
+      // Depois do commit, falha não vira erro do import (que já está no banco): vira aviso no
+      // relatório (a tela mostra) e a mensagem crua vai pro log. Sem edits o arquivo do usuário
+      // fica intocado (nem vai para `.bak`).
+      const warn = (w: ImportWarning, what: string) => (e: unknown) => {
+        report.warnings.push(w)
+        log(`[import] ${what} not saved: ${message(e)}`)
+      }
       if (edited)
-        await writeStatusMap(mapFile, o.status_map).catch((e) =>
-          log(`[import] status map not saved: ${message(e)}`)
+        await writeStatusMap(mapFile, o.status_map).catch(
+          warn('status_map_not_saved', 'status map')
         )
-      await deps
-        .setBrainDir(input.root)
-        .catch((e) => log(`[import] brainDir not saved: ${message(e)}`))
+      await deps.setBrainDir(input.root).catch(warn('brain_dir_not_saved', 'brainDir'))
       return report
     })
   )

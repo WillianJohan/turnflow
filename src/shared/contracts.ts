@@ -293,6 +293,10 @@ export type ImportPreview = z.infer<typeof ImportPreview>
 
 const KeyField = z.object({ key: z.string(), field: ImportField })
 
+/** O import foi gravado, mas algo que roda depois do commit falhou (texto em `IMPORT_COPY.warnings`). */
+export const ImportWarning = z.enum(['status_map_not_saved', 'brain_dir_not_saved'])
+export type ImportWarning = z.infer<typeof ImportWarning>
+
 export const ImportReport = z.object({
   created: z.number().int(),
   updated: z.number().int(),
@@ -309,7 +313,8 @@ export const ImportReport = z.object({
   sessions_taken: z.array(z.object({ external_id: z.string(), task_key: z.string() })),
   links_added: z.number().int(),
   projects_created: z.number().int(),
-  ignored: z.array(ImportIgnored)
+  ignored: z.array(ImportIgnored),
+  warnings: z.array(ImportWarning)
 })
 export type ImportReport = z.infer<typeof ImportReport>
 

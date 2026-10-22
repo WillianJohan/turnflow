@@ -28,7 +28,11 @@ vi.mock('./pty', () => ({
   startPty: () => undefined,
   writePty: () => undefined
 }))
-vi.mock('./tasks', () => ({ loadTasks: async () => [], watchTasks: () => () => undefined }))
+const legacy = vi.hoisted(() => ({
+  load: vi.fn<(root: string) => Promise<unknown[]>>(async () => []),
+  watch: vi.fn<(root: string, onChange: () => void) => () => void>(() => () => undefined)
+}))
+vi.mock('./tasks', () => ({ loadTasks: legacy.load, watchTasks: legacy.watch }))
 vi.mock('./hooks', () => ({
   startHookServer: async () => ({ port: 1, token: 't', close: () => undefined }),
   writeHookSettings: async () => '/tmp/settings.json'
@@ -49,10 +53,15 @@ let dir: string
 let db: Db
 let dispose: () => void
 let call: Call
+let log: ReturnType<typeof vi.fn<(line: string) => void>>
 
 beforeEach(async () => {
   dir = tmpDir()
   vi.stubEnv('TURNFLOW_CONFIG_DIR', dir)
+  vi.stubEnv('TURNFLOW_BRAIN', '')
+  legacy.load.mockReset().mockResolvedValue([])
+  legacy.watch.mockReset().mockReturnValue(() => undefined)
+  log = vi.fn()
   db = openTestDb()
   const { registerIpc } = await import('./ipc')
   const invokes = new Map<string, (...a: unknown[]) => unknown>()
@@ -68,7 +77,8 @@ beforeEach(async () => {
     vault: { db: () => db } as never,
     version: '0.0.0',
     dialogs: { save: async () => null, open: async () => null, folder: async () => null },
-    domain: { now: () => new Date('2026-10-22T12:00:00.000Z') }
+    domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
+    log
   })
   call = async (method, input) =>
     (await invokes.get(CHANNELS[method].name)!(
@@ -119,5 +129,53 @@ describe('config.json × pasta padrão', () => {
     await writeFile(cfgFile(), JSON.stringify({ defaultWorkdir: '/outra' }))
     data(await call('config'))
     expect(await effective()).toBe('/outra')
+  })
+})
+
+describe('config.json × brain da lateral herdada', () => {
+  it('brainDir novo rearma o watcher e a lateral lista dele', async () => {
+    const brain = tmpDir()
+    data(await call('setConfig', { brainDir: brain }))
+    expect(legacy.watch).toHaveBeenLastCalledWith(brain, expect.any(Function))
+    expect(legacy.load).toHaveBeenLastCalledWith(brain)
+    expect(data(await call('tasksRoot'))).toBe(brain)
+  })
+
+  it('falha ao ler o brain novo não quebra a leitura de config', async () => {
+    const brain = tmpDir()
+    legacy.load.mockRejectedValueOnce(new Error('EACCES brain'))
+    expect(data(await call('setConfig', { brainDir: brain }))).toMatchObject({
+      config: { brainDir: brain }
+    })
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('EACCES brain'))
+    expect(data(await call('tasksRoot'))).toBe(brain)
+  })
+
+  it('falha no reload disparado pelo watcher só vai pro log', async () => {
+    const brain = tmpDir()
+    data(await call('setConfig', { brainDir: brain }))
+    const onChange = legacy.watch.mock.calls.at(-1)![1]
+    legacy.load.mockRejectedValueOnce(new Error('pasta sumiu'))
+    await expect(Promise.resolve(onChange())).resolves.toBeUndefined()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('pasta sumiu'))
+  })
+
+  it('falha ao ler o brain no start não derruba o registerIpc', async () => {
+    dispose()
+    const { registerIpc } = await import('./ipc')
+    legacy.load.mockRejectedValueOnce(new Error('brain ilegível'))
+    const win = {
+      webContents: { id: 2, on: () => undefined, send: () => undefined },
+      isDestroyed: () => false
+    }
+    const ipc = { handle: () => undefined, on: () => undefined }
+    dispose = await registerIpc(win as never, ipc as never, {
+      vault: { db: () => db } as never,
+      version: '0.0.0',
+      dialogs: { save: async () => null, open: async () => null, folder: async () => null },
+      domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
+      log
+    })
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('brain ilegível'))
   })
 })

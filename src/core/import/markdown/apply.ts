@@ -145,6 +145,7 @@ function emptyReport(plan: ImportPlan): ImportReport {
     sessions_taken: [],
     links_added: 0,
     projects_created: 0,
-    ignored: plan.preview.ignored
+    ignored: plan.preview.ignored,
+    warnings: []
   }
 }
