@@ -31,7 +31,9 @@ export const Limits = {
   reason: 500,
   checkpoint: 20_000,
   workdir: 4_096,
-  name: 100
+  name: 100,
+  goal: 2_000,
+  color: 32
 } as const
 
 /** Pasta de trabalho: vazia (= limpar) ou absoluta em qualquer SO (Decisão 20). */
@@ -202,3 +204,48 @@ export const SaveStageInput = z
   })
   .strict()
 export type SaveStageInput = z.infer<typeof SaveStageInput>
+
+export const ProjectRow = z.object({
+  id: z.string(),
+  name: z.string(),
+  goal: z.string().nullable(),
+  color: z.string().nullable(),
+  flow_id: z.string().nullable(),
+  done_at: z.string().nullable(),
+  task_count: z.number().int(),
+  done_count: z.number().int()
+})
+export type ProjectRow = z.infer<typeof ProjectRow>
+
+export const ProjectItem = z.object({
+  id: z.string(),
+  kind: z.enum(['task', 'divider']),
+  task_id: z.string().nullable(),
+  label: z.string().nullable(),
+  rank: z.string()
+})
+export type ProjectItem = z.infer<typeof ProjectItem>
+
+export const ProjectDetail = ProjectRow.extend({ items: z.array(ProjectItem) })
+export type ProjectDetail = z.infer<typeof ProjectDetail>
+
+export const ProjectInput = z
+  .object({
+    name: Name,
+    goal: z.string().max(Limits.goal).nullable().optional(),
+    color: z.string().max(Limits.color).nullable().optional(),
+    flow_id: Id.nullable().optional()
+  })
+  .strict()
+export type ProjectInput = z.infer<typeof ProjectInput>
+
+/** Move a task para o projeto (`null` = tira do projeto). `choice`/`mapping` só valem se o fluxo do projeto difere. */
+export const MoveInput = z
+  .object({
+    id: Id,
+    project_id: Id.nullable(),
+    choice: z.enum(['keep', 'adopt']).optional(),
+    mapping: StageMapping.optional()
+  })
+  .strict()
+export type MoveInput = z.infer<typeof MoveInput>

@@ -103,7 +103,7 @@ const liveTaskCount = (db: Db, stageId: string): number =>
       .get(stageId) as { n: number }
   ).n
 
-function cleanName(field: 'name' | 'short_name', v: string): string {
+export function cleanName(field: 'name' | 'short_name', v: string): string {
   const t = v.trim()
   if (t === '') throw domainError('VALIDATION', 'name_required', { field })
   return checkMax(field, t, Limits.name)
