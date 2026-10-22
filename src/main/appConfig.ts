@@ -2,6 +2,7 @@ import { watch } from 'fs'
 import { mkdir, readdir, readFile, writeFile, access, unlink } from 'fs/promises'
 import { basename, join } from 'path'
 import type { AppConfig, Theme } from '../shared/types'
+import { Limits } from '../shared/contracts'
 import { CONFIG_COPY } from '../shared/copy/config'
 import { isAbsolutePath } from '../shared/pathSyntax'
 import { IpcError } from './ipc/handle'
@@ -585,7 +586,9 @@ const sane = (raw: Record<string, unknown>): AppConfig => ({
     })
   ),
   defaultWorkdir:
-    typeof raw.defaultWorkdir === 'string' && isAbsolutePath(raw.defaultWorkdir)
+    typeof raw.defaultWorkdir === 'string' &&
+    raw.defaultWorkdir.length <= Limits.workdir &&
+    isAbsolutePath(raw.defaultWorkdir)
       ? raw.defaultWorkdir
       : DEFAULT_CONFIG.defaultWorkdir
 })

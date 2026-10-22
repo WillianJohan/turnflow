@@ -1,3 +1,4 @@
+import { Limits } from '../shared/contracts'
 import { rename } from 'fs/promises'
 import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'fs/promises'
@@ -165,6 +166,7 @@ describe('proteção do config.json', () => {
     expect(await read('rel/x')).toBeNull()
     expect(await read(5)).toBeNull()
     expect(await read('/abs')).toBe('/abs')
+    expect(await read('/' + 'a'.repeat(Limits.workdir))).toBeNull()
   })
 })
 
