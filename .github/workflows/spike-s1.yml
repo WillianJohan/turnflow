@@ -1,0 +1,73 @@
+# Spike S1 (descartável): SQLCipher (better-sqlite3-multiple-ciphers) + node-pty no Electron 44.
+name: spike-s1
+on: workflow_dispatch
+
+jobs:
+  s1:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Montar o spike
+        shell: bash
+        run: |
+          mkdir spike && cd spike
+          npm init -y
+          npm i -D electron@^44.7.2 electron-builder
+          npm i better-sqlite3-multiple-ciphers node-pty
+          npx electron-builder install-app-deps
+          cat > main.js <<'JS'
+          const { app } = require('electron');
+          const fs = require('fs'), path = require('path'), cp = require('child_process');
+          const Database = require('better-sqlite3-multiple-ciphers');
+          const pty = require('node-pty');
+          app.disableHardwareAcceleration();
+          process.on('unhandledRejection', (e) => { console.log('FAIL', e); app.exit(1); });
+          app.whenReady().then(async () => {
+            let ok = true;
+            const file = path.join(__dirname, 't.db');
+            fs.rmSync(file, { force: true });
+            const db = new Database(file);
+            db.pragma("cipher='sqlcipher'"); db.pragma("key='x'");
+            db.exec("create virtual table f using fts5(t, tokenize='trigram remove_diacritics 1')");
+            db.prepare('insert into f(t) values (?)').run('ação');
+            const ver = db.prepare('select sqlite_version() v').get().v;
+            const hits = db.prepare("select count(*) c from f where f match 'acao'").get().c;
+            console.log('electron', process.versions.electron, 'sqlite', ver, 'fts=' + hits);
+            const [maj, min] = ver.split('.').map(Number);
+            if (maj < 3 || (maj === 3 && min < 45)) { console.log('FAIL sqlite < 3.45'); app.exit(1); return; }
+            db.close();
+            // token montado em runtime (pty-42): a linha de comando ecoada pelo terminal não casa com ele
+            const win = process.platform === 'win32';
+            const shell = win ? 'cmd.exe' : 'bash';
+            const args = win ? ['/v:on', '/c', 'set X=4& echo pty-!X!2'] : ['-c', 'echo pty-$((40+2))'];
+            await new Promise((res) => {
+              const p = pty.spawn(shell, args, { name: 'xterm', cols: 80, rows: 24 });
+              let out = '';
+              const to = setTimeout(() => { console.log('pty-timeout'); ok = false; res(); }, 10000);
+              p.onData((d) => { out += d; if (out.includes('pty-42')) { clearTimeout(to); console.log('pty-ok'); res(); } });
+            });
+            // sem chave: o arquivo tem que ser ilegível (reabre com o mesmo módulo, sem pragma key)
+            let unreadable = false;
+            try { const d2 = new Database(file); d2.prepare('select count(*) from sqlite_master').get(); d2.close(); }
+            catch (e) { unreadable = /not a database/i.test(String(e && e.message)); console.log('erro sem chave:', e && e.code, e && e.message); }
+            console.log('plain=' + (unreadable ? 'unreadable' : 'READABLE'));
+            app.exit(ok && hits === 1 && unreadable ? 0 : 1);
+          });
+          JS
+          sed -i.bak 's/"main": "[^"]*"/"main": "main.js"/' package.json
+      - name: Rodar (Linux, com xvfb)
+        if: runner.os == 'Linux'
+        working-directory: spike
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run -a npx electron . --no-sandbox
+      - name: Rodar (mac/Windows)
+        if: runner.os != 'Linux'
+        working-directory: spike
+        run: npx electron .
