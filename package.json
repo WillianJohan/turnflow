@@ -23,6 +23,7 @@
     "test:integration": "vitest run -c vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "check-release": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-release.ts",
+    "dev:secret": "tsx scripts/dev/secret.ts",
     "check-brand": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-brand.ts"
   },
   "dependencies": {
@@ -61,6 +62,7 @@
     "prettier": "^3.9.10",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "tsx": "4.23.15",
     "typescript": "^5.9.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
