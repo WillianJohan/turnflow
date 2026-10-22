@@ -17,42 +17,46 @@ import { sha, writeRecordIn, type FieldHashes } from './record'
 export type ApplyHooks = { afterTask?: (key: string) => void }
 
 /**
- * Aplica `plan` se o `token` ainda é o da prévia que o usuário viu; senão `CONFLICT preview_stale`
- * sem escrever nada. `none` não escreve (Decisão 32); `create`/`update` gravam a task e o record.
+ * Lê o plano DENTRO da transação (`plan` é só leitura: não abre `tx` nem chama função pública) e
+ * compara o `token` antes de qualquer escrita: se não é mais o da prévia que o usuário viu,
+ * `CONFLICT preview_stale` sem escrever nada. `none` não escreve (Decisão 32); `create`/`update`
+ * gravam a task e o record.
  */
 export function applyImport(
   d: DomainDeps,
-  plan: ImportPlan,
+  plan: () => ImportPlan,
   expectedToken: string,
   hooks: ApplyHooks = {}
 ): ImportReport {
-  if (plan.preview.token !== expectedToken) throw importError('CONFLICT', 'preview_stale')
-  const rows = new Map(plan.preview.tasks.map((r) => [r.key, r]))
-  const report = emptyReport(plan)
-  d.tx((emit) => {
+  return d.tx((emit) => {
+    const p = plan()
+    if (p.preview.token !== expectedToken) throw importError('CONFLICT', 'preview_stale')
+    const rows = new Map(p.preview.tasks.map((r) => [r.key, r]))
+    const report = emptyReport(p)
     const now = nowIso(d)
-    const projects = resolveProjects(d, emit, plan.projects, now, report)
+    const projects = resolveProjects(d, emit, p.projects, now, report)
     const projectId = (ref: ProjectRef | null): string | null =>
       ref === null ? null : (projects.get(ref.source_key) ?? null)
 
-    for (const t of plan.tasks) {
-      const row = rows.get(t.key)
+    for (const t of p.tasks) {
+      const links = rows.get(t.key)?.new_links ?? 0
       if (t.kind === 'create') {
         const project_id = projectId(t.project)
-        const r = importCreateTaskIn(d, emit, { ...t.create, project_id })
+        const r = importCreateTaskIn(d, emit, { ...t.create, project_id, links })
         writeRecordIn(d.db, {
           ...t.record,
           task_id: r.task_id,
           field_hashes: withProject(t.record.field_hashes, t.project, project_id),
           imported_at: now
         })
-        count(report, r, row?.new_links ?? 0)
+        count(report, r, links)
       } else if (t.kind === 'update') {
         const project_id = t.project === undefined ? undefined : projectId(t.project)
         const set = project_id === undefined ? t.update.set : { ...t.update.set, project_id }
         const r = importUpdateTaskIn(d, emit, {
           ...t.update,
           task_id: t.task_id,
+          links,
           ...(set ? { set } : {})
         })
         writeRecordIn(d.db, {
@@ -60,13 +64,13 @@ export function applyImport(
           field_hashes: withProject(t.record.field_hashes, t.project, project_id),
           imported_at: now
         })
-        count(report, r, row?.new_links ?? 0)
+        count(report, r, links)
         for (const field of t.taken ?? []) report.taken_markdown.push({ key: t.key, field })
       }
       hooks.afterTask?.(t.key)
     }
+    return report
   })
-  return report
 }
 
 /**

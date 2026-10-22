@@ -33,6 +33,8 @@ export type ImportTaskCreate = {
   touched_at: string
   checkpoints: ImportCheckpoint[]
   sessions: ImportSession[]
+  /** Links que o import trouxe (vai para `data.links` da Atividade); padrão 0. */
+  links?: number
 }
 
 export type ImportTaskUpdate = {
@@ -47,6 +49,8 @@ export type ImportTaskUpdate = {
   checkpoints?: ImportCheckpoint[]
   sessions?: ImportSession[]
   workdir?: string
+  /** Links novos (vão para `data.links`); padrão: `append_links.length`. */
+  links?: number
 }
 
 export type ImportWriteResult = {
@@ -129,7 +133,7 @@ export function importCreateTaskIn(
       created: true,
       checkpoints: checkpoints_added,
       sessions: s.added,
-      links: 0
+      links: t.links ?? 0
     }
   })
   return {
@@ -228,7 +232,7 @@ export function importUpdateTaskIn(
       created: false,
       checkpoints: checkpoints_added,
       sessions: s.added,
-      links: u.append_links?.length ?? 0
+      links: u.links ?? u.append_links?.length ?? 0
     }
   })
   return { ...result, activity_id }

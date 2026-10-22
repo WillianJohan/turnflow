@@ -723,6 +723,17 @@ describe('aplicar', () => {
       checkpoints: o.cps ?? ['2026-01-02 — a']
     })
 
+  /** `data.links` da última Atividade `task_import` da task. */
+  const activityLinks = (e: Env, key: string): number => {
+    const r = e.db
+      .prepare(
+        `select data from activity where task_id = ? and op = 'task_import'
+         order by id desc limit 1`
+      )
+      .get(task(e, key).id) as { data: string }
+    return (JSON.parse(r.data) as { links: number }).links
+  }
+
   async function single(): Promise<Env & { id: string }> {
     const e = setup({ [README]: md() })
     await run(e)
@@ -731,7 +742,26 @@ describe('aplicar', () => {
 
   it('aplica e vira task', async () => {
     const e = setup(three())
+    const inTx: boolean[] = []
+    e.after.mockImplementation(() => inTx.push(e.db.inTransaction))
     const r = await run(e)
+    // eventos só depois do commit, com as entidades que o apply tocou
+    expect(inTx.length).toBeGreaterThan(0)
+    expect(inTx.every((x) => !x)).toBe(true)
+    const calls = e.after.mock.calls.map(([c]) => c)
+    expect(new Set(calls.map((c) => c.entity))).toEqual(
+      new Set(['task', 'project', 'session', 'flow', 'activity'])
+    )
+    const ids = ['ABC-1', 'ABC-2', 'ABC-3'].map((k) => task(e, k).id)
+    expect(new Set(calls.filter((c) => c.entity === 'task').flatMap((c) => c.ids))).toEqual(
+      new Set(ids)
+    )
+    expect(calls.find((c) => c.entity === 'project')!.ids).toEqual([task(e, 'ABC-1').project_id])
+    expect(calls.filter((c) => c.entity === 'session').flatMap((c) => c.ids)).toEqual([
+      task(e, 'ABC-1').sessions[0]!.id
+    ])
+    expect(activityLinks(e, 'ABC-1')).toBe(1)
+    expect(activityLinks(e, 'ABC-2')).toBe(0)
     expect(r).toEqual(
       expect.objectContaining({ created: 3, updated: 0, unchanged: 0, projects_created: 1 })
     )
@@ -739,7 +769,7 @@ describe('aplicar', () => {
     expect(t.title).toBe('Synthetic epic')
     expect(t.stage.name).toBe('Implementation')
     expect(t.description).toBe(
-      '## Descrição\n\nSynthetic body.\n\n## Links\n\n- repo => https://example.com/g/r/-/merge_requests/1'
+      'Synthetic body.\n\n## Links\n\n- repo => https://example.com/g/r/-/merge_requests/1'
     )
     expect(t.checkpoints).toEqual([
       expect.objectContaining({
@@ -936,6 +966,34 @@ describe('aplicar', () => {
     )
     expect(r.conflicts_kept).toEqual([])
     expect(r.links_added).toBe(1)
+    expect(activityLinks(e, 'ABC-1')).toBe(1)
+  })
+
+  it('md vence na descrição com link novo: a Atividade conta o link', async () => {
+    const e = await single()
+    writeBrain(e.root, { [README]: md({ body: 'new md body', mrs: [MR2] }) })
+    const r = await run(e)
+    expect(task(e, 'ABC-1').description).toBe(
+      'new md body\n\n## Links\n\n- repo => https://example.com/g/r/-/merge_requests/2'
+    )
+    expect(r.links_added).toBe(1)
+    expect(activityLinks(e, 'ABC-1')).toBe(1)
+  })
+
+  it('o plano é lido dentro da transação do apply', async () => {
+    const e = setup(three())
+    const plan = planImport(e.d, await scanBrain(e.root), { status_map: EMPTY_MAP })
+    let inTx: boolean | null = null
+    applyImport(
+      e.d,
+      () => {
+        inTx = e.db.inTransaction
+        return plan
+      },
+      plan.preview.token
+    )
+    expect(inTx).toBe(true)
+    expect(taskCount(e.db)).toBe(3)
   })
 
   it('apagada não ressuscita', async () => {
@@ -1012,7 +1070,7 @@ describe('aplicar', () => {
     const plan = planImport(e.d, await scanBrain(e.root), { status_map: EMPTY_MAP })
     const keys: string[] = []
     expect(() =>
-      applyImport(e.d, plan, plan.preview.token, {
+      applyImport(e.d, () => plan, plan.preview.token, {
         afterTask: (key) => {
           keys.push(key)
           if (keys.length === 2) throw new Error('injected failure')

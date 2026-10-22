@@ -29,6 +29,14 @@ const brainFormat = [
 ].join('\n')
 
 describe('parseTaskReadme', () => {
+  it.each(['## Descrição', '## descricao', '## DESCRIÇÃO', '## Description', '## description'])(
+    'cabeçalho %s é a própria descrição (sem o cabeçalho)',
+    (heading) => {
+      const md = ['# ABC-1 — T', '', heading, '', 'Body line.', '', '## Notes', 'kept'].join('\n')
+      expect(parseTaskReadme(md, 'ABC-1').description).toBe('Body line.\n\n## Notes\nkept')
+    }
+  )
+
   it('formato do brain', () => {
     const p = parseTaskReadme(brainFormat, 'ABC-1')
     expect(p.key).toBe('ABC-1')
@@ -48,8 +56,9 @@ describe('parseTaskReadme', () => {
       { at: '2026-01-02T12:00:00.000Z', text: 'first checkpoint' },
       { at: '2026-01-03T12:00:01.000Z', text: 'second checkpoint' }
     ])
-    expect(p.description).toContain('## Description')
-    expect(p.description).toContain('First paragraph of the description.')
+    // a seção de descrição é a própria descrição: entra sem o cabeçalho
+    expect(p.description).not.toContain('## Description')
+    expect(p.description).toMatch(/^First paragraph of the description\.\n\n## Acceptance Criteria/)
     expect(p.description).toContain('## Acceptance Criteria')
     expect(p.description).toContain('- criterion one')
     expect(p.description).not.toContain('## Sessions')

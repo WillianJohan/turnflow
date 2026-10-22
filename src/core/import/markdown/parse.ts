@@ -279,6 +279,12 @@ export function parseTaskReadme(text: string, key: string): ParsedTask {
     const isSessions = s.title.startsWith('sess')
     const isCheckpoints = s.title.startsWith('checkpoint')
     const isLinks = s.title === 'mrs' || s.title === 'links'
+    if (s.title === 'descricao' || s.title === 'description') {
+      // a seção de descrição É a descrição: o conteúdo entra sem o cabeçalho
+      const body = trimBlank(s.body.map((l) => l.t)).join('\n')
+      if (body !== '') pieces.push(body)
+      continue
+    }
     if (!isSessions && !isCheckpoints && !isLinks) {
       pieces.push(trimBlank([s.heading, ...s.body.map((l) => l.t)]).join('\n'))
       continue
