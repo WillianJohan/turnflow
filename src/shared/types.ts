@@ -45,6 +45,8 @@ export type AppConfig = {
   appFont: string
   appFontSize: number
   statusIcons: Record<string, string>
+  /** Pasta de trabalho padrão das tasks sem `workdir` (absoluta) ou `null`. */
+  defaultWorkdir: string | null
 }
 export type ConfigState = {
   dir: string

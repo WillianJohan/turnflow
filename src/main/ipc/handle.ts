@@ -23,6 +23,9 @@ export type Handler<C extends Channel> = (
   e: IpcMainInvokeEvent | IpcMainEvent
 ) => Promise<z.input<C['output']>> | z.input<C['output']>
 
+/** O `handle` já amarrado ao ipc e às opções: é o que os `registerXxxIpc` recebem. */
+export type Register = <C extends Channel>(ch: C, fn: Handler<C>) => void
+
 const debugLog = (msg: string): void => {
   if (process.env.TURNFLOW_DEBUG) console.debug(msg)
 }

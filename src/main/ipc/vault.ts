@@ -1,13 +1,12 @@
 import { BRAND } from '../../shared/brand'
 import { VAULT_COPY } from '../../shared/copy/vault'
-import type { Channel } from '../../shared/ipc/define'
 import type { ErrCode } from '../../shared/ipc/result'
 import * as V from '../../shared/ipc/vault'
 import type { Boot } from '../../shared/ipc/vault'
 import { VaultError, type VaultErrorCode } from '../../core/key/errors'
 import { recoveryFileText } from '../../core/key/recovery'
 import type { Vault } from '../../core/key/vault'
-import { IpcError, type Handler } from './handle'
+import { IpcError, type Register } from './handle'
 
 /**
  * Diálogos nativos que os canais do vault usam. `save` grava `text` (0600) e devolve o caminho;
@@ -17,8 +16,6 @@ export type VaultDialogs = {
   save(defaultName: string, text: string): Promise<string | null>
   open(): Promise<string | null>
 }
-
-type Register = <C extends Channel>(ch: C, fn: Handler<C>) => void
 
 // Só o código muda; a mensagem é a do VaultError (VAULT_COPY.errors), que nunca leva segredo.
 const IPC_CODE: Partial<Record<VaultErrorCode, ErrCode>> = {

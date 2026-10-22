@@ -44,9 +44,11 @@ import { getHeader, readCache } from './header'
 import { handle as handleOn, IpcError, type Handler, type IpcLike } from './ipc/handle'
 import { registerPtyIo } from './ipc/ptyIo'
 import { onPtyExit } from './ipc/ptyExit'
+import { registerDomainIpc } from './ipc/domain'
 import { registerSearchIpc } from './ipc/search'
 import { registerVaultIpc, type VaultDialogs } from './ipc/vault'
 import type { Vault } from '../core/key/vault'
+import { changeBus } from './changeBusInstance'
 
 export const UPDATE_ID = '__update__'
 
@@ -56,6 +58,8 @@ export type IpcDeps = {
   dialogs: VaultDialogs
   /** Log local (o mesmo do vault): recebe a mensagem crua dos erros `INTERNAL`. */
   log?: (line: string) => void
+  /** Relógio do domínio (fixo pelo `TURNFLOW_TEST_NOW` no build de teste). */
+  domain: { now: () => Date }
 }
 
 export async function registerIpc(
@@ -156,8 +160,11 @@ export async function registerIpc(
   // config.json + themes/ em ~/.config/turnflow; editar à mão aplica na hora
   const cfgDir = configDir()
   await ensureDefaults(cfgDir)
+  // última pasta padrão lida do config.json: toda leitura (inclusive a do watch) atualiza
+  let defaultWorkdir = (await readConfig(cfgDir)).config.defaultWorkdir
   const configState = async (): Promise<ConfigState> => {
     const { config, error } = await readConfig(cfgDir)
+    defaultWorkdir = config.defaultWorkdir
     const t = await readTheme(cfgDir, config.theme)
     return {
       dir: cfgDir,
@@ -281,6 +288,12 @@ export async function registerIpc(
   handle(C.CHANNELS.header, ({ id, force }) => getHeader(task(id), force))
   registerVaultIpc(handle, deps)
   registerSearchIpc(handle, deps)
+  registerDomainIpc(handle, {
+    vault: deps.vault,
+    now: deps.domain.now,
+    defaultWorkdir: () => defaultWorkdir,
+    afterCommit: changeBus.afterCommit
+  })
 
   return () => {
     unwatchCfg()

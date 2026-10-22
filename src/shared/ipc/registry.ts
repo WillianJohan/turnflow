@@ -1,6 +1,7 @@
 // Registro único dos canais IPC. A chave é o nome do método em window.turnflow.
 import * as clip from './clip'
 import * as config from './config'
+import * as domain from './domain'
 import * as fonts from './fonts'
 import * as header from './header'
 import * as pty from './pty'
@@ -49,6 +50,32 @@ export const CHANNELS = {
   vaultRecover: vault.vaultRecover,
   vaultWipe: vault.vaultWipe,
   vaultRetry: vault.vaultRetry,
-  searchQuery: search.searchQuery
+  searchQuery: search.searchQuery,
+  taskList: domain.taskList,
+  taskGet: domain.taskGet,
+  attentionCounts: domain.attentionCounts,
+  flowList: domain.flowList,
+  taskTypeList: domain.taskTypeList,
+  projectList: domain.projectList,
+  projectGet: domain.projectGet,
+  activityList: domain.activityList,
+  taskCreate: domain.taskCreate,
+  taskUpdate: domain.taskUpdate,
+  taskSetWorkdir: domain.taskSetWorkdir,
+  taskSetStage: domain.taskSetStage,
+  taskClose: domain.taskClose,
+  taskBlock: domain.taskBlock,
+  taskUnblock: domain.taskUnblock,
+  taskDismiss: domain.taskDismiss,
+  taskDelete: domain.taskDelete,
+  taskMove: domain.taskMove,
+  taskSetFlow: domain.taskSetFlow,
+  checkpointAdd: domain.checkpointAdd,
+  projectCreate: domain.projectCreate,
+  projectUpdate: domain.projectUpdate,
+  projectDelete: domain.projectDelete,
+  flowSaveStage: domain.flowSaveStage,
+  flowDeleteStage: domain.flowDeleteStage,
+  activityUndo: domain.activityUndo
 } as const
 export type Channels = typeof CHANNELS

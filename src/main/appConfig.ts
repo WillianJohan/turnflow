@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, writeFile, access, unlink } from 'fs/promises
 import { basename, join } from 'path'
 import type { AppConfig, Theme } from '../shared/types'
 import { CONFIG_COPY } from '../shared/copy/config'
+import { isAbsolutePath } from '../shared/pathSyntax'
 import { IpcError } from './ipc/handle'
 
 // Pasta de config do app (~/.config/turnflow): config.json + themes/*.json.
@@ -28,7 +29,9 @@ export const DEFAULT_CONFIG: AppConfig = {
     Concluído: '✅',
     Arquivada: '📦',
     Outros: '❔'
-  }
+  },
+  // pasta de trabalho das tasks sem `workdir` próprio (absoluta); null = nenhuma
+  defaultWorkdir: null
 }
 
 const DARK: Theme = {
@@ -580,7 +583,11 @@ const sane = (raw: Record<string, unknown>): AppConfig => ({
       const mine = (raw.statusIcons as Record<string, unknown> | undefined)?.[k]
       return [k, typeof mine === 'string' ? mine : v]
     })
-  )
+  ),
+  defaultWorkdir:
+    typeof raw.defaultWorkdir === 'string' && isAbsolutePath(raw.defaultWorkdir)
+      ? raw.defaultWorkdir
+      : DEFAULT_CONFIG.defaultWorkdir
 })
 
 // Saída do `fc-list : family` → nomes únicos ordenados (cada linha pode listar apelidos após vírgula).

@@ -155,6 +155,17 @@ describe('proteção do config.json', () => {
     )
     expect((await readConfig(d)).config).toEqual(DEFAULT_CONFIG)
   })
+  it('pasta padrão: só caminho absoluto; relativo ou não-texto vira null', async () => {
+    expect(DEFAULT_CONFIG.defaultWorkdir).toBeNull()
+    const d = await tmp()
+    const read = async (v: unknown): Promise<string | null> => {
+      await writeFile(join(d, 'config.json'), JSON.stringify({ defaultWorkdir: v }))
+      return (await readConfig(d)).config.defaultWorkdir
+    }
+    expect(await read('rel/x')).toBeNull()
+    expect(await read(5)).toBeNull()
+    expect(await read('/abs')).toBe('/abs')
+  })
 })
 
 describe('watchConfig', () => {

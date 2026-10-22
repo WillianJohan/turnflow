@@ -226,6 +226,10 @@ function startApp(): void {
 
   app.whenReady().then(async () => {
     if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
+    // relógio do domínio: só o build de teste aceita TURNFLOW_TEST_NOW (o ramo some no release)
+    const now = __TURNFLOW_TEST__
+      ? ((await import('./testing/clock')).testNow(process.env) ?? (() => new Date()))
+      : () => new Date()
     const { vault, timer, log } = await startVault()
     if (is.dev) installDevMenu(() => timer.stats())
     const win = createWindow()
@@ -235,7 +239,8 @@ function startApp(): void {
       vault,
       version: app.getVersion(),
       dialogs: vaultDialogs(win),
-      log: (line) => log('error', line)
+      log: (line) => log('error', line),
+      domain: { now }
     })
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])

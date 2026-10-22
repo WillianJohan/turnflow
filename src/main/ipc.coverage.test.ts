@@ -46,7 +46,8 @@ describe('registerIpc', () => {
     const deps = {
       vault: {} as never,
       version: '0.0.0',
-      dialogs: { save: async () => null, open: async () => null }
+      dialogs: { save: async () => null, open: async () => null },
+      domain: { now: () => new Date() }
     }
     const dispose = await registerIpc(win as never, ipc as never, deps)
     dispose()

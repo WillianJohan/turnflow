@@ -17,7 +17,8 @@ export const AppConfigZ = z.object({
   termFont: z.string(),
   appFont: z.string(),
   appFontSize: z.number(),
-  statusIcons: z.record(z.string())
+  statusIcons: z.record(z.string()),
+  defaultWorkdir: z.string().max(4096).nullable()
 }) satisfies z.ZodType<AppConfig>
 
 export const ConfigStateZ = z.object({
