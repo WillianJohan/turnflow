@@ -28,6 +28,23 @@ export function configDir(
   return p.join(env.XDG_CONFIG_HOME || p.join(home, '.config'), name)
 }
 
+/** Nome da pasta do app legado cujos temas e config o import migra. Só este arquivo, o `IMPORT_COPY`,
+ * `core/import/dkdesk/**` e `main/ipc/import.ts` citam o nome (allowlist do `check-private`). */
+export const LEGACY_DIR_NAME = 'dkdesk'
+
+/** Pasta de config do app legado (somente leitura): mesma regra por plataforma do `configDir`. */
+export function legacyConfigDir(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir()
+): string {
+  const p = pathFor(platform)
+  if (platform === 'darwin') return p.join(home, 'Library', 'Application Support', LEGACY_DIR_NAME)
+  if (platform === 'win32')
+    return p.join(env.APPDATA ?? p.join(home, 'AppData', 'Roaming'), LEGACY_DIR_NAME)
+  return p.join(env.XDG_CONFIG_HOME || p.join(home, '.config'), LEGACY_DIR_NAME)
+}
+
 // userData do processo em modo CLI (`turnflow mcp`): subpasta própria, pra o Electron (Local State,
 // Crashpad) não criar `~/.config/<BRAND.name>/` nem brigar com o lock/profile da instância com janela.
 export function cliUserDataDir(

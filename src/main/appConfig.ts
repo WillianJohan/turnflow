@@ -652,6 +652,24 @@ export function watchConfig(dir: string, onChange: () => void): () => void {
   }
 }
 
+/** `themes/*.json` como estão no disco (sem mesclar com o tema padrão); JSON inválido → `json: null`.
+ * É o que o import compara para não duplicar: `listThemes`/`readTheme` mesclam com o escuro. */
+export async function readThemesRaw(dir: string): Promise<{ id: string; json: unknown | null }[]> {
+  const files = (await readdir(themesDir(dir)).catch(() => [] as string[])).filter((f) =>
+    f.endsWith('.json')
+  )
+  return Promise.all(
+    files.map(async (f) => {
+      const id = basename(f, '.json')
+      try {
+        return { id, json: JSON.parse(await readFile(join(themesDir(dir), f), 'utf8')) as unknown }
+      } catch {
+        return { id, json: null }
+      }
+    })
+  )
+}
+
 export async function listThemes(dir: string): Promise<{ id: string; name: string }[]> {
   const files = (await readdir(themesDir(dir)).catch(() => [] as string[])).filter((f) =>
     f.endsWith('.json')

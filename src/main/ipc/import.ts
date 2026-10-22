@@ -2,6 +2,9 @@ import { join } from 'node:path'
 import type { z } from 'zod'
 import type { Db } from '../../core/db/open'
 import type { DomainDeps } from '../../core/domain/context'
+import { applyDkdesk } from '../../core/import/dkdesk/apply'
+import { planDkdesk } from '../../core/import/dkdesk/plan'
+import { readDkdesk } from '../../core/import/dkdesk/read'
 import { importError } from '../../core/import/errors'
 import { applyBrain, previewBrain } from '../../core/import/markdown'
 import type { ImportOptions } from '../../core/import/markdown/plan'
@@ -13,7 +16,9 @@ import {
 } from '../../core/import/markdown/statusMap'
 import type { Vault } from '../../core/key/vault'
 import type { ImportWarning } from '../../shared/contracts'
+import type { AppConfig } from '../../shared/types'
 import * as I from '../../shared/ipc/import'
+import { BUILTIN_THEMES, DEFAULT_CONFIG, readConfig } from '../appConfig'
 import type { Register } from './handle'
 import { toIpcDomainError } from './domain'
 
@@ -24,6 +29,12 @@ export type ImportIpcDeps = {
   pickFolder: () => Promise<string | null>
   /** Grava `config.brainDir` (e a lateral herdada passa a listar dela). */
   setBrainDir: (dir: string) => Promise<void>
+  /** Pasta de config do app legado (somente leitura). */
+  legacyDir: () => string
+  /** Grava o patch no `config.json` do app. */
+  writeConfig: (patch: Partial<AppConfig>) => Promise<void>
+  /** `themes/*.json` do app, crus (sem mesclar com o tema padrão). */
+  readThemesRaw: () => Promise<{ id: string; json: unknown | null }[]>
   /** Log local: falha do que roda depois do commit do apply (mapa salvo, `brainDir`). */
   log?: (line: string) => void
 }
@@ -95,6 +106,35 @@ export function registerImportIpc(h: Register, deps: ImportIpcDeps): void {
         )
       await deps.setBrainDir(input.root).catch(warn('brain_dir_not_saved', 'brainDir'))
       return report
+    })
+  )
+
+  // Temas e config do app legado. Prévia e apply refazem a leitura; o apply só escreve com o mesmo token.
+  const legacyPlan = async (): Promise<{
+    plan: ReturnType<typeof planDkdesk>
+    src: Awaited<ReturnType<typeof readDkdesk>>
+  }> => {
+    const src = await readDkdesk(deps.legacyDir())
+    const { config } = await readConfig(deps.configDir)
+    const plan = planDkdesk(src, {
+      config: { ...config },
+      themes: await deps.readThemesRaw(),
+      builtin: BUILTIN_THEMES,
+      defaults: DEFAULT_CONFIG
+    })
+    return { plan, src }
+  }
+
+  h(I.importLegacyDryRun, () => guard(async () => (await legacyPlan()).plan))
+
+  h(I.importLegacyApply, ({ token }) =>
+    guard(async () => {
+      const { plan, src } = await legacyPlan()
+      if (plan.token !== token) throw importError('CONFLICT', 'preview_stale')
+      return applyDkdesk(plan, src, {
+        themesDir: join(deps.configDir, 'themes'),
+        writeConfig: deps.writeConfig
+      })
     })
   )
 

@@ -14,9 +14,11 @@ import {
   listThemes,
   readConfig,
   readTheme,
+  readThemesRaw,
   watchConfig,
   writeConfig
 } from './appConfig'
+import { legacyConfigDir } from '../shared/paths'
 import { existsSync } from 'fs'
 import { access, readFile } from 'fs/promises'
 import type { Events } from '../shared/ipc/events'
@@ -337,6 +339,9 @@ export async function registerIpc(
       await writeConfig(cfgDir, { brainDir: dir })
       await setLegacyBrain(dir)
     },
+    legacyDir: () => legacyConfigDir(),
+    writeConfig: async (patch) => void (await writeConfig(cfgDir, patch)),
+    readThemesRaw: () => readThemesRaw(cfgDir),
     log: deps.log
   })
 

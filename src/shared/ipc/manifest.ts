@@ -68,5 +68,7 @@ export const MANIFEST = {
   activityUndo: ['activity.undo', 'invoke'],
   importDryRun: ['import.dryRun', 'invoke'],
   importApply: ['import.apply', 'invoke'],
-  importPickFolder: ['import.pickFolder', 'invoke']
+  importPickFolder: ['import.pickFolder', 'invoke'],
+  importLegacyDryRun: ['import.legacyDryRun', 'invoke'],
+  importLegacyApply: ['import.legacyApply', 'invoke']
 } as const satisfies { [K in keyof Channels]: readonly [string, Channels[K]['kind']] }

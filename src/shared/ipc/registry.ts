@@ -80,6 +80,8 @@ export const CHANNELS = {
   activityUndo: domain.activityUndo,
   importDryRun: imp.importDryRun,
   importApply: imp.importApply,
-  importPickFolder: imp.importPickFolder
+  importPickFolder: imp.importPickFolder,
+  importLegacyDryRun: imp.importLegacyDryRun,
+  importLegacyApply: imp.importLegacyApply
 } as const
 export type Channels = typeof CHANNELS

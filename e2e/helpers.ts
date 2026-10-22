@@ -7,7 +7,11 @@ export type Keyring = 'basic_text' | 'real'
 export type Launched = { app: ElectronApplication; page: Page }
 
 /** Abre o build de teste com config, socket, brain e chaveiro falso isolados em `dir`. */
-export async function launch(dir: string, keyring: Keyring): Promise<Launched> {
+export async function launch(
+  dir: string,
+  keyring: Keyring,
+  extraEnv: Record<string, string> = {}
+): Promise<Launched> {
   const brain = join(dir, 'brain')
   mkdirSync(brain, { recursive: true })
   const env: Record<string, string> = {}
@@ -20,7 +24,8 @@ export async function launch(dir: string, keyring: Keyring): Promise<Launched> {
       TURNFLOW_CONFIG_DIR: dir,
       TURNFLOW_SOCKET: join(dir, 's.sock'),
       TURNFLOW_TEST_KEYRING: keyring,
-      TURNFLOW_BRAIN: brain
+      TURNFLOW_BRAIN: brain,
+      ...extraEnv
     }
   })
   const page = await app.firstWindow()
@@ -33,7 +38,7 @@ export async function launch(dir: string, keyring: Keyring): Promise<Launched> {
  */
 export const test = base.extend<{
   dir: string
-  launch: (keyring: Keyring, at?: string) => Promise<Launched>
+  launch: (keyring: Keyring, at?: string, env?: Record<string, string>) => Promise<Launched>
 }>({
   // eslint-disable-next-line no-empty-pattern
   dir: async ({}, provide) => {
@@ -47,8 +52,8 @@ export const test = base.extend<{
   launch: async ({ dir }, provide) => {
     const open = new Set<ElectronApplication>()
     try {
-      await provide(async (keyring, at = dir) => {
-        const l = await launch(at, keyring)
+      await provide(async (keyring, at = dir, env) => {
+        const l = await launch(at, keyring, env)
         open.add(l.app)
         l.app.on('close', () => open.delete(l.app))
         return l

@@ -131,6 +131,31 @@ export const IMPORT_COPY = {
     sessionTaken: (id: string, key: string): string =>
       `Session ${id} already belongs to ${key} and stays there.`
   },
+  /** Migração dos temas e da config do app legado (Ajustes → Import). */
+  legacy: {
+    button: 'Import from dkdesk',
+    intro:
+      'Copy the themes and basic settings from the old app. Its folder is only read; your layout, statuses and tasks are not touched.',
+    previewing: 'Reading the old app folder…',
+    apply: 'Apply',
+    applying: 'Importing…',
+    themes: 'Themes',
+    settings: 'Settings',
+    noThemes: 'No themes found.',
+    nothing: 'Nothing new to import.',
+    ignored: (keys: string): string => `Not migrated: ${keys}`,
+    actions: {
+      create: (to: string): string => `Will be copied as "${to}"`,
+      skip_same: (to: string): string => `Already here as "${to}"`,
+      skip_builtin: 'Built-in theme, skipped',
+      skip_invalid: 'Not a valid theme, skipped'
+    },
+    previewRefreshed:
+      'The old app folder changed since the preview. The preview was refreshed: check it and apply again.',
+    done: (themes: number, keys: number): string =>
+      `Imported ${themes} ${themes === 1 ? 'theme' : 'themes'} and ${keys} ${keys === 1 ? 'setting' : 'settings'}.`,
+    skippedFiles: (ids: string): string => `Already existed and were left as they are: ${ids}`
+  },
   importedStatus: (status: string): string => `Imported status: ${status}`,
   /** Por que um caminho ficou de fora do import. */
   ignored: {

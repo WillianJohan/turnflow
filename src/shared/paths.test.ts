@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND } from './brand'
-import { binDir, cliUserDataDir, configDir, isAbsolutePath, runDir, socketPath } from './paths'
+import {
+  LEGACY_DIR_NAME,
+  binDir,
+  cliUserDataDir,
+  configDir,
+  isAbsolutePath,
+  legacyConfigDir,
+  runDir,
+  socketPath
+} from './paths'
 
 const home = '/home/u'
 
@@ -86,11 +95,26 @@ describe('paths', () => {
     expect(a).not.toBe(b)
     expect(a.toLowerCase()).not.toContain('alice')
   })
-  it('nenhum resultado contém dkdesk', () => {
+  it('nenhum resultado contém o nome do app legado', () => {
     for (const platform of ['linux', 'darwin', 'win32'] as const)
       for (const dev of [false, true])
         for (const fn of [configDir, socketPath, binDir, runDir])
-          expect(fn({}, platform, home, dev).toLowerCase()).not.toContain('dkdesk')
+          expect(fn({}, platform, home, dev).toLowerCase()).not.toContain(LEGACY_DIR_NAME)
+  })
+  it('legacyConfigDir: pasta do app legado por plataforma', () => {
+    expect(legacyConfigDir({}, 'linux', '/h/u')).toBe('/h/u/.config/' + LEGACY_DIR_NAME)
+    expect(legacyConfigDir({ XDG_CONFIG_HOME: '/c' }, 'linux', '/h/u')).toBe(
+      '/c/' + LEGACY_DIR_NAME
+    )
+    expect(legacyConfigDir({}, 'darwin', '/Users/u')).toBe(
+      '/Users/u/Library/Application Support/' + LEGACY_DIR_NAME
+    )
+    expect(legacyConfigDir({ APPDATA: 'C:\\A' }, 'win32', 'C:\\Users\\u')).toBe(
+      'C:\\A\\' + LEGACY_DIR_NAME
+    )
+    expect(legacyConfigDir({}, 'win32', 'C:\\Users\\u')).toBe(
+      'C:\\Users\\u\\AppData\\Roaming\\' + LEGACY_DIR_NAME
+    )
   })
   it('cliUserDataDir: subpasta cli da config (segue dev e TURNFLOW_CONFIG_DIR)', () => {
     expect(cliUserDataDir({}, 'linux', home)).toBe('/home/u/.config/turnflow/cli')

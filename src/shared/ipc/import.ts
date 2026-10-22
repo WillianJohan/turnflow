@@ -62,5 +62,55 @@ export const importPickFolder = defineChannel(
   z.object({ path: z.string().nullable() })
 )
 
+// Migração dos temas e da config do app legado (E4.3): prévia lê a pasta de novo a cada chamada e o
+// apply só escreve se o `token` ainda é o da prévia (senão `CONFLICT preview_stale`).
+const Short = z.string().max(256)
+export const LegacyPlanZ = z
+  .object({
+    token: z.string().min(1).max(256),
+    themes: z
+      .array(
+        z
+          .object({
+            from: Short,
+            to: Short.nullable(),
+            name: Short,
+            action: z.enum(['create', 'skip_same', 'skip_builtin', 'skip_invalid'])
+          })
+          .strict()
+      )
+      .max(500),
+    config: z
+      .object({
+        theme: Short,
+        draftMode: z.boolean(),
+        notifications: z.boolean(),
+        fontSize: z.number(),
+        termFont: Short,
+        appFont: Short,
+        appFontSize: z.number()
+      })
+      .partial()
+      .strict(),
+    ignored_keys: z.array(Short).max(500)
+  })
+  .strict()
+export const LegacyApplyResultZ = z
+  .object({
+    themes_created: z.number().int().min(0),
+    config_keys: z.array(Short).max(50),
+    skipped: z.array(Short).max(500)
+  })
+  .strict()
+
+export const importLegacyDryRun = defineChannel('import.legacyDryRun', NoInput, LegacyPlanZ)
+export const importLegacyApply = defineChannel(
+  'import.legacyApply',
+  z.object({ token: z.string().min(1).max(256) }).strict(),
+  LegacyApplyResultZ
+)
+
+export type LegacyPlan = z.output<typeof LegacyPlanZ>
+export type LegacyApplyResult = z.output<typeof LegacyApplyResultZ>
 export type ImportDryRunInput = z.input<typeof importDryRun.input>
 export type ImportApplyInput = z.input<typeof importApply.input>

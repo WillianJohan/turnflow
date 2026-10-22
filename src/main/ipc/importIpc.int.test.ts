@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { VaultError } from '../../core/key/errors'
@@ -12,6 +12,7 @@ import type { Channel } from '../../shared/ipc/define'
 import type { DomainChanged } from '../../shared/ipc/events'
 import { CHANNELS } from '../../shared/ipc/registry'
 import type { Result } from '../../shared/ipc/result'
+import { DEFAULT_CONFIG, listThemes, readConfig, readThemesRaw, writeConfig } from '../appConfig'
 import { handle, type Handler, type IpcLike } from './handle'
 import { domainCache, registerDomainIpc } from './domain'
 import { registerImportIpc } from './import'
@@ -24,6 +25,7 @@ type Env = {
   db: Db
   call: Call
   root: string
+  legacy: string
   configDir: string
   mapFile: string
   afterCommit: ReturnType<typeof vi.fn<(c: DomainChanged) => void>>
@@ -61,7 +63,21 @@ function setup(
   const setBrainDir = vi.fn<(dir: string) => Promise<void>>(async () => undefined)
   const pickFolder = vi.fn<() => Promise<string | null>>(async () => null)
   registerDomainIpc(h, { vault, domainFor })
-  registerImportIpc(h, { vault, domainFor, configDir, pickFolder, setBrainDir, log: o.log })
+  // config e temas do app de verdade (em disco); a pasta do app legado é sintética
+  writeFileSync(join(configDir, 'config.json'), JSON.stringify(DEFAULT_CONFIG))
+  mkdirSync(join(configDir, 'themes'))
+  const legacy = tmpDir()
+  registerImportIpc(h, {
+    vault,
+    domainFor,
+    configDir,
+    pickFolder,
+    setBrainDir,
+    legacyDir: () => legacy,
+    writeConfig: async (patch) => void (await writeConfig(configDir, patch)),
+    readThemesRaw: () => readThemesRaw(configDir),
+    log: o.log
+  })
   const root = tmpDir()
   writeBrain(root, o.files ?? {})
   const call: Call = async (method, input) => {
@@ -74,6 +90,7 @@ function setup(
     db,
     call,
     root,
+    legacy,
     configDir,
     mapFile: join(configDir, 'import-status-map.json'),
     afterCommit,
@@ -329,5 +346,71 @@ describe('canais do import', () => {
     const ids = e.afterCommit.mock.calls.flatMap(([c]) => (c.entity === 'task' ? c.ids : []))
     const rows = data<TaskRow[]>(await e.call('taskList', { scope: 'attention' }))
     for (const r of rows) expect(ids).toContain(r.id)
+  })
+
+  describe('app legado', () => {
+    const seedLegacy = (dir: string): void => {
+      mkdirSync(join(dir, 'themes'), { recursive: true })
+      writeFileSync(
+        join(dir, 'config.json'),
+        JSON.stringify({ theme: 'night', termFont: 'Fira Code', zoom: 2 })
+      )
+      writeFileSync(
+        join(dir, 'themes', 'night.json'),
+        JSON.stringify({ name: 'Night', ui: { bg: '#0a0a14', accent: '#ff00aa' }, terminal: {} })
+      )
+    }
+    type Plan = { token: string; themes: { action: string; to: string | null }[]; config: object }
+    type Result = { themes_created: number; config_keys: string[]; skipped: string[] }
+
+    it('legacy dry-run e apply pelo IPC', async () => {
+      const e = setup()
+      seedLegacy(e.legacy)
+      const p = data<Plan>(await e.call('importLegacyDryRun'))
+      expect(p.themes).toEqual([expect.objectContaining({ action: 'create', to: 'night' })])
+      expect(p.config).toEqual({ theme: 'night', termFont: 'Fira Code' })
+      const r = data<Result>(await e.call('importLegacyApply', { token: p.token }))
+      expect(r).toEqual({ themes_created: 1, config_keys: ['theme', 'termFont'], skipped: [] })
+      const cfg = (await readConfig(e.configDir)).config
+      expect(cfg).toMatchObject({ theme: 'night', termFont: 'Fira Code' })
+    })
+
+    it('tema legado aparece em Ajustes → Tema', async () => {
+      const e = setup()
+      seedLegacy(e.legacy)
+      const p = data<Plan>(await e.call('importLegacyDryRun'))
+      data(await e.call('importLegacyApply', { token: p.token }))
+      expect(await listThemes(e.configDir)).toContainEqual({ id: 'night', name: 'Night' })
+    })
+
+    it('segundo apply legado não cria arquivo', async () => {
+      const e = setup()
+      seedLegacy(e.legacy)
+      const p = data<Plan>(await e.call('importLegacyDryRun'))
+      data(await e.call('importLegacyApply', { token: p.token }))
+      const before = readdirSync(join(e.configDir, 'themes')).sort()
+      const p2 = data<Plan>(await e.call('importLegacyDryRun'))
+      expect(p2.themes.map((t) => t.action)).toEqual(['skip_same'])
+      expect(p2.config).toEqual({})
+      const r = data<Result>(await e.call('importLegacyApply', { token: p2.token }))
+      expect(r.themes_created).toBe(0)
+      expect(readdirSync(join(e.configDir, 'themes')).sort()).toEqual(before)
+    })
+
+    it('token velho é preview_stale e origem ausente é NOT_FOUND', async () => {
+      const e = setup()
+      rmSync(e.legacy, { recursive: true })
+      expect(await e.call('importLegacyDryRun')).toMatchObject({
+        ok: false,
+        error: { code: 'NOT_FOUND' }
+      })
+      mkdirSync(e.legacy)
+      seedLegacy(e.legacy)
+      expect(await e.call('importLegacyApply', { token: 'velho' })).toMatchObject({
+        ok: false,
+        error: { code: 'CONFLICT' }
+      })
+      expect(readdirSync(join(e.configDir, 'themes'))).toEqual([])
+    })
   })
 })

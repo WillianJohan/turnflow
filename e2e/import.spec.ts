@@ -1,5 +1,6 @@
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
+import { LEGACY_DIR_NAME } from '../src/shared/paths'
 import { IMPORT_COPY } from '../src/shared/copy/import'
 import type { RendererApi } from '../src/shared/ipc/api'
 import type { Page } from '@playwright/test'
@@ -128,4 +129,41 @@ test('escolhas da tela chegam ao core: etapa escolhida e conflito com o markdown
   await expect(page.getByTestId('import-report')).toContainText(COPY.takenMarkdown(1))
   expect((await taskGet(page, 'ABC-1')).title).toBe('Write the contributor guide')
   await app.close()
+})
+
+test('import do app legado: temas na lista de Ajustes, sem duplicar na segunda vez', async ({
+  dir,
+  launch
+}) => {
+  const xdg = join(dir, 'xdg')
+  const legacy = join(xdg, LEGACY_DIR_NAME)
+  mkdirSync(join(legacy, 'themes'), { recursive: true })
+  writeFileSync(
+    join(legacy, 'config.json'),
+    JSON.stringify({ theme: 'night', termFont: 'Fira Code' })
+  )
+  writeFileSync(
+    join(legacy, 'themes', 'night.json'),
+    JSON.stringify({ name: 'Night Owl', ui: { bg: '#0a0a14', accent: '#ff00aa' }, terminal: {} })
+  )
+  const { page } = await launch('basic_text', dir, { XDG_CONFIG_HOME: xdg })
+  await page.getByTestId('pw-new').fill(PASSWORD)
+  await page.getByTestId('pw-confirm').fill(PASSWORD)
+  await page.getByTestId('pw-submit').click()
+  await page.getByTestId('words-saved').check()
+  await page.getByTestId('words-continue').click()
+  await expect(page.getByTestId('app-shell')).toBeVisible()
+  await page.getByTitle('Configurações: tema e fonte').click()
+
+  await page.getByTestId('legacy-preview').click()
+  await expect(page.getByTestId('legacy-plan')).toContainText('Night Owl')
+  await page.getByTestId('legacy-apply').click()
+  await expect(page.getByTestId('legacy-done')).toHaveText(IMPORT_COPY.legacy.done(1, 2))
+  expect(readFileSync(join(dir, 'themes', 'night.json'), 'utf8')).toContain('"base"')
+  await expect(page.locator('.theme-chip', { hasText: 'Night Owl' })).toHaveCount(1)
+
+  await page.getByTestId('legacy-preview').click()
+  await expect(page.getByTestId('legacy-plan')).toContainText(IMPORT_COPY.legacy.nothing)
+  await expect(page.getByTestId('legacy-apply')).toBeDisabled()
+  await expect(page.locator('.theme-chip', { hasText: 'Night Owl' })).toHaveCount(1)
 })
