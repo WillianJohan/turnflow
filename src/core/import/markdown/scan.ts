@@ -23,7 +23,8 @@ export const nodeBrainFs: BrainFs = {
   readdir: (p) => readdir(p, { withFileTypes: true }),
   readFile: async (p, maxBytes) => {
     // NOFOLLOW: se o README virou symlink depois do readdir, falha (ELOOP) em vez de seguir.
-    const h = await open(p, constants.O_RDONLY | constants.O_NOFOLLOW)
+    // No Windows a constante não existe: sobra só o filtro isSymbolicLink do readdir.
+    const h = await open(p, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
     try {
       const size = (await h.stat()).size
       const cap = maxBytes === undefined ? size : Math.min(size, maxBytes)

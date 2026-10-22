@@ -459,4 +459,10 @@ describe('scanBrain', () => {
     await expect(nodeBrainFs.readFile(join(dir, 'link.md'))).rejects.toThrow()
     expect((await nodeBrainFs.readFile(join(dir, 'real.md'), 1)).toString()).toBe('x')
   })
+
+  it('readFile corta no maxBytes mesmo com arquivo maior', async () => {
+    const dir = tmpDir()
+    writeBrain(dir, { 'ten.md': '0123456789' })
+    expect((await nodeBrainFs.readFile(join(dir, 'ten.md'), 3)).toString()).toBe('012')
+  })
 })
