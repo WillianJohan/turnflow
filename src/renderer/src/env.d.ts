@@ -6,3 +6,5 @@ declare global {
     turnflow: RendererApi
   }
 }
+
+declare const __TURNFLOW_TEST__: boolean

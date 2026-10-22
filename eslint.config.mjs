@@ -69,7 +69,7 @@ const boundaries = [
 ]
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'scripts/lint-fixtures/**'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', '**/out-test', 'scripts/lint-fixtures/**'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

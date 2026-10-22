@@ -17,7 +17,11 @@
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:linux": "electron-vite build && electron-builder --linux",
+    "build:test": "TURNFLOW_BUILD=test electron-vite build --outDir out-test",
     "test": "vitest run",
+    "test:unit": "vitest run --exclude '**/*.int.test.ts'",
+    "test:integration": "vitest run --passWithNoTests 'src/**/*.int.test.ts'",
+    "check-release": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-release.ts",
     "check-brand": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-brand.ts"
   },
   "dependencies": {

@@ -56,6 +56,7 @@ app.setPath('userData', join(configDir(), 'electron'))
 app.on('will-quit', changeBus.dispose)
 
 app.whenReady().then(async () => {
+  if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
   const win = createWindow()
   // handlers registrados antes de carregar a página: senão o renderer chama antes de existirem
   const dispose = await registerIpc(win)

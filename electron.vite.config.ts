@@ -14,10 +14,15 @@ const devCsp = {
     )
 }
 
+// Build de teste (TURNFLOW_BUILD=test) liga os ganchos de teste; no release a constante vira false
+// e o bundler elimina o ramo (conferido por scripts/check-release.ts).
+const define = { __TURNFLOW_TEST__: JSON.stringify(process.env.TURNFLOW_BUILD === 'test') }
+
 export default defineConfig({
-  main: {},
-  preload: {},
+  main: { define },
+  preload: { define },
   renderer: {
+    define,
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src')

@@ -1,0 +1,28 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # postinstall baixa o Electron e recompila o node-pty
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:integration
+      - run: npm run check-brand
+      - name: Build de release sem gancho de teste
+        run: |
+          npm run build
+          npm run check-release
+      - run: npm run build:test
+      # e2e entra com o primeiro teste e2e (precisará de xvfb-run no Linux)
+      - run: echo "sem e2e"
