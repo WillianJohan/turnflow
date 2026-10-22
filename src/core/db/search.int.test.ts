@@ -17,9 +17,9 @@ describe('busca FTS5', () => {
 
   it('2 caracteres usa o fallback', () => {
     const db = openTestDb()
-    insertTask(db, { key: 'WF-4808', title: 'Ajuste' })
+    insertTask(db, { key: 'AB-123', title: 'Ajuste' })
     insertTask(db, { key: 'T-2', title: 'Outra' })
-    expect(runSearch(db, 'WF').map((h) => h.key)).toEqual(['WF-4808'])
+    expect(runSearch(db, 'AB').map((h) => h.key)).toEqual(['AB-123'])
     const aj = runSearch(db, 'aj')
     expect(aj).toHaveLength(1)
     expect(aj[0]).toMatchObject({ kind: 'task', title: 'Ajuste' })

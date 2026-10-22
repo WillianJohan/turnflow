@@ -238,7 +238,7 @@ describe('abas avulsas', () => {
   it('tipo pelo id', () => {
     expect(scratchKind('~claude-2')).toBe('claude')
     expect(scratchKind('~shell-1')).toBe('shell')
-    expect(scratchKind('WF-1')).toBeNull()
+    expect(scratchKind('T-1')).toBeNull()
   })
 })
 
@@ -303,11 +303,11 @@ describe('windowTitle', () => {
     expect(
       windowTitle(
         L([
-          [['WF-1', 'WF-2'], 1],
+          [['T-1', 'T-2'], 1],
           [['~shell-1'], 0]
         ])
       )
-    ).toBe(`WF-2 │ Terminal 1 — ${BRAND.name}`)
+    ).toBe(`T-2 │ Terminal 1 — ${BRAND.name}`)
     expect(windowTitle(EMPTY)).toBe(BRAND.name)
   })
 })
@@ -373,19 +373,19 @@ describe('aba de configurações', () => {
 describe('rename (aba avulsa adotada pela task)', () => {
   it('troca o id no lugar e mantém a aba ativa', () => {
     expect(
-      reduce(L([[['WF-1', '~claude-1'], 1]]), { t: 'rename', from: '~claude-1', to: 'WF-5024' })
-    ).toEqual(L([[['WF-1', 'WF-5024'], 1]]))
+      reduce(L([[['T-1', '~claude-1'], 1]]), { t: 'rename', from: '~claude-1', to: 'T-5024' })
+    ).toEqual(L([[['T-1', 'T-5024'], 1]]))
   })
   it('se a task já estava aberta (README), a aba velha dela sai', () => {
     const l: Layout = {
       panels: [
-        { tabs: ['WF-5024', 'X'], active: 1 },
+        { tabs: ['T-5024', 'X'], active: 1 },
         { tabs: ['~claude-1'], active: 0 }
       ],
       focused: 1
     }
-    const r = reduce(l, { t: 'rename', from: '~claude-1', to: 'WF-5024' })
-    expect(r.panels.map((p) => p.tabs)).toEqual([['X'], ['WF-5024']])
+    const r = reduce(l, { t: 'rename', from: '~claude-1', to: 'T-5024' })
+    expect(r.panels.map((p) => p.tabs)).toEqual([['X'], ['T-5024']])
     expect(r.focused).toBe(1)
   })
 })

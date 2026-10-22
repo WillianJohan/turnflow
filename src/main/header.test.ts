@@ -44,9 +44,9 @@ describe('getHeader', () => {
   const setup = async (): Promise<{ task: Task; dir: string }> => {
     const dir = await mkdtemp(join(tmpdir(), 'dk-'))
     const readmePath = join(dir, 'README.md')
-    await writeFile(readmePath, '# WF-1 — t')
+    await writeFile(readmePath, '# T-1 — t')
     const task: Task = {
-      id: 'WF-1',
+      id: 'T-1',
       title: 't',
       status: '',
       bucket: { idx: 10, name: 'Outros' },

@@ -187,7 +187,7 @@ function App(): React.JSX.Element {
     },
     [layout, live.alive]
   )
-  // título da janela = aba ativa de cada painel (ex.: "WF-5030 │ WF-4802 — <nome do app>")
+  // título da janela = aba ativa de cada painel (ex.: "T-5030 │ T-4802 — <nome do app>")
   useEffect(() => {
     document.title = windowTitle(layout)
   }, [layout])

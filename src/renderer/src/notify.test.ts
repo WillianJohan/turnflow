@@ -20,18 +20,18 @@ it('desligado nas configurações não avisa', () =>
 
 it('texto: permissão usa a mensagem do claude', () =>
   expect(
-    notifyText('WF-5024', {
+    notifyText('T-5024', {
       event: 'Notification',
       message: 'Claude needs your permission to use Bash'
     })
   ).toEqual({
-    title: 'WF-5024 · Pediu permissão',
+    title: 'T-5024 · Pediu permissão',
     body: 'Claude needs your permission to use Bash'
   }))
 it('texto: fim de turno', () =>
-  expect(notifyText('WF-5024', { event: 'Stop' })).toEqual({
-    title: 'WF-5024 · Terminou',
+  expect(notifyText('T-5024', { event: 'Stop' })).toEqual({
+    title: 'T-5024 · Terminou',
     body: 'Esperando você'
   }))
 it('início de sessão não é pendência', () =>
-  expect(notifyText('WF-1', { event: 'SessionStart' })).toBeNull())
+  expect(notifyText('T-1', { event: 'SessionStart' })).toBeNull())

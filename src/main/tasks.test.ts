@@ -29,7 +29,7 @@ const UUID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 describe('parseReadme', () => {
   it('lê título, status, pai e sessões', () => {
     const text = [
-      '# WF-1234 — Título X',
+      '# T-1234 — Título X',
       '',
       'Status: em andamento',
       '',
@@ -40,13 +40,13 @@ describe('parseReadme', () => {
       '## Checkpoints',
       `- 2026-10-16: citou ${UUID2} aqui`,
       ...Array(180).fill('linha'),
-      '**Pai:** WF-9'
+      '**Pai:** T-9'
     ].join('\n')
-    const t = parseReadme(text, 'WF-1234', 'current', '/x/README.md')
+    const t = parseReadme(text, 'T-1234', 'current', '/x/README.md')
     expect(t.title).toBe('Título X')
     expect(t.status).toBe('em andamento')
     expect(t.bucket).toEqual({ idx: 3, name: 'Em andamento' })
-    expect(t.parent).toBe('WF-9')
+    expect(t.parent).toBe('T-9')
     expect(t.sessions).toEqual([
       { date: '2026-10-14', uuid: UUID2, desc: 'início' },
       { date: '2026-10-15', uuid: UUID, desc: 'análise' }
@@ -54,14 +54,14 @@ describe('parseReadme', () => {
   })
 
   it('aceita **Status:**', () => {
-    expect(
-      parseReadme('# WF-1 — a\n**Status:** merge request\n', 'WF-1', 'current', '').status
-    ).toBe('merge request')
+    expect(parseReadme('# T-1 — a\n**Status:** merge request\n', 'T-1', 'current', '').status).toBe(
+      'merge request'
+    )
   })
 
   it('README vazio não quebra', () => {
-    const t = parseReadme('', 'WF-77', 'current', '')
-    expect(t.title).toBe('WF-77')
+    const t = parseReadme('', 'T-77', 'current', '')
+    expect(t.title).toBe('T-77')
     expect(t.bucket).toEqual({ idx: 10, name: 'Outros' })
     expect(t.parent).toBeNull()
     expect(t.sessions).toEqual([])
@@ -71,15 +71,15 @@ describe('parseReadme', () => {
 describe('loadTasks', () => {
   it('varre current e done e ignora pasta sem README', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dk-'))
-    await mkdir(join(root, 'current/WF-1'), { recursive: true })
-    await mkdir(join(root, 'current/WF-2'), { recursive: true })
-    await mkdir(join(root, 'done/WF-3'), { recursive: true })
-    await writeFile(join(root, 'current/WF-1/README.md'), '# WF-1 — um\nStatus: em andamento\n')
-    await writeFile(join(root, 'done/WF-3/README.md'), '# WF-3 — três\nStatus: em andamento\n')
+    await mkdir(join(root, 'current/T-1'), { recursive: true })
+    await mkdir(join(root, 'current/T-2'), { recursive: true })
+    await mkdir(join(root, 'done/T-3'), { recursive: true })
+    await writeFile(join(root, 'current/T-1/README.md'), '# T-1 — um\nStatus: em andamento\n')
+    await writeFile(join(root, 'done/T-3/README.md'), '# T-3 — três\nStatus: em andamento\n')
     const ts = await loadTasks(root)
     expect(ts.map((t) => [t.id, t.dir, t.bucket.name]).sort()).toEqual([
-      ['WF-1', 'current', 'Em andamento'],
-      ['WF-3', 'done', 'Arquivada']
+      ['T-1', 'current', 'Em andamento'],
+      ['T-3', 'done', 'Arquivada']
     ])
   })
 })

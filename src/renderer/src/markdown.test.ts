@@ -3,7 +3,7 @@ import { expect, it } from 'vitest'
 import { renderMd } from './markdown'
 
 it('renderiza título, lista de critérios e código', () => {
-  const html = renderMd('# WF-1 — x\n\n## Critérios\n- [x] feito\n- [ ] falta\n\n`a.ts:12`')
+  const html = renderMd('# T-1 — x\n\n## Critérios\n- [x] feito\n- [ ] falta\n\n`a.ts:12`')
   expect(html).toContain('<h1')
   expect(html).toContain('type="checkbox"')
   expect(html).toContain('<code>a.ts:12</code>')

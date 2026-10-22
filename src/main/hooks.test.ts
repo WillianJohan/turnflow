@@ -21,14 +21,14 @@ describe('startHookServer', () => {
   it('entrega evento com token e recusa sem', async () => {
     const got: [string, string][] = []
     const s = await startHookServer((id, st) => got.push([id, st]))
-    const url = `http://127.0.0.1:${s.port}/hook/WF-1`
+    const url = `http://127.0.0.1:${s.port}/hook/T-1`
     const body = JSON.stringify({ hook_event_name: 'PreToolUse' })
     const bad = await fetch(url, { method: 'POST', body })
     const ok = await fetch(url, { method: 'POST', body, headers: { 'x-turnflow-token': s.token } })
     await s.close()
     expect(bad.status).toBe(401)
     expect(ok.status).toBe(204)
-    expect(got).toEqual([['WF-1', 'working']])
+    expect(got).toEqual([['T-1', 'working']])
   })
 
   it('o comando do hook via curl chega no servidor', async () => {
@@ -42,14 +42,14 @@ describe('startHookServer', () => {
             ...process.env,
             TURNFLOW_PORT: String(s.port),
             TURNFLOW_TOKEN: s.token,
-            TURNFLOW_TASK: 'WF-9'
+            TURNFLOW_TASK: 'T-9'
           }
         },
         (e: Error | null) => (e ? rej(e) : res())
       ).stdin?.end(JSON.stringify({ hook_event_name: 'Stop' }))
     )
     await s.close()
-    expect(got).toEqual(['WF-9:waiting'])
+    expect(got).toEqual(['T-9:waiting'])
   })
 })
 
@@ -72,7 +72,7 @@ describe('HOOK_CMD', () => {
     const t = Date.now()
     execSync(HOOK_CMD, {
       input: '{}',
-      env: { ...process.env, TURNFLOW_PORT: '9', TURNFLOW_TOKEN: 'x', TURNFLOW_TASK: 'WF-1' }
+      env: { ...process.env, TURNFLOW_PORT: '9', TURNFLOW_TOKEN: 'x', TURNFLOW_TASK: 'T-1' }
     })
     expect(Date.now() - t).toBeLessThan(2000)
   })

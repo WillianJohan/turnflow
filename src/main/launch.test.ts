@@ -3,13 +3,13 @@ import { claudeArgv, inUseBy, newSessionPrompt, ptyEnv, resolveLaunch } from './
 import type { Task } from './tasks'
 
 const task = (uuids: string[]): Task => ({
-  id: 'WF-1',
+  id: 'T-1',
   title: 'Teste',
   status: '',
   bucket: { idx: 10, name: 'Outros' },
   parent: null,
   dir: 'current',
-  readmePath: '/b/WF-1/README.md',
+  readmePath: '/b/T-1/README.md',
   sessions: uuids.map((uuid) => ({ date: '2026-10-01', uuid, desc: '' }))
 })
 const deps = (
@@ -38,12 +38,12 @@ describe('resolveLaunch', () => {
     })
   })
   it('aberta em outra aba do app → elsewhere com a task dona', async () => {
-    const d = { ...deps({ a: '/x' }), inApp: (u: string) => (u === 'a' ? 'WF-2' : null) }
+    const d = { ...deps({ a: '/x' }), inApp: (u: string) => (u === 'a' ? 'T-2' : null) }
     expect(await resolveLaunch(task(['a']), d)).toEqual({
       kind: 'elsewhere',
       uuid: 'a',
       pid: 0,
-      by: 'WF-2'
+      by: 'T-2'
     })
   })
   it('rodando fora → elsewhere', async () => {
@@ -86,7 +86,7 @@ describe('claudeArgv', () => {
       '--resume',
       'u1',
       '--name',
-      `WF-1 a "b" $(rm -rf ~)`,
+      `T-1 a "b" $(rm -rf ~)`,
       '--settings',
       '/s/hooks.json'
     ])
@@ -100,9 +100,9 @@ describe('claudeArgv', () => {
 describe('newSessionPrompt', () => {
   it('cita o README e a seção Sessões', () => {
     const p = newSessionPrompt(task([]))
-    expect(p).toContain('/b/WF-1/README.md')
+    expect(p).toContain('/b/T-1/README.md')
     expect(p).toContain("'## Sessões'")
-    expect(p).toContain('task WF-1')
+    expect(p).toContain('task T-1')
   })
 })
 
@@ -112,15 +112,15 @@ describe('inUseBy', () => {
       inUseBy(
         'u',
         new Map([
-          ['WF-1', 'u'],
-          ['WF-2', 'x']
+          ['T-1', 'u'],
+          ['T-2', 'x']
         ]),
-        'WF-3'
+        'T-3'
       )
-    ).toBe('WF-1')
+    ).toBe('T-1')
   })
   it('a própria task não conta', () => {
-    expect(inUseBy('u', new Map([['WF-3', 'u']]), 'WF-3')).toBeNull()
+    expect(inUseBy('u', new Map([['T-3', 'u']]), 'T-3')).toBeNull()
   })
 })
 
@@ -139,8 +139,8 @@ describe('ptyEnv', () => {
         CLAUDE_CODE_ENTRYPOINT: 'cli',
         HOME: '/h'
       },
-      { TURNFLOW_TASK: 'WF-1' }
+      { TURNFLOW_TASK: 'T-1' }
     )
-    expect(env).toEqual({ PATH: '/x', HOME: '/h', TURNFLOW_TASK: 'WF-1', TERM: 'xterm-256color' })
+    expect(env).toEqual({ PATH: '/x', HOME: '/h', TURNFLOW_TASK: 'T-1', TERM: 'xterm-256color' })
   })
 })
