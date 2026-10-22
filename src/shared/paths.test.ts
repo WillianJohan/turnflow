@@ -97,7 +97,7 @@ describe('paths', () => {
     expect(cliUserDataDir({}, 'linux', home, true)).toBe('/home/u/.config/turnflow-dev/cli')
     expect(cliUserDataDir({ TURNFLOW_CONFIG_DIR: '/iso' }, 'linux', home)).toBe('/iso/cli')
     expect(cliUserDataDir({}, 'win32', 'C:\\Users\\u')).toBe(
-      'C:\\Users\\u\\AppData\\Roaming\\Turnflow\\cli'
+      `C:\\Users\\u\\AppData\\Roaming\\${BRAND.name}\\cli`
     )
   })
 })

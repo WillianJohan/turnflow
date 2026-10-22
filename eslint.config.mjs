@@ -13,7 +13,7 @@ const crossFeature = (depth) => ({
 // renderer ↛ core: o core roda no main; o renderer só enxerga o que passa por IPC/shared.
 // Todo bloco que redefine no-restricted-imports para o renderer precisa repetir este padrão.
 const noCoreFromRenderer = {
-  group: ['**/core/**', '@core/**'],
+  group: ['**/core', '**/core/**', '@core', '@core/**'],
   message: 'renderer não importa core: use IPC (src/shared) em vez de acessar o core direto.'
 }
 const featureFiles = (depth) => `**/src/renderer/src/features/*/*${'/*'.repeat(depth)}.{ts,tsx}`

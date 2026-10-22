@@ -47,6 +47,11 @@ describe('fronteiras de módulo', () => {
     expect(r.messages[0]).toContain('no-restricted-imports')
     expect(r.messages[0]).toContain('renderer não importa core')
   })
+  it('renderer não importa o índice do core (sem subpath)', async () => {
+    const r = await lint('src/renderer/src/bad-core-index-import.ts')
+    expect(r.errors).toBe(1)
+    expect(r.messages[0]).toContain('renderer não importa core')
+  })
   it('arquivo de feature também não importa core (bloco de feature redefine a regra)', async () => {
     const r = await lint('src/renderer/src/features/c/bad-feature-core.ts')
     expect(r.errors).toBe(1)

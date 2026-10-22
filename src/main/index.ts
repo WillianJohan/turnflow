@@ -18,7 +18,7 @@ import { startSocketServer, stubMcpHandler } from './socketServer'
 // O lock é da instância com janela; a CLI nunca o disputa nem foca a janela aberta.
 const cli = parseCli(process.argv)
 if (cli.mode === 'cli') {
-  // antes de qualquer outra coisa do Electron: sem isso o Chromium cria ~/.config/Turnflow/
+  // antes de qualquer outra coisa do Electron: sem isso o Chromium cria ~/.config/<BRAND.name>/
   // (Local State, Crashpad) a cada execução, ignorando TURNFLOW_CONFIG_DIR e o sufixo -dev
   const cliData = cliUserDataDir(process.env, process.platform, homedir(), !app.isPackaged)
   mkdirSync(cliData, { recursive: true, mode: 0o700 })
@@ -113,7 +113,9 @@ async function startLocalSurface(): Promise<void> {
       if (closing) return
       closing = true
       e.preventDefault()
-      server.close().finally(() => app.quit())
+      // teto de 2 s: um close() que não volta não pode prender o app aberto
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000))
+      Promise.race([server.close(), timeout]).finally(() => app.quit())
     })
   } catch (e) {
     // ALREADY_RUNNING com o lock na mão = outra instância com outro userData (ex.: teste)

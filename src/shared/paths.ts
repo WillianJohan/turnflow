@@ -29,7 +29,7 @@ export function configDir(
 }
 
 // userData do processo em modo CLI (`turnflow mcp`): subpasta própria, pra o Electron (Local State,
-// Crashpad) não criar `~/.config/Turnflow/` nem brigar com o lock/profile da instância com janela.
+// Crashpad) não criar `~/.config/<BRAND.name>/` nem brigar com o lock/profile da instância com janela.
 export function cliUserDataDir(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
