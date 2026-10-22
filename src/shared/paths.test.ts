@@ -32,7 +32,38 @@ describe('paths', () => {
     expect(configDir(env, 'linux', home)).toBe('/tmp/x')
     expect(binDir(env, 'linux', home)).toBe('/tmp/x/bin')
   })
+  it('TURNFLOW_CONFIG_DIR isola o socket mesmo com XDG_RUNTIME_DIR (hash curto do config dir)', () => {
+    const xdg = '/run/user/1000'
+    const a = socketPath({ XDG_RUNTIME_DIR: xdg, TURNFLOW_CONFIG_DIR: '/tmp/a' }, 'linux', home)
+    const b = socketPath({ XDG_RUNTIME_DIR: xdg, TURNFLOW_CONFIG_DIR: '/tmp/b' }, 'linux', home)
+    expect(a).not.toBe(b)
+    expect(a).toMatch(/^\/run\/user\/1000\/turnflow-[0-9a-f]{8}\/turnflow\.sock$/)
+    expect(a).not.toBe('/run/user/1000/turnflow/turnflow.sock')
+    const dev = socketPath(
+      { XDG_RUNTIME_DIR: xdg, TURNFLOW_CONFIG_DIR: '/tmp/a' },
+      'linux',
+      home,
+      true
+    )
+    expect(dev).toMatch(/^\/run\/user\/1000\/turnflow-[0-9a-f]{8}-dev\/turnflow\.sock$/)
+    // estável: mesmo config dir → mesmo socket (o CLI e o app resolvem igual)
+    expect(socketPath({ XDG_RUNTIME_DIR: xdg, TURNFLOW_CONFIG_DIR: '/tmp/a' }, 'linux', home)).toBe(
+      a
+    )
+  })
+  it('TURNFLOW_CONFIG_DIR sem XDG_RUNTIME_DIR: socket dentro do config dir', () => {
+    expect(socketPath({ TURNFLOW_CONFIG_DIR: '/tmp/a' }, 'linux', home)).toBe(
+      '/tmp/a/run/turnflow.sock'
+    )
+  })
   it('TURNFLOW_SOCKET vence', () => {
+    expect(
+      socketPath(
+        { TURNFLOW_SOCKET: '/tmp/s.sock', TURNFLOW_CONFIG_DIR: '/tmp/a', XDG_RUNTIME_DIR: '/r' },
+        'linux',
+        home
+      )
+    ).toBe('/tmp/s.sock')
     expect(socketPath({ TURNFLOW_SOCKET: '/tmp/s.sock' }, 'linux', home)).toBe('/tmp/s.sock')
   })
   it('mac usa Application Support', () => {

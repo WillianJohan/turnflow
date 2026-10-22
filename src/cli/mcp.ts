@@ -36,8 +36,22 @@ export interface McpOpts {
   timeoutMs?: number
 }
 
-// garante que o que foi escrito saiu antes do app.exit()
-const flush = (w: Writable): Promise<void> => new Promise((r) => w.write('', () => r()))
+// garante que o que foi escrito saiu antes do app.exit(), com teto: stream travado/morto não segura
+const FLUSH_CAP_MS = 500
+const flush = (w: Writable): Promise<void> =>
+  new Promise((r) => {
+    const t = setTimeout(r, FLUSH_CAP_MS)
+    const done = (): void => {
+      clearTimeout(t)
+      r()
+    }
+    if (w.destroyed || w.writableEnded) return done()
+    try {
+      w.write('', done)
+    } catch {
+      done()
+    }
+  })
 
 export function runMcp(opts: McpOpts): Promise<number> {
   const { stdin, stdout, stderr } = opts
@@ -51,7 +65,7 @@ export function runMcp(opts: McpOpts): Promise<number> {
       settled = true
       clearTimeout(timer)
       stdin.unpipe(sock)
-      if (msg) stderr.write(msg)
+      if (msg && !stderr.destroyed) stderr.write(msg)
       await Promise.all([flush(stdout), flush(stderr)])
       sock.destroy()
       resolve(code)
@@ -67,6 +81,10 @@ export function runMcp(opts: McpOpts): Promise<number> {
       else finish(1, notOpenMsg())
     })
     sock.once('connect', () => sock.write(helloLine(opts.token ?? '')))
+    // EPIPE no stdout (cliente MCP morreu) ou erro no stdin não pode virar exceção solta
+    stdout.on('error', () => finish(1))
+    stdin.on('error', () => finish(1))
+    stderr.on('error', () => {})
 
     // até o \n do {"ok":...}, acumula; o resto do mesmo chunk já é dado do servidor
     let head = Buffer.alloc(0)

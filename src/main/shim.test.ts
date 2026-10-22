@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shimContent } from './shim'
+import { detectShimTarget, shimContent } from './shim'
 
 describe('shimContent', () => {
   it('AppImage: exec do $APPIMAGE, 0755, nome turnflow', () => {
@@ -46,5 +46,53 @@ describe('shimContent', () => {
     expect(shimContent({ kind: 'exec', exec: 'C:\\a%b\\t.exe' }, 'win32').body).toBe(
       '@"C:\\a%%b\\t.exe" %*\r\n'
     )
+  })
+})
+
+describe('detectShimTarget', () => {
+  const base = {
+    execPath: '/tmp/.mount_TxYz/turnflow',
+    appPath: '/tmp/.mount_TxYz/resources/app.asar'
+  }
+  it('AppImage: APPIMAGE setado e execPath dentro do APPDIR', () => {
+    expect(
+      detectShimTarget({
+        ...base,
+        dev: false,
+        env: { APPIMAGE: '/h/T.AppImage', APPDIR: '/tmp/.mount_TxYz' }
+      })
+    ).toEqual({ kind: 'appimage', appimage: '/h/T.AppImage' })
+  })
+  it('APPIMAGE herdado (execPath fora do APPDIR) → exec', () => {
+    expect(
+      detectShimTarget({
+        dev: false,
+        execPath: '/opt/T/turnflow',
+        appPath: '/opt/T/resources/app.asar',
+        env: { APPIMAGE: '/h/Outro.AppImage', APPDIR: '/tmp/.mount_Outro' }
+      })
+    ).toEqual({ kind: 'exec', exec: '/opt/T/turnflow' })
+  })
+  it('APPIMAGE sem APPDIR → exec', () => {
+    expect(detectShimTarget({ ...base, dev: false, env: { APPIMAGE: '/h/T.AppImage' } })).toEqual({
+      kind: 'exec',
+      exec: base.execPath
+    })
+  })
+  it('dev vence APPIMAGE (electron . aberto de dentro de um AppImage)', () => {
+    expect(
+      detectShimTarget({
+        dev: true,
+        execPath: '/r/node_modules/electron/dist/electron',
+        appPath: '/r',
+        env: { APPIMAGE: '/h/T.AppImage', APPDIR: '/r' }
+      })
+    ).toEqual({ kind: 'dev', electron: '/r/node_modules/electron/dist/electron', appDir: '/r' })
+  })
+  it('empacotado comum → exec', () => {
+    expect(detectShimTarget({ dev: false, execPath: '/opt/T/t', appPath: '/x', env: {} })).toEqual({
+      kind: 'exec',
+      exec: '/opt/T/t'
+    })
   })
 })

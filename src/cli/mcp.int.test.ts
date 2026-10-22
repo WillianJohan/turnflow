@@ -2,7 +2,7 @@ import { createServer, Server, Socket } from 'net'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { PassThrough } from 'stream'
+import { PassThrough, Writable } from 'stream'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { runMcp } from './mcp'
 
@@ -109,4 +109,50 @@ it('{"ok":false,"code":"AUTH"} → 1 com o code no stderr', async () => {
   const s = io()
   expect(await runMcp({ socket: sock, ...s })).toBe(1)
   expect(text(s.stderr)).toContain('AUTH')
+})
+
+it('stdout que dá erro no meio (EPIPE: cliente morreu) → resolve, sem throw nem hang', async () => {
+  const sock = join(dir, 'epipe.sock')
+  await listen(sock, (c) => {
+    c.once('data', () => {
+      c.write('{"ok":true}\n')
+      c.write('{"jsonrpc":"2.0","id":1,"result":{}}\n')
+    })
+    c.resume()
+  })
+  const stdout = new Writable({
+    write: (_b, _e, cb) => cb(Object.assign(new Error('EPIPE'), { code: 'EPIPE' }))
+  })
+  const s = io()
+  const t0 = Date.now()
+  const code = await runMcp({ socket: sock, stdin: s.stdin, stdout, stderr: s.stderr })
+  expect(code).toBe(1)
+  expect(Date.now() - t0).toBeLessThan(2000)
+})
+
+it('stdin que dá erro → resolve com 1', async () => {
+  const sock = join(dir, 'stdin-err.sock')
+  await listen(sock, (c) => {
+    c.once('data', () => c.write('{"ok":true}\n'))
+    c.resume()
+  })
+  const s = io()
+  const done = runMcp({ socket: sock, ...s })
+  setTimeout(() => s.stdin.destroy(new Error('boom')), 50)
+  expect(await done).toBe(1)
+})
+
+it('flush tem teto: stdout que nunca confirma a escrita não segura o retorno', async () => {
+  const s = io()
+  const stdout = new Writable({ write: () => {} }) // nunca chama o cb
+  stdout.write('x')
+  const t0 = Date.now()
+  const code = await runMcp({
+    socket: join(dir, 'nada.sock'),
+    stdin: s.stdin,
+    stdout,
+    stderr: s.stderr
+  })
+  expect(code).toBe(1)
+  expect(Date.now() - t0).toBeLessThan(2000)
 })

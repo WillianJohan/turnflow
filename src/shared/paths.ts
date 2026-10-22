@@ -44,8 +44,16 @@ export function runDir(
   dev = false
 ): string {
   const p = pathFor(platform)
-  if (platform === 'linux' && env.XDG_RUNTIME_DIR)
+  if (platform === 'linux' && env.XDG_RUNTIME_DIR) {
+    // TURNFLOW_CONFIG_DIR (testes/instância isolada) ganha socket próprio: hash curto do config dir
+    // mantém o sun_path pequeno e não colide com o app de verdade
+    const override = env[`${ENV}CONFIG_DIR`]
+    if (override) {
+      const hash = createHash('sha256').update(override).digest('hex').slice(0, 8)
+      return p.join(env.XDG_RUNTIME_DIR, `${BRAND.id}-${hash}${dev ? '-dev' : ''}`)
+    }
     return p.join(env.XDG_RUNTIME_DIR, appDirName(platform, dev))
+  }
   return p.join(configDir(env, platform, home, dev), 'run')
 }
 

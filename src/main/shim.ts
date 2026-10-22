@@ -9,6 +9,21 @@ export type ShimTarget =
   | { kind: 'exec'; exec: string }
   | { kind: 'dev'; electron: string; appDir: string }
 
+// dev primeiro (electron . aberto de dentro de um AppImage herda APPIMAGE); AppImage só quando o
+// próprio executável mora no APPDIR montado — senão o APPIMAGE é herança de outro processo
+export function detectShimTarget(d: {
+  dev: boolean
+  execPath: string
+  appPath: string
+  env: NodeJS.ProcessEnv
+}): ShimTarget {
+  if (d.dev) return { kind: 'dev', electron: d.execPath, appDir: d.appPath }
+  const { APPIMAGE, APPDIR } = d.env
+  if (APPIMAGE && APPDIR && d.execPath.startsWith(APPDIR.replace(/\/+$/, '') + '/'))
+    return { kind: 'appimage', appimage: APPIMAGE }
+  return { kind: 'exec', exec: d.execPath }
+}
+
 export interface ShimContent {
   file: string
   body: string

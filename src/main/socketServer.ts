@@ -29,12 +29,34 @@ const unlinkQuiet = (p: string): void => {
   }
 }
 
+// sun_path: 104 bytes no mac/BSD, 108 no Linux (com o NUL final)
+const SUN_PATH_MAX = process.platform === 'linux' ? 107 : 103
+
+export interface SocketServerOpts {
+  // false quando o path veio de TURNFLOW_SOCKET: o dir pode ser alheio (ex.: /tmp), não dá chmod
+  secureDir?: boolean
+}
+
 export async function startSocketServer(
   path: string,
-  onConn: (s: Socket) => void
+  onConn: (s: Socket) => void,
+  opts: SocketServerOpts = {}
 ): Promise<{ close(): Promise<void> }> {
   const pipe = isPipe(path)
-  if (!pipe) mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+  if (!pipe && Buffer.byteLength(path) > SUN_PATH_MAX)
+    throw Object.assign(
+      new Error(
+        `SOCKET_PATH_TOO_LONG: ${path} (${Buffer.byteLength(path)} bytes, máx. ${SUN_PATH_MAX})`
+      ),
+      { code: 'SOCKET_PATH_TOO_LONG' }
+    )
+  if (!pipe) {
+    const dir = dirname(path)
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    // o dir 0700 é a proteção do socket: entre o listen e o chmod 0600 abaixo, o arquivo nasce com
+    // a umask, mas ninguém além do dono atravessa o dir. Por isso aperta o dir mesmo se já existia.
+    if (opts.secureDir !== false) chmodSync(dir, 0o700)
+  }
   if ((await probe(path)) === 'alive')
     throw Object.assign(new Error(`ALREADY_RUNNING: ${path}`), { code: 'ALREADY_RUNNING' })
   if (!pipe) unlinkQuiet(path)

@@ -9,7 +9,7 @@ import { binDir, configDir, socketPath } from './config'
 import { BRAND } from '../shared/brand'
 import { changeBus } from './changeBusInstance'
 import { parseCli, runCli } from '../cli/dispatch'
-import { shimContent, writeShim, type ShimTarget } from './shim'
+import { detectShimTarget, shimContent, writeShim } from './shim'
 import { startSocketServer, stubMcpHandler } from './socketServer'
 
 // Despacho do modo CLI (`turnflow mcp`): antes do lock, do whenReady e de qualquer janela.
@@ -17,6 +17,15 @@ import { startSocketServer, stubMcpHandler } from './socketServer'
 const cli = parseCli(process.argv)
 if (cli.mode === 'cli') {
   app.dock?.hide()
+  // nada de diálogo de erro do Electron nem processo pendurado: CLI sai com código
+  process.on('uncaughtException', (e) => {
+    try {
+      process.stderr.write(`${e.message}\n`)
+    } catch {
+      // stderr também pode estar morto
+    }
+    app.exit(1)
+  })
   runCli(cli, {
     socket: socketPath(),
     env: process.env,
@@ -71,21 +80,23 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-function shimTarget(): ShimTarget {
-  if (process.env.APPIMAGE) return { kind: 'appimage', appimage: process.env.APPIMAGE }
-  if (is.dev) return { kind: 'dev', electron: process.execPath, appDir: app.getAppPath() }
-  return { kind: 'exec', exec: process.execPath }
-}
-
 // shim de path estável + socket local: falha aqui não derruba a janela
 async function startLocalSurface(): Promise<void> {
   try {
-    writeShim(binDir(), shimContent(shimTarget(), process.platform))
+    const target = detectShimTarget({
+      dev: is.dev,
+      execPath: process.execPath,
+      appPath: app.getAppPath(),
+      env: process.env
+    })
+    writeShim(binDir(), shimContent(target, process.platform))
   } catch (e) {
     console.error('[shim]', e)
   }
   try {
-    const server = await startSocketServer(socketPath(), stubMcpHandler)
+    const server = await startSocketServer(socketPath(), stubMcpHandler, {
+      secureDir: !process.env[`${BRAND.envPrefix}SOCKET`]
+    })
     app.on('will-quit', () => void server.close())
   } catch (e) {
     // ALREADY_RUNNING com o lock na mão = outra instância com outro userData (ex.: teste)

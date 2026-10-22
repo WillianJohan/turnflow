@@ -1,5 +1,5 @@
 import { createConnection } from 'net'
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
@@ -86,4 +86,26 @@ it('close remove o arquivo do socket', async () => {
   const s = await startSocketServer(p, stubMcpHandler)
   await s.close()
   expect(() => statSync(p)).toThrow()
+})
+
+it('dir do socket que já existe com permissão frouxa vira 0700', async () => {
+  const d = join(root, 'run')
+  mkdirSync(d, { mode: 0o755 })
+  chmodSync(d, 0o755)
+  await start(join(d, 'turnflow.sock'))
+  expect(statSync(d).mode & 0o777).toBe(0o700)
+})
+
+it('secureDir:false (TURNFLOW_SOCKET apontando pra dir alheio) não mexe no dir existente', async () => {
+  const d = join(root, 'shared')
+  mkdirSync(d)
+  chmodSync(d, 0o755)
+  const s = await startSocketServer(join(d, 'x.sock'), stubMcpHandler, { secureDir: false })
+  closers.push(() => s.close())
+  expect(statSync(d).mode & 0o777).toBe(0o755)
+})
+
+it('path maior que o sun_path → SOCKET_PATH_TOO_LONG com erro claro', async () => {
+  const p = join(root, 'x'.repeat(120), 'turnflow.sock')
+  await expect(startSocketServer(p, stubMcpHandler)).rejects.toThrow('SOCKET_PATH_TOO_LONG')
 })
