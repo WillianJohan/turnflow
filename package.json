@@ -23,6 +23,7 @@
     "test:integration": "vitest run -c vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "check-release": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-release.ts",
+    "check-package": "npm run build && electron-builder --dir && npm run check-release",
     "dev:secret": "tsx scripts/dev/secret.ts",
     "check-brand": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-brand.ts"
   },

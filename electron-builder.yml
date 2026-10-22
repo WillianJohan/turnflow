@@ -2,13 +2,16 @@ appId: io.github.willianjohan.turnflow
 productName: Turnflow
 directories:
   buildResources: build
+# Lista do que entra (as dependências de produção o electron-builder junta sozinho). Por exclusão,
+# out-test/, e2e/, scripts/ e notas de trabalho iam parar no asar; `npm run check-package` confere.
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - resources/**
+  - package.json
+  - LICENSE
+  - NOTICE
 asarUnpack:
   - resources/**
   - node_modules/better-sqlite3-multiple-ciphers/**
