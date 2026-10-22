@@ -30,6 +30,9 @@ export const VAULT_COPY = {
     LOCKED: `${BRAND.name} está bloqueado`,
     BAD_STATE: 'Operação inválida neste estado'
   },
+  /** Validação de senha no contrato IPC (o mínimo usa `errors.PASSWORD_TOO_SHORT`). */
+  passwordTooLong: (max: number): string => `A senha pode ter até ${max} caracteres`,
+  passwordEmpty: 'Digite a senha',
   /** Por que o vault está bloqueado (`lockReason`). */
   lockReason: {
     password: 'Digite a senha mestra para abrir',

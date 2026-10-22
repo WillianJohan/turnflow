@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { BRAND } from '../../shared/brand'
+import { VAULT_COPY } from '../../shared/copy/vault'
 import type { Channel } from '../../shared/ipc/define'
 import { CHANNELS } from '../../shared/ipc/registry'
 import type { Boot } from '../../shared/ipc/vault'
@@ -101,6 +102,12 @@ describe('canais do vault', () => {
     const begin = ch.firstRunBegin.input
     expect(begin.safeParse({ password: '😀'.repeat(1024) }).success).toBe(true)
     expect(begin.safeParse({ password: '😀'.repeat(1025) }).success).toBe(false)
+    const long = begin.safeParse({ password: '😀'.repeat(1025) })
+    expect(long.error?.issues[0]?.message).toBe(VAULT_COPY.passwordTooLong(1024))
+    const short = begin.safeParse({ password: 'curta' })
+    expect(short.error?.issues[0]?.message).toBe(VAULT_COPY.errors.PASSWORD_TOO_SHORT)
+    const empty = ch.vaultUnlock.input.safeParse({ password: '' })
+    expect(empty.error?.issues[0]?.message).toBe(VAULT_COPY.passwordEmpty)
     expect(ch.vaultUnlock.input.safeParse({ password: '😀'.repeat(1025) }).success).toBe(false)
     expect(
       ch.vaultRecover.input.safeParse({ words: 'x', newPassword: 'a'.repeat(1025) }).success

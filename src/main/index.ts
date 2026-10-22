@@ -1,7 +1,6 @@
 import { app, dialog, ipcMain, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { mkdirSync, writeFileSync } from 'fs'
-import { chmod, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
@@ -19,6 +18,7 @@ import { vaultPaths } from '../core/key/paths'
 import { createVault, type Vault } from '../core/key/vault'
 import { selectKeyBackend } from './keychain'
 import { createLocalLog } from './localLog'
+import { writeSecretFile } from './secretFile'
 import { installDevMenu } from './devMenu'
 import { wireVaultEvents, type VaultDialogs } from './ipc/vault'
 
@@ -139,8 +139,7 @@ function vaultDialogs(win: BrowserWindow): VaultDialogs {
         defaultPath: join(app.getPath('documents'), defaultName)
       })
       if (r.canceled || !r.filePath) return null
-      await writeFile(r.filePath, text, { mode: 0o600 })
-      await chmod(r.filePath, 0o600) // o mode do writeFile não vale para arquivo que já existia
+      await writeSecretFile(r.filePath, text)
       return r.filePath
     }
   }
@@ -183,8 +182,8 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer }> {
 
 function startApp(): void {
   // sem menu: os aceleradores padrão (Ctrl+R, Ctrl+Shift+R, Ctrl+W) recarregavam/fechavam a janela.
-  // No dev o menu é o de diagnóstico (installDevMenu), sem esses aceleradores.
-  if (!is.dev) Menu.setApplicationMenu(null)
+  // No dev o menu de diagnóstico (installDevMenu) entra no whenReady, também sem esses aceleradores.
+  Menu.setApplicationMenu(null)
 
   // antes do lock: o lock do Electron é por userData
   app.setPath('userData', join(configDir(), 'electron'))

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { defineChannel } from './define'
 import { NoInput } from './common'
+import { VAULT_COPY } from '../copy/vault'
 
 const PASSWORD_MAX = 1024
 // code points depois do NFC: é assim que o vault conta o mínimo (Global Constraints)
@@ -10,7 +11,7 @@ const codePoints = (s: string): number => [...s.normalize('NFC')].length
 const Password = z
   .string()
   .max(PASSWORD_MAX * 4)
-  .refine((s) => codePoints(s) <= PASSWORD_MAX, `A senha pode ter até ${PASSWORD_MAX} caracteres`)
+  .refine((s) => codePoints(s) <= PASSWORD_MAX, VAULT_COPY.passwordTooLong(PASSWORD_MAX))
 
 export const BootZ = z.object({
   state: z.enum(['first_run', 'locked', 'ready', 'failed']),
@@ -28,7 +29,7 @@ export type Boot = z.infer<typeof BootZ>
 
 export const NewPassword = Password.refine(
   (s) => codePoints(s) >= 12,
-  'A senha precisa de pelo menos 12 caracteres'
+  VAULT_COPY.errors.PASSWORD_TOO_SHORT
 )
 export const Words = z.string().min(1).max(4000)
 
@@ -50,7 +51,7 @@ export const firstRunCommit = defineChannel(
 )
 export const vaultUnlock = defineChannel(
   'vault.unlock',
-  z.object({ password: Password.refine((s) => s.length > 0, 'Digite a senha') }).strict(),
+  z.object({ password: Password.refine((s) => s.length > 0, VAULT_COPY.passwordEmpty) }).strict(),
   BootZ
 )
 export const vaultRecover = defineChannel(
