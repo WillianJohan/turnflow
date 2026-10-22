@@ -8,7 +8,7 @@ import { loginEnv } from './loginEnv'
 import { findSessionFile, transcriptTail } from './sessions'
 
 export function buildPrompt(readme: string, tail: string): string {
-  return `Você vai situar um dev que tem TDAH e acabou de voltar pra esta task depois de horas fazendo outra coisa. Ele não lembra nem do que ela se trata.
+  return `Você vai situar alguém que acabou de voltar pra esta task depois de horas fazendo outra coisa e não lembra nem do que ela se trata.
 
 Responda com EXATAMENTE 3 linhas, nesta forma, nada antes nem depois:
 O que é: <quem pediu, o que está quebrado ou falta, e por que importa — em português de gente, sem nome de função, classe ou arquivo>
