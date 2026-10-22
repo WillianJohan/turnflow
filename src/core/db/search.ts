@@ -66,7 +66,11 @@ function viaLike(db: Db, q: string, limit: number): SearchHit[] {
 }
 
 export function runSearch(db: Db, q: string, limit = 30): SearchHit[] {
-  const folded = fold(q).trim()
+  // controles C0/DEL viram espaço: NUL quebra o SQL e \u0002/\u0003 forjariam o destaque
+  const folded = fold(q)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
   if (!folded) return []
   const terms = folded.split(/\s+/).filter((t) => [...t].length >= MIN_TRIGRAM)
   return terms.length > 0 ? viaFts(db, terms, limit) : viaLike(db, folded, limit)

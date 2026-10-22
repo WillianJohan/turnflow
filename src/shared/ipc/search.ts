@@ -10,6 +10,8 @@ export const SearchHitZ = z.object({
   task_id: z.string(),
   key: z.string(),
   title: z.string(),
+  // Texto cru do usuário com HL_OPEN/HL_CLOSE ao redor do trecho casado. A UI divide por esses
+  // marcadores e renderiza tudo como texto, nunca como HTML.
   snippet: z.string()
 })
 export type SearchHit = z.infer<typeof SearchHitZ>

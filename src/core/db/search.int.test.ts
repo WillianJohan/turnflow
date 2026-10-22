@@ -63,11 +63,49 @@ describe('busca FTS5', () => {
     db.close()
   })
 
-  it('sintaxe FTS na consulta não quebra', () => {
+  it('sintaxe FTS na consulta não quebra e vira texto literal', () => {
     const db = openTestDb()
     insertTask(db, { key: 'T-1', title: 'abc' })
-    for (const q of ['"', 'a*b', 'NEAR(x y)', '-foo', 'col:abc', '%_\\'])
+    for (const q of ['"', 'a*b', 'NEAR(x y)', '-foo', 'col:abc', '%_\\', 'abc\0def', '\u0002abc'])
       expect(Array.isArray(runSearch(db, q)), q).toBe(true)
+    insertTask(db, { key: 'T-2', title: 'um x*y literal' })
+    expect(runSearch(db, 'x*y').map((h) => h.key)).toEqual(['T-2'])
+    insertTask(db, { key: 'T-3', title: 'texto NEAR(abc aqui' })
+    expect(runSearch(db, 'NEAR(abc').map((h) => h.key)).toEqual(['T-3'])
+    insertTask(db, { key: 'T-4', title: 'aspa "solta aqui' })
+    expect(runSearch(db, '"solta').map((h) => h.key)).toEqual(['T-4'])
+    // controles não forjam destaque: viram espaço, o termo útil continua valendo
+    const hits = runSearch(db, '\u0002abc\u0003')
+    expect(hits.map((h) => h.key).sort()).toEqual(['T-1', 'T-3'])
+    for (const h of hits) expect(h.snippet.split(HL_OPEN)).toHaveLength(2)
+    expect(runSearch(db, 'abc\0def')).toEqual([])
+    db.close()
+  })
+
+  it('hard delete da task leva os checkpoints da busca', () => {
+    const db = openTestDb()
+    const t = insertTask(db, { key: 'T-1', title: 'X' })
+    insertCheckpoint(db, { task_id: t, text: 'nota efemera' })
+    expect(runSearch(db, 'efemera')).toHaveLength(1)
+    db.prepare('delete from task where id = ?').run(t)
+    expect(runSearch(db, 'efemera')).toHaveLength(0)
+    expect(db.prepare('select count(*) as n from search_fts').get()).toEqual({ n: 0 })
+    db.close()
+  })
+
+  it('termos curtos misturados: 3+ vai pro FTS, só curtos cai no fallback', () => {
+    const db = openTestDb()
+    insertTask(db, { key: 'T-1', title: 'abc de fg' })
+    insertTask(db, { key: 'T-2', title: 'ab cd' })
+    insertTask(db, { key: 'T-3', title: 'abc outro' })
+    // 'abc de': só 'abc' entra no FTS ('de' é descartado)
+    expect(
+      runSearch(db, 'abc de')
+        .map((h) => h.key)
+        .sort()
+    ).toEqual(['T-1', 'T-3'])
+    // 'ab cd': nenhum termo de 3+, LIKE pela frase inteira
+    expect(runSearch(db, 'ab cd').map((h) => h.key)).toEqual(['T-2'])
     db.close()
   })
 

@@ -40,7 +40,9 @@ export function toIpcError(e: unknown): IpcError {
       e.code === 'WORDS_UNKNOWN' && index !== undefined ? { index } : undefined
     )
   }
-  return new IpcError('INTERNAL', e instanceof Error ? e.message : String(e))
+  // a mensagem crua (SQLite, caminho...) só vai pro log, nunca pro renderer
+  console.error('[ipc] erro inesperado:', e instanceof Error ? e.message : String(e))
+  return new IpcError('INTERNAL', VAULT_COPY.errors.INTERNAL)
 }
 
 export function bootOf(vault: Vault, version: string): Boot {

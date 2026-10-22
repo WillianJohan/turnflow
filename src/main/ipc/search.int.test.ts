@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { VAULT_COPY } from '../../shared/copy/vault'
 import { VaultError } from '../../core/key/errors'
 import type { Vault } from '../../core/key/vault'
 import { insertTask, openTestDb } from '../../core/testing/db'
@@ -30,6 +31,25 @@ describe('search.query', () => {
       ok: false,
       error: { code: 'LOCKED' }
     })
+  })
+
+  it('erro desconhecido vira INTERNAL genérico, sem a mensagem crua', async () => {
+    const vault = {
+      db: () => {
+        throw new Error('segredo-do-sqlite')
+      }
+    } as unknown as Vault
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const r = (await setup(vault)({ q: 'abc' })) as {
+      ok: boolean
+      error: { code: string; message: string }
+    }
+    expect(r.ok).toBe(false)
+    expect(r.error.code).toBe('INTERNAL')
+    expect(r.error.message).toBe(VAULT_COPY.errors.INTERNAL)
+    expect(r.error.message).not.toContain('segredo')
+    expect(err).toHaveBeenCalled()
+    err.mockRestore()
   })
 
   it('ready devolve os hits', async () => {

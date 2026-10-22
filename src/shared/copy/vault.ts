@@ -28,7 +28,8 @@ export const VAULT_COPY = {
     MIGRATION_FAILED: 'Falha na migração do banco',
     OPEN_FAILED: 'Não consegui abrir o banco',
     LOCKED: `${BRAND.name} está bloqueado`,
-    BAD_STATE: 'Operação inválida neste estado'
+    BAD_STATE: 'Operação inválida neste estado',
+    INTERNAL: 'Erro interno. Tente de novo; se persistir, veja o log do app.'
   },
   /** Validação de senha no contrato IPC (o mínimo usa `errors.PASSWORD_TOO_SHORT`). */
   passwordTooLong: (max: number): string => `A senha pode ter até ${max} caracteres`,
