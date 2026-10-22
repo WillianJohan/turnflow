@@ -11,14 +11,19 @@ vi.mock('electron', () => ({
 }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 vi.mock('./pty', () => ({
-  alivePtys: () => [],
-  killAll: () => undefined,
-  killPty: () => undefined,
-  ownPids: () => new Set(),
-  renamePty: () => false,
-  resizePty: () => undefined,
-  startPty: () => undefined,
-  writePty: () => undefined
+  nodePtySpawner: () => {
+    throw new Error('sem node-pty no unit')
+  },
+  createPtyPool: () => ({
+    start: () => undefined,
+    write: () => undefined,
+    resize: () => undefined,
+    kill: () => undefined,
+    killAndWait: async () => undefined,
+    killAllAndWait: async () => undefined,
+    alive: () => [],
+    ownPids: () => new Set()
+  })
 }))
 vi.mock('./tasks', () => ({ loadTasks: async () => [], watchTasks: () => () => undefined }))
 vi.mock('./hooks', () => ({

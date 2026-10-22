@@ -25,18 +25,36 @@ const shell: Exec = () =>
     }
   ).then((r) => r.stdout)
 
+// Windows: sem bash -ic; o PATH do processo já é o do usuário e `where.exe` acha o claude.
+const where: Exec = () =>
+  promisify(execFile)('where.exe', ['claude'], { timeout: 15000 }).then((r) => r.stdout)
+
 let cached: Promise<{ PATH: string; claude: string }> | null = null
 
 const marker = (out: string, k: string): string =>
   out.match(new RegExp(`^${MARK}${k}=(.*)$`, 'm'))?.[1]?.trim() ?? ''
 
-export function loginEnv(exec: Exec = shell): Promise<{ PATH: string; claude: string }> {
-  cached ??= exec()
+const parse = (out: string, platform: NodeJS.Platform): { PATH: string; claude: string } =>
+  platform === 'win32'
+    ? {
+        PATH: process.env.PATH ?? '',
+        claude:
+          out
+            .split(/\r?\n/)
+            .find((l) => l.trim())
+            ?.trim() ?? ''
+      }
+    : { PATH: marker(out, 'PATH'), claude: marker(out, 'CLAUDE') }
+
+export function loginEnv(
+  exec?: Exec,
+  platform: NodeJS.Platform = process.platform
+): Promise<{ PATH: string; claude: string }> {
+  cached ??= (exec ?? (platform === 'win32' ? where : shell))()
     .then((out) => {
-      const PATH = marker(out, 'PATH')
-      const claude = marker(out, 'CLAUDE')
-      if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
-      return { PATH, claude }
+      const r = parse(out, platform)
+      if (!r.claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
+      return r
     })
     .catch((e) => {
       cached = null // falha não fica em cache: o próximo lançamento tenta de novo

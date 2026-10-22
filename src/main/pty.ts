@@ -1,62 +1,131 @@
-import * as pty from 'node-pty'
+import { createRequire } from 'module'
 import { ptyEnv } from './launch'
 
+export type PtyProc = {
+  pid: number
+  onData(cb: (d: string) => void): void
+  onExit(cb: (e: { exitCode: number }) => void): void
+  write(d: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+}
+
+export type PtySpawner = (
+  file: string,
+  args: string[],
+  o: { cols: number; rows: number; cwd: string; env: Record<string, string> }
+) => PtyProc
+
+// Único lugar que carrega o node-pty (binário do ABI do Electron): unit e int nunca passam
+// por aqui, usam um spawner fake.
+export const nodePtySpawner: PtySpawner = (file, args, o) =>
+  (createRequire(__filename)('node-pty') as typeof import('node-pty')).spawn(file, args, o)
+
+export type PtyPool = {
+  start(
+    id: string,
+    argv: string[],
+    cwd: string,
+    env: Record<string, string>,
+    size: { cols: number; rows: number }
+  ): void
+  write(id: string, d: string): void
+  resize(id: string, cols: number, rows: number): void
+  kill(id: string): void
+  killAndWait(id: string, ms: number): Promise<void>
+  killAllAndWait(ms: number, filter?: (id: string) => boolean): Promise<void>
+  alive(): string[]
+  ownPids(): Set<number>
+}
+
 type Events = { data(id: string, d: string): void; exit(id: string, code: number): void }
+type Leaving = { p: PtyProc; waiters: Set<() => void>; timer: NodeJS.Timeout | null }
 
-// ref.id muda quando a aba avulsa é adotada por uma task (renamePty); eventos usam o id atual
-type Entry = { p: pty.IPty; ref: { id: string } }
-const ptys = new Map<string, Entry>()
-const exited = new WeakSet<pty.IPty>()
+export function createPtyPool(o: {
+  spawner: PtySpawner
+  events: Events
+  platform?: NodeJS.Platform
+  baseEnv?: Record<string, string | undefined>
+  killGraceMs?: number
+}): PtyPool {
+  const platform = o.platform ?? process.platform
+  const grace = o.killGraceMs ?? 3000
+  const live = new Map<string, PtyProc>()
+  // morto por `kill` e ainda sem `onExit`: o id continua ocupado até o processo sair de fato
+  const leaving = new Map<string, Leaving>()
 
-export function startPty(
-  id: string,
-  argv: string[],
-  cwd: string,
-  env: Record<string, string>,
-  cols: number,
-  rows: number,
-  ev: Events
-): void {
-  if (ptys.has(id)) throw new Error(`${id} já tem sessão viva`)
-  const p = pty.spawn(argv[0], argv.slice(1), { cols, rows, cwd, env: ptyEnv(process.env, env) })
-  const ref = { id }
-  ptys.set(id, { p, ref })
-  p.onData((d) => ev.data(ref.id, d))
-  p.onExit(({ exitCode }) => {
-    exited.add(p)
-    // processo antigo morrendo depois de uma troca de sessão: o novo já ocupa o id
-    if (ptys.has(ref.id) && ptys.get(ref.id)?.p !== p) return
-    ptys.delete(ref.id)
-    ev.exit(ref.id, exitCode)
-  })
-}
+  const kill = (id: string): void => {
+    const p = live.get(id)
+    if (!p) return
+    live.delete(id)
+    const l: Leaving = { p, waiters: new Set(), timer: null }
+    leaving.set(id, l)
+    p.kill()
+    // claude que ignora SIGHUP vira processo invisível; sem exit em `grace` vai no SIGKILL.
+    // No Windows (conpty) matar por pid não existe: só `p.kill()` e esperar o exit.
+    if (platform !== 'win32')
+      l.timer = setTimeout(() => {
+        l.timer = null
+        try {
+          process.kill(p.pid, 'SIGKILL')
+        } catch {
+          // já saiu
+        }
+      }, grace)
+  }
 
-export const writePty = (id: string, d: string): void => ptys.get(id)?.p.write(d)
-export const resizePty = (id: string, c: number, r: number): void => ptys.get(id)?.p.resize(c, r)
-export const killPty = (id: string): void => {
-  const p = ptys.get(id)?.p
-  ptys.delete(id)
-  if (!p) return
-  p.kill()
-  // claude que ignora SIGHUP vira processo invisível; 3s depois vai no SIGKILL
-  setTimeout(() => {
-    if (exited.has(p)) return // já saiu: o pid pode ter sido reciclado por outro processo
-    try {
-      process.kill(p.pid, 'SIGKILL')
-    } catch {
-      // já saiu
-    }
-  }, 3000)
-}
-export const alivePtys = (): string[] => [...ptys.keys()]
-export const ownPids = (): Set<number> => new Set([...ptys.values()].map((e) => e.p.pid))
-export const killAll = (): void => [...ptys.keys()].forEach(killPty)
+  const waitExit = (id: string, ms: number): Promise<void> => {
+    const l = leaving.get(id)
+    if (!l) return Promise.resolve()
+    return new Promise((resolve) => {
+      const done = (): void => {
+        clearTimeout(t)
+        l.waiters.delete(done)
+        resolve()
+      }
+      const t = setTimeout(done, ms)
+      l.waiters.add(done)
+    })
+  }
 
-export function renamePty(from: string, to: string): boolean {
-  const e = ptys.get(from)
-  if (!e || ptys.has(to)) return false
-  ptys.delete(from)
-  e.ref.id = to
-  ptys.set(to, e)
-  return true
+  const killAndWait = (id: string, ms: number): Promise<void> => {
+    kill(id)
+    return waitExit(id, ms)
+  }
+
+  return {
+    start(id, argv, cwd, env, size) {
+      if (live.has(id) || leaving.has(id)) throw new Error('pty_busy')
+      const p = o.spawner(argv[0], argv.slice(1), {
+        cols: size.cols,
+        rows: size.rows,
+        cwd,
+        env: ptyEnv(o.baseEnv ?? process.env, env)
+      })
+      live.set(id, p)
+      p.onData((d) => o.events.data(id, d))
+      p.onExit(({ exitCode }) => {
+        // só o exit do processo certo libera o id: o de um processo velho nunca encerra o novo
+        if (live.get(id) === p) live.delete(id)
+        const l = leaving.get(id)
+        if (l?.p === p) {
+          leaving.delete(id)
+          if (l.timer) clearTimeout(l.timer)
+          for (const w of [...l.waiters]) w()
+        }
+        o.events.exit(id, exitCode)
+      })
+    },
+    write: (id, d) => live.get(id)?.write(d),
+    resize: (id, c, r) => live.get(id)?.resize(c, r),
+    kill,
+    killAndWait,
+    killAllAndWait: async (ms, filter) => {
+      const ids = [...live.keys(), ...leaving.keys()].filter((id) => !filter || filter(id))
+      await Promise.all(ids.map((id) => killAndWait(id, ms)))
+    },
+    alive: () => [...live.keys()],
+    ownPids: () =>
+      new Set([...live.values(), ...[...leaving.values()].map((l) => l.p)].map((p) => p.pid))
+  }
 }

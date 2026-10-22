@@ -18,3 +18,15 @@ it('claude ausente dá mensagem legível', async () => {
     loginEnv(async () => '__TURNFLOW_PATH=/usr/bin\n__TURNFLOW_CLAUDE=\n')
   ).rejects.toThrow('claude não encontrado')
 })
+
+it('win32 usa where.exe', async () => {
+  resetLoginEnv()
+  const env = await loginEnv(async () => 'C:\\x\\claude.cmd\r\nC:\\y\\claude.exe\r\n', 'win32')
+  expect(env.claude).toBe('C:\\x\\claude.cmd')
+  expect(env.PATH).toBe(process.env.PATH ?? '')
+})
+
+it('win32 sem claude no where.exe dá mensagem legível', async () => {
+  resetLoginEnv()
+  await expect(loginEnv(async () => '\r\n', 'win32')).rejects.toThrow('claude não encontrado')
+})

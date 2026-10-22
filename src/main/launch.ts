@@ -1,4 +1,5 @@
 import type { How, Plan, Task } from '../shared/types'
+import { BRAND } from '../shared/brand'
 type Deps = {
   find: (uuid: string) => Promise<{ path: string; cwd: string } | null>
   elsewhere: (uuid: string) => Promise<number | null>
@@ -47,15 +48,20 @@ export function claudeArgv(task: Task, settingsPath: string, how: How): string[]
 }
 
 // Env do PTY: herda o do app menos os marcadores de uma sessão claude pai
-// (com eles o claude filho desliga o transcript e a conversa não é salva) e o
-// ELECTRON_RUN_AS_NODE (herdado, faria o `turnflow mcp` do shim rodar como node puro).
+// (com eles o claude filho desliga o transcript e a conversa não é salva), o
+// ELECTRON_RUN_AS_NODE (herdado, faria o `turnflow mcp` do shim rodar como node puro) e as
+// variáveis de sessão do próprio app (um app aberto de dentro de uma sessão não as repassa).
+const SESSION_VARS = ['SESSION_TOKEN', 'HOOK_PORT', 'TASK', 'TOKEN', 'PORT'].map(
+  (k) => `${BRAND.envPrefix}${k}`
+)
+const stripped = (k: string): boolean =>
+  k === 'ELECTRON_RUN_AS_NODE' || /^CLAUDE(CODE$|_CODE_)/.test(k) || SESSION_VARS.includes(k)
+
 export function ptyEnv(
   base: Record<string, string | undefined>,
   extra: Record<string, string>
 ): Record<string, string> {
   const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(base))
-    if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && !/^CLAUDE(CODE$|_CODE_)/.test(k))
-      env[k] = v
+  for (const [k, v] of Object.entries(base)) if (v !== undefined && !stripped(k)) env[k] = v
   return { ...env, TERM: 'xterm-256color', ...extra }
 }

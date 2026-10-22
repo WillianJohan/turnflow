@@ -143,4 +143,22 @@ describe('ptyEnv', () => {
     )
     expect(env).toEqual({ PATH: '/x', HOME: '/h', TURNFLOW_TASK: 'T-1', TERM: 'xterm-256color' })
   })
+  it('ptyEnv remove ELECTRON_RUN_AS_NODE, CLAUDECODE, CLAUDE_CODE_* e variáveis de sessão herdadas', () => {
+    const env = ptyEnv(
+      {
+        ELECTRON_RUN_AS_NODE: '1',
+        CLAUDECODE: '1',
+        CLAUDE_CODE_ENTRYPOINT: 'x',
+        TURNFLOW_SESSION_TOKEN: 'old',
+        TURNFLOW_HOOK_PORT: '1',
+        TURNFLOW_PORT: '2',
+        TURNFLOW_TASK: 'T-9',
+        TURNFLOW_TOKEN: 'x',
+        HOME: '/h'
+      },
+      {}
+    )
+    expect(env).toEqual({ HOME: '/h', TERM: 'xterm-256color' })
+    expect(ptyEnv({ TURNFLOW_TASK: 'T-9' }, { TURNFLOW_TASK: 'T-1' }).TURNFLOW_TASK).toBe('T-1')
+  })
 })

@@ -29,17 +29,7 @@ import { startHookServer, writeHookSettings } from './hooks'
 import { claudeArgv, inUseBy, resolveLaunch } from './launch'
 import { loginEnv } from './loginEnv'
 import { BRAND } from '../shared/brand'
-import {
-  alivePtys,
-  killAll,
-  killPty,
-  ownPids,
-  renamePty,
-  resizePty,
-  startPty,
-  writePty
-} from './pty'
-import { adoptions } from './adopt'
+import { createPtyPool, nodePtySpawner } from './pty'
 import { createPtyGuard } from './ptyGuard'
 import { findSessionFile, runningElsewhere } from './sessions'
 import { loadTasks, watchTasks } from './tasks'
@@ -55,6 +45,7 @@ import type { Vault } from '../core/key/vault'
 import { changeBus } from './changeBusInstance'
 
 export const UPDATE_ID = '__update__'
+const KILL_WAIT_MS = 5000
 
 export type IpcDeps = {
   vault: Vault
@@ -72,7 +63,7 @@ export async function registerIpc(
   ipc: IpcLike,
   deps: IpcDeps
 ): Promise<() => void> {
-  // guard primeiro: adopt() e o exit dos ptys usam ele, e podem rodar antes do fim do registro
+  // guard primeiro: o exit dos ptys usa ele, e pode rodar antes do fim do registro
   const guard = createPtyGuard()
   const owner = win.webContents.id
   const send = <K extends keyof Events>(ch: K, ...a: Events[K]): void => {
@@ -83,25 +74,10 @@ export async function registerIpc(
   let tasks = new Map<string, Task>()
 
   // uuid (session_id do claude) de cada PTY vivo, pra recusar a mesma conversa em duas abas
-  // e pra descobrir quando uma aba avulsa virou task
   const uuidOf = new Map<string, string>()
-  // id antigo → atual: o processo adotado continua mandando hook com o TURNFLOW_TASK de nascença
+  // id antigo → atual (sem adoção por README não nasce mais; some quando o host de sessões entrar)
   const alias = new Map<string, string>()
 
-  // Aba "Claude sem task" cuja conversa o README de uma task passou a citar: vira a aba da task.
-  const adopt = (): void => {
-    const busy = new Set(alivePtys().filter((id) => !id.startsWith('~')))
-    for (const { from, to } of adoptions(uuidOf, [...tasks.values()], busy)) {
-      if (!renamePty(from, to)) continue
-      alias.set(from, to)
-      guard.release(from)
-      guard.register(to, owner)
-      for (const [k, v] of alias) if (v === from) alias.set(k, to)
-      uuidOf.set(to, uuidOf.get(from)!)
-      uuidOf.delete(from)
-      send('pty:renamed', from, to)
-    }
-  }
   // lateral herdada (Decisão 25): lista `TURNFLOW_BRAIN ?? config.brainDir` e rearma o watcher a
   // cada troca de pasta (start, leitura de config, apply do import); falha ao ler só vai pro log
   const legacyBrain = createLegacyBrain({
@@ -110,7 +86,6 @@ export async function registerIpc(
     onChanged: (list) => {
       tasks = new Map(list.map((t) => [t.id, t]))
       send('tasks:changed', list)
-      adopt()
     },
     log: deps.log
   })
@@ -118,16 +93,15 @@ export async function registerIpc(
   const hooks = await startHookServer((raw, st, sid, info) => {
     const id = alias.get(raw) ?? raw
     if (process.env.TURNFLOW_DEBUG) console.log('[hook]', raw, id, st, sid)
-    if (sid && alivePtys().includes(id) && uuidOf.get(id) !== sid) {
+    if (sid && pool.alive().includes(id) && uuidOf.get(id) !== sid) {
       uuidOf.set(id, sid)
-      adopt()
     }
     send('pty:state', alias.get(raw) ?? raw, st, info)
   })
   const settingsPath = await writeHookSettings(userDataDir())
   const depsFor = (self: string): Parameters<typeof resolveLaunch>[1] => ({
     find: (u: string) => findSessionFile(u),
-    elsewhere: (u: string) => runningElsewhere(u, ownPids()),
+    elsewhere: (u: string) => runningElsewhere(u, pool.ownPids()),
     cwdExists: (d: string) =>
       access(d).then(
         () => true,
@@ -144,6 +118,7 @@ export async function registerIpc(
     data: (id: string, d: string) => send('pty:data', id, d),
     exit: (id: string, code: number) => onPtyExit({ uuidOf, alias, guard, send }, id, code)
   }
+  const pool = createPtyPool({ spawner: nodePtySpawner, events: ptyEvents })
   const env = async (id: string): Promise<Record<string, string>> => ({
     PATH: (await loginEnv()).PATH,
     TURNFLOW_PORT: String(hooks.port),
@@ -152,7 +127,7 @@ export async function registerIpc(
   })
 
   // renderer recarregou (F5/dev): os xterms morreram junto, então os PTYs também morrem
-  win.webContents.on('did-start-loading', killAll)
+  win.webContents.on('did-start-loading', () => void pool.killAllAndWait(KILL_WAIT_MS))
   if (process.env.TURNFLOW_DEBUG)
     ptyEvents.data = ((orig) => (id: string, d: string) => {
       appendFileSync(process.env.TURNFLOW_DEBUG!, d)
@@ -233,7 +208,7 @@ export async function registerIpc(
   })
   handle(C.CHANNELS.plan, ({ id, uuid }) => resolveLaunch(task(id), depsFor(id), uuid))
   handle(C.CHANNELS.start, async ({ id, how, cols, rows }) => {
-    if (alivePtys().includes(id)) return // start duplicado (duplo clique): o primeiro já subiu
+    if (pool.alive().includes(id)) return // start duplicado (duplo clique): o primeiro já subiu
     const t = task(id)
     let cwd = sessionCwd(defaultWorkdir)
     if ('resume' in how) {
@@ -253,24 +228,16 @@ export async function registerIpc(
     }
     const [, ...args] = claudeArgv(t, settingsPath, how)
     const bin = (await loginEnv()).claude
-    if (alivePtys().includes(id)) return
-    startPty(id, [bin, ...args], cwd, await env(id), cols, rows, ptyEvents)
+    if (pool.alive().includes(id)) return
+    pool.start(id, [bin, ...args], cwd, await env(id), { cols, rows })
     guard.register(id, owner)
     if ('resume' in how) uuidOf.set(id, how.resume)
   })
   // comando fixo: o renderer não escolhe o que executar
   handle(C.CHANNELS.startUpdate, async ({ cols, rows }) => {
-    if (alivePtys().includes(UPDATE_ID)) return
+    if (pool.alive().includes(UPDATE_ID)) return
     const argv = [(await loginEnv()).claude, '/revisao-demandas', '--settings', settingsPath]
-    startPty(
-      UPDATE_ID,
-      argv,
-      sessionCwd(defaultWorkdir),
-      await env(UPDATE_ID),
-      cols,
-      rows,
-      ptyEvents
-    )
+    pool.start(UPDATE_ID, argv, sessionCwd(defaultWorkdir), await env(UPDATE_ID), { cols, rows })
     guard.register(UPDATE_ID, owner)
   })
   handle(C.CHANNELS.tasksRoot, () => legacyBrain.root())
@@ -285,17 +252,17 @@ export async function registerIpc(
   handle(C.CHANNELS.startScratch, async ({ id, cols, rows }) => {
     const kind = id.match(/^~(claude|shell)-\d+$/)?.[1]
     if (!kind) throw new IpcError('VALIDATION', `aba inválida: ${id}`)
-    if (alivePtys().includes(id)) return
+    if (pool.alive().includes(id)) return
     const argv =
       kind === 'claude'
         ? [(await loginEnv()).claude, '--settings', settingsPath]
         : [process.env.SHELL || '/bin/bash', '-i']
-    startPty(id, argv, sessionCwd(defaultWorkdir), await env(id), cols, rows, ptyEvents)
+    pool.start(id, argv, sessionCwd(defaultWorkdir), await env(id), { cols, rows })
     guard.register(id, owner)
   })
   registerPtyIo(ipc, {
     guard,
-    pty: { write: writePty, resize: resizePty, kill: killPty, alive: alivePtys },
+    pty: pool,
     onKill: (id) => uuidOf.delete(id)
   })
   handle(C.CHANNELS.sessionInfo, async ({ id }) =>
@@ -339,7 +306,7 @@ export async function registerIpc(
 
   return () => {
     unwatchCfg()
-    killAll()
+    void pool.killAllAndWait(KILL_WAIT_MS)
     legacyBrain.close()
     hooks.close()
   }
