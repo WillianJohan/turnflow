@@ -27,7 +27,7 @@ import {
   appValuesOf,
   emptyHashes,
   mdValues,
-  readRecord,
+  recordReader,
   SCALAR_FIELDS,
   sha,
   type FieldHashes,
@@ -99,8 +99,44 @@ type ProjectInfo = {
 
 type TypeLite = { id: string; name: string; flow_id: string }
 
+/** Statements do plano, preparados uma vez por prévia (não dentro dos laços). */
+type Stmt = ReturnType<Db['prepare']>
+type Queries = {
+  record: (sourceKey: string) => ImportRecord | null
+} & Record<
+  | 'taskById'
+  | 'taskByKey'
+  | 'importProject'
+  | 'project'
+  | 'stages'
+  | 'stageName'
+  | 'session'
+  | 'checkpoint',
+  Stmt
+>
+
+function prepareQueries(db: Db): Queries {
+  return {
+    record: recordReader(db),
+    taskById: db.prepare('select * from task where id = ?'),
+    taskByKey: db.prepare('select * from task where key = ?'),
+    importProject: db.prepare('select project_id from import_project where source_key = ?'),
+    project: db.prepare('select id, name, flow_id from project where id = ?'),
+    stages: db.prepare(
+      `select id, name, short_name, position, waits_other, is_final from flow_stage
+       where flow_id = ? and deleted_at is null order by position, id`
+    ),
+    stageName: db.prepare('select name from flow_stage where id = ?'),
+    session: db.prepare('select task_id, label from ai_session where tool = ? and external_id = ?'),
+    checkpoint: db.prepare(
+      'select 1 from checkpoint where task_id = ? and substr(at, 1, 10) = ? and text_hash = ?'
+    )
+  }
+}
+
 type Ctx = {
   db: Db
+  q: Queries
   o: ImportOptions
   type: TypeLite
   types: TypeLite[]
@@ -123,6 +159,7 @@ export function planImport(d: DomainDeps, scan: BrainScan, o: ImportOptions): Im
   )
   const c: Ctx = {
     db: d.db,
+    q: prepareQueries(d.db),
     o,
     type,
     types,
@@ -171,6 +208,7 @@ export function planImport(d: DomainDeps, scan: BrainScan, o: ImportOptions): Im
       create: count('create'),
       update: count('update'),
       link: count('link'),
+      record_only: count('record_only'),
       unchanged: count('unchanged'),
       deleted_in_app: count('deleted_in_app'),
       invalid: count('invalid'),
@@ -201,12 +239,7 @@ function stagesOf(c: Ctx, flowId: string): FlowStageLite[] {
   let s = c.stages.get(flowId)
   if (!s) {
     s = (
-      c.db
-        .prepare(
-          `select id, name, short_name, position, waits_other, is_final from flow_stage
-           where flow_id = ? and deleted_at is null order by position, id`
-        )
-        .all(flowId) as (Omit<FlowStageLite, 'waits_other' | 'is_final'> & {
+      c.q.stages.all(flowId) as (Omit<FlowStageLite, 'waits_other' | 'is_final'> & {
         waits_other: number
         is_final: number
       })[]
@@ -256,14 +289,12 @@ function projectFor(c: Ctx, p: ParsedTask): ProjectInfo | null {
     if (!name) return null
     ref = { source_key: `name:${fold(name)}`, name }
   }
-  const link = c.db
-    .prepare('select project_id from import_project where source_key = ?')
-    .get(ref.source_key) as { project_id: string | null } | undefined
+  const link = c.q.importProject.get(ref.source_key) as { project_id: string | null } | undefined
   if (!link) return { ref, action: 'create', id: null, flow_id: null, display: ref.name }
   const proj =
     link.project_id === null
       ? undefined
-      : (c.db.prepare('select id, name, flow_id from project where id = ?').get(link.project_id) as
+      : (c.q.project.get(link.project_id) as
           { id: string; name: string; flow_id: string | null } | undefined)
   if (!proj) return { ref, action: 'deleted_in_app', id: null, flow_id: null, display: ref.name }
   return { ref, action: 'existing', id: proj.id, flow_id: proj.flow_id, display: proj.name }
@@ -362,13 +393,10 @@ function planTask(c: Ctx, t: ScannedTask): Outcome {
   })
   const workdir = c.o.workdirs?.[t.key] || null
 
-  const rec = readRecord(c.db, t.key)
+  const rec = c.q.record(t.key)
   if (rec) {
     const task =
-      rec.task_id === null
-        ? undefined
-        : (c.db.prepare('select * from task where id = ?').get(rec.task_id) as
-            TaskRecord | undefined)
+      rec.task_id === null ? undefined : (c.q.taskById.get(rec.task_id) as TaskRecord | undefined)
     if (!task || task.deleted_at !== null) return nothing('deleted_in_app')
     if (rec.file_hash === t.file_hash && rec.source_path === t.source_path) {
       // Decisão 31: conteúdo e lugar iguais. Só a pasta escolhida agora pode mudar algo.
@@ -397,8 +425,7 @@ function planTask(c: Ctx, t: ScannedTask): Outcome {
     }
     return planMerge(c, t, p, task, rec.field_hashes, 'update', workdir, row)
   }
-  const byKey = c.db.prepare('select * from task where key = ?').get(t.key) as
-    TaskRecord | undefined
+  const byKey = c.q.taskByKey.get(t.key) as TaskRecord | undefined
   if (byKey && byKey.deleted_at !== null) return nothing('deleted_in_app')
   // Decisão 18: key que já existe sem record vincula; hashes vazios = tudo diferente vira conflito.
   if (byKey) return planMerge(c, t, p, byKey, emptyHashes(), 'link', workdir, row)
@@ -519,33 +546,25 @@ type SessionState = 'new' | 'same' | 'label' | 'taken'
 
 /** Como o `importTask` vai tratar a sessão (Decisão 14): nova (ou órfã adotada), igual, rótulo, de outra task. */
 function sessionState(c: Ctx, taskId: string | null, s: ImportSession): SessionState {
-  const r = c.db
-    .prepare('select task_id, label from ai_session where tool = ? and external_id = ?')
-    .get(IMPORT_SESSION_TOOL, s.external_id) as
+  const r = c.q.session.get(IMPORT_SESSION_TOOL, s.external_id) as
     { task_id: string | null; label: string | null } | undefined
   if (!r || r.task_id === null) return 'new'
   if (r.task_id !== taskId) return 'taken'
   return r.label === s.label ? 'same' : 'label'
 }
 
-const hasCheckpoint = (db: Db, taskId: string, cp: ImportCheckpoint): boolean =>
-  db
-    .prepare(
-      'select 1 from checkpoint where task_id = ? and substr(at, 1, 10) = ? and text_hash = ?'
-    )
-    .get(taskId, cp.at.slice(0, 10), checkpointHash(cp.text)) !== undefined
+const hasCheckpoint = (c: Ctx, taskId: string, cp: ImportCheckpoint): boolean =>
+  c.q.checkpoint.get(taskId, cp.at.slice(0, 10), checkpointHash(cp.text)) !== undefined
 
-function stageLabel(db: Db, stageId: string, reason: string | null): string {
-  const s = db.prepare('select name from flow_stage where id = ?').get(stageId) as
-    { name: string } | undefined
+function stageLabel(c: Ctx, stageId: string, reason: string | null): string {
+  const s = c.q.stageName.get(stageId) as { name: string } | undefined
   const name = s?.name ?? stageId
   return reason ? `${name}: ${reason}` : name
 }
 
-function projectLabel(db: Db, id: string | null): string {
+function projectLabel(c: Ctx, id: string | null): string {
   if (id === null) return ''
-  const r = db.prepare('select name from project where id = ?').get(id) as
-    { name: string } | undefined
+  const r = c.q.project.get(id) as { name: string } | undefined
   return r?.name ?? ''
 }
 
@@ -642,7 +661,7 @@ function planMerge(
 
   const extra = write.has('stage') ? statusCheckpoint(p, res.mapped, task.created_at) : null
   const allCps = dedupCheckpoints([...p.checkpoints, ...(extra ? [extra] : [])])
-  const freshCps = allCps.filter((x) => !hasCheckpoint(c.db, task.id, x))
+  const freshCps = allCps.filter((x) => !hasCheckpoint(c, task.id, x))
   const states = p.sessions.map((s) => sessionState(c, task.id, s))
   const sessionsMatter = states.some((s) => s !== 'same')
   const workdir = workdirOpt !== null && !task.workdir ? workdirOpt : null
@@ -688,13 +707,14 @@ function planMerge(
     }))
   if (workdir) update.workdir = workdir
 
-  const changes =
+  // O merge só roda com hash ou path diferentes, então o record sempre é gravado. A ação diz se a
+  // task também é: conflito mantido sozinho não escreve na task (só o `md` do record anda).
+  const writesTask =
     fields.length > 0 ||
     append.length > 0 ||
     freshCps.length > 0 ||
-    states.some((s) => s === 'new' || s === 'label') ||
-    conflicts.length > 0
-  const action: ImportTaskAction = mode === 'link' ? 'link' : changes ? 'update' : 'unchanged'
+    states.some((s) => s === 'new' || s === 'label')
+  const action: ImportTaskAction = mode === 'link' ? 'link' : writesTask ? 'update' : 'record_only'
   return {
     op: {
       kind: 'update',
@@ -728,8 +748,8 @@ function shown(
   if (side === 'app') {
     if (f === 'title') return task.title
     if (f === 'description') return task.description ?? ''
-    if (f === 'project') return projectLabel(c.db, task.project_id)
-    return stageLabel(c.db, task.stage_id, task.blocked_reason)
+    if (f === 'project') return projectLabel(c, task.project_id)
+    return stageLabel(c, task.stage_id, task.blocked_reason)
   }
   if (f === 'title') return p.title.trim()
   if (f === 'description')
@@ -738,5 +758,5 @@ function shown(
       linkLines(p).map((l) => l.line)
     )
   if (f === 'project') return keep?.display ?? ''
-  return stageLabel(c.db, stage.stage_id, stage.blocked_reason)
+  return stageLabel(c, stage.stage_id, stage.blocked_reason)
 }

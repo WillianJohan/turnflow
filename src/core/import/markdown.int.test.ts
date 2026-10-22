@@ -37,8 +37,13 @@ function setup(files: Record<string, string> = {}): Env {
   return { db, d, root, ids: seedIds(db), after }
 }
 
+/** Toda prévia é só leitura: nenhum caminho (create, merge, link, record) escreve no banco. */
 async function plan(e: Env, o: Partial<ImportOptions> = {}): Promise<ImportPlan> {
-  return planImport(e.d, await scanBrain(e.root), { status_map: EMPTY_MAP, ...o })
+  const scan = await scanBrain(e.root)
+  const before = [totalChanges(e.db), e.after.mock.calls.length]
+  const p = planImport(e.d, scan, { status_map: EMPTY_MAP, ...o })
+  expect([totalChanges(e.db), e.after.mock.calls.length]).toEqual(before)
+  return p
 }
 
 const row = (p: ImportPlan, key: string): ImportPreviewTask => {
@@ -227,6 +232,36 @@ describe('prévia', () => {
     expect(u.update.set?.title).toBeUndefined()
     expect(p.preview.counts.link).toBe(1)
     expect(p.preview.counts.conflicts).toBe(r.conflicts.length)
+  })
+
+  it('link com conflito de etapa e descrição acrescenta os links', async () => {
+    const e = setup({
+      'tasks/current/ABC-9/README.md': readme({
+        key: 'ABC-9',
+        title: 'App title',
+        status: 'in progress',
+        body: 'Markdown body.',
+        mrs: [MR1]
+      })
+    })
+    const t = createTask(e.d, { kind: 'user' }, { title: 'App title' }).row!
+    e.db.prepare("update task set key = 'ABC-9' where id = ?").run(t.id)
+    const p = await plan(e)
+    const r = row(p, 'ABC-9')
+    expect(r.action).toBe('link')
+    expect(r.conflicts.map((c) => c.field)).toEqual(['description', 'stage'])
+    expect(r.conflicts.find((c) => c.field === 'stage')).toEqual(
+      expect.objectContaining({ app: 'Refinement', markdown: 'Implementation' })
+    )
+    expect(r.new_links).toBe(1)
+    const u = op(p, 'ABC-9')
+    if (u.kind !== 'update') throw new Error('esperava update')
+    expect(u.update.set).toBeUndefined()
+    expect(u.update.append_links).toEqual([`- ${MR1}`])
+    // título igual dos dois lados: converge, sem conflito
+    expect(u.record.field_hashes.title.app).toBe(sha('App title'))
+    // conflito mantido no link: o app continua "editado" para o próximo md
+    expect(u.record.field_hashes.stage.app).toBe('')
   })
 
   it('key apagada no app sem record = deleted_in_app', async () => {
@@ -419,7 +454,10 @@ describe('prévia de reimport (record existente)', () => {
     appendFileSync(join(e.root, README), '\n\n')
     const p = await plan(e)
     expect(row(p, 'ABC-1')).toEqual(
-      expect.objectContaining({ action: 'unchanged', conflicts: [], fields: [] })
+      expect.objectContaining({ action: 'record_only', conflicts: [], fields: [] })
+    )
+    expect(p.preview.counts).toEqual(
+      expect.objectContaining({ record_only: 1, update: 0, unchanged: 0 })
     )
     const u = op(p, 'ABC-1')
     if (u.kind !== 'update') throw new Error('esperava update só do record')
@@ -477,6 +515,12 @@ describe('prévia de reimport (record existente)', () => {
       app: before.field_hashes.title.app
     })
 
+    // só o conflito mantido: o apply grava só o record, então não é `update`
+    expect(row(p, 'ABC-1')).toEqual(expect.objectContaining({ action: 'record_only', fields: [] }))
+    expect(p.preview.counts).toEqual(
+      expect.objectContaining({ record_only: 1, update: 0, conflicts: 1 })
+    )
+
     const taken = op(await plan(e, { take_markdown: [{ key: 'ABC-1', field: 'title' }] }), 'ABC-1')
     if (taken.kind !== 'update') throw new Error('esperava update')
     expect(taken.update.set).toEqual({ title: 'New md title' })
@@ -492,6 +536,21 @@ describe('prévia de reimport (record existente)', () => {
     expect(row(await plan(e), 'ABC-1').conflicts).toEqual([])
     writeBrain(e.root, { [README]: md({ title: 'Third md title' }) })
     expect(row(await plan(e), 'ABC-1').conflicts.map((c) => c.field)).toEqual(['title'])
+  })
+
+  it('md igual e app editado: o app fica, sem conflito e sem mexer no hash', async () => {
+    const e = await imported()
+    const before = readRecord(e.db, 'ABC-1')!
+    updateTask(e.d, { kind: 'user' }, e.id, { title: 'App title' })
+    writeBrain(e.root, { [README]: md({ cps: ['2026-01-02 — a', '2026-01-03 — b'] }) })
+    const p = await plan(e)
+    expect(row(p, 'ABC-1')).toEqual(
+      expect.objectContaining({ action: 'update', conflicts: [], fields: [] })
+    )
+    const u = op(p, 'ABC-1')
+    if (u.kind !== 'update') throw new Error('esperava update')
+    expect(u.update.set).toBeUndefined()
+    expect(u.record.field_hashes.title).toEqual(before.field_hashes.title)
   })
 
   it('valor igual nos dois lados não é conflito', async () => {

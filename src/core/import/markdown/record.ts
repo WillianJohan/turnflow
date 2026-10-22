@@ -62,10 +62,17 @@ function parseHashes(text: string): FieldHashes {
 
 type RecordRow = Omit<ImportRecord, 'field_hashes'> & { field_hashes: string }
 
+/** Leitor com o statement preparado uma vez (o plano lê um record por task). */
+export function recordReader(db: Db): (sourceKey: string) => ImportRecord | null {
+  const stmt = db.prepare('select * from import_record where source_key = ?')
+  return (sourceKey) => {
+    const r = stmt.get(sourceKey) as RecordRow | undefined
+    return r ? { ...r, field_hashes: parseHashes(r.field_hashes) } : null
+  }
+}
+
 export function readRecord(db: Db, sourceKey: string): ImportRecord | null {
-  const r = db.prepare('select * from import_record where source_key = ?').get(sourceKey) as
-    RecordRow | undefined
-  return r ? { ...r, field_hashes: parseHashes(r.field_hashes) } : null
+  return recordReader(db)(sourceKey)
 }
 
 /** Upsert pela key. Sem `tx` própria: quem chama já está numa. */

@@ -182,11 +182,17 @@ export const StatusTargetZ = z.union([
   z.object({ stage: z.string().min(1).max(100) }).strict()
 ])
 
-/** O que o import fará com cada task do brain (prévia, E4). */
+/**
+ * O que o apply vai escrever para cada task do brain (prévia, E4): `create` cria; `update` escreve
+ * na task (e no record); `link` vincula uma key que já existia; `record_only` só grava o
+ * `import_record` (o arquivo mudou sem mudar nada que vá para a task, ou só há conflito mantido);
+ * `unchanged`, `deleted_in_app` e `invalid` não escrevem nada.
+ */
 export const ImportTaskAction = z.enum([
   'create',
   'update',
   'link',
+  'record_only',
   'unchanged',
   'deleted_in_app',
   'invalid'
@@ -276,6 +282,7 @@ export const ImportPreview = z.object({
     create: z.number().int(),
     update: z.number().int(),
     link: z.number().int(),
+    record_only: z.number().int(),
     unchanged: z.number().int(),
     deleted_in_app: z.number().int(),
     invalid: z.number().int(),
