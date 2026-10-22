@@ -3,12 +3,12 @@ import { TaskDetail, TaskRow } from '../../shared/contracts'
 import type { DomainChanged } from '../../shared/ipc/events'
 import type { Db } from '../db/open'
 import { purgeTask } from '../db/purge'
-import { insertTask, openTestDb, seedIds } from '../testing/db'
+import { insertMcpClient, insertTask, openTestDb, seedIds } from '../testing/db'
 import { readActivity } from './activity'
-import { createDomain, type Actor, type DomainDeps } from './context'
+import { createDomain, type Actor, type DomainDeps, type RemotePort } from './context'
 import { DomainError } from './errors'
 import { attentionCounts, getTask, listTasks } from './rows'
-import { createTask, updateTask } from './task'
+import { closeTask, createTask, deleteTask, setStage, updateTask } from './task'
 
 const T0 = Date.parse('2026-10-22T12:00:00.000Z')
 const MIN = 60_000
@@ -23,7 +23,7 @@ type Harness = {
   nowIso: () => string
 }
 
-function setup(o: { defaultWorkdir?: () => string | null } = {}): Harness {
+function setup(o: { defaultWorkdir?: () => string | null; remote?: RemotePort } = {}): Harness {
   const db = openTestDb()
   const events: DomainChanged[] = []
   let t = T0
@@ -31,7 +31,8 @@ function setup(o: { defaultWorkdir?: () => string | null } = {}): Harness {
     db,
     afterCommit: (c) => events.push(c),
     now: () => new Date(t),
-    defaultWorkdir: o.defaultWorkdir
+    defaultWorkdir: o.defaultWorkdir,
+    remote: o.remote
   })
   return {
     db,
@@ -484,5 +485,221 @@ describe('leitura', () => {
     expect(row.session).toEqual({ id: 's1', tool: 'claude', state: 'waiting' })
     expect(row.group).toBe('sua_vez')
     expect(getTask(h.d, id).sessions.map((s) => s.id)).toEqual(['s1'])
+  })
+})
+
+/** Toda escrita que liga `turn_reason` grava `turn_at` junto. */
+const expectTurnPaired = (db: Db, id: string): void => {
+  const r = raw(db, id)
+  expect(r.turn_reason === null).toBe(r.turn_at === null)
+}
+
+const stageIdByName = (db: Db, flow: string, name: string): string =>
+  (
+    db.prepare('select id from flow_stage where flow_id = ? and name = ?').get(flow, name) as {
+      id: string
+    }
+  ).id
+
+const mcpOf = (h: Harness): Actor => ({ kind: 'mcp', client_id: insertMcpClient(h.db) })
+
+function featureTask(h: Harness, stage = 'Implementação'): { id: string; flow: string } {
+  const ids = seedIds(h.db)
+  const id = createTask(h.d, USER, { title: 'f', type_id: ids.types.Feature }).row!.id
+  h.db
+    .prepare('update task set stage_id = ? where id = ?')
+    .run(stageIdByName(h.db, ids.flows.Feature, stage), id)
+  return { id, flow: ids.flows.Feature }
+}
+
+describe('setStage e closeTask', () => {
+  it('encerrar: Entregue, done_at, concluída, sai de attention, entra em done_since; de novo é no-op', () => {
+    const h = setup()
+    const { id } = featureTask(h)
+    h.tick(MIN)
+    const r = closeTask(h.d, USER, { id })
+    expect(r.row).toMatchObject({ group: 'concluida', stage: { name: 'Entregue' } })
+    expect(raw(h.db, id).done_at).toBe(h.nowIso())
+    expect(listTasks(h.d, 'attention').map((x) => x.id)).not.toContain(id)
+    expect(listTasks(h.d, { done_since: h.nowIso() }).map((x) => x.id)).toContain(id)
+    const n = countActivity(h.db)
+    h.events.length = 0
+    h.tick(MIN)
+    const again = closeTask(h.d, USER, { id })
+    expect(again.activity_id).toBeNull()
+    expect(again.outbox).toBe('none')
+    expect(countActivity(h.db)).toBe(n)
+    expect(h.events).toEqual([])
+    expect(raw(h.db, id).done_at).toBe(new Date(T0 + MIN).toISOString())
+  })
+
+  it('sair da final zera done_at e vira encaminhado', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    closeTask(h.d, USER, { id })
+    const r = setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
+    expect(raw(h.db, id).done_at).toBeNull()
+    expect(r.row!.group).toBe('encaminhado')
+  })
+
+  it('voltar pela IA liga voltou; pelo usuário não', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    const ref = stageIdByName(h.db, flow, 'Refinamento')
+    h.tick(MIN)
+    const r = setStage(h.d, mcpOf(h), { id, stage_id: ref })
+    expect(raw(h.db, id)).toMatchObject({ turn_reason: 'voltou', turn_at: h.nowIso() })
+    expectTurnPaired(h.db, id)
+    expect(r.row).toMatchObject({ group: 'sua_vez', reason: { kind: 'voltou' } })
+    expect(readActivity(h.db, r.activity_id!)!.actor).toBe('mcp')
+
+    const u = featureTask(h)
+    setStage(h.d, USER, { id: u.id, stage_id: ref })
+    expect(raw(h.db, u.id).turn_reason).toBeNull()
+    expectTurnPaired(h.db, u.id)
+  })
+
+  it('avançar limpa a vez', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinamento') })
+    expect(raw(h.db, id).turn_reason).toBe('voltou')
+    setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
+    expect(raw(h.db, id)).toMatchObject({ turn_reason: null, turn_at: null })
+  })
+
+  it('voltar pela IA não rebaixa nem adianta o turn_at de uma vez já ligada', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h, 'Review')
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Implementação') })
+    const at = raw(h.db, id).turn_at
+    h.tick(MIN)
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinamento') })
+    expect(raw(h.db, id)).toMatchObject({ turn_reason: 'voltou', turn_at: at })
+  })
+
+  it('etapa de outro fluxo ou apagada é VALIDATION stage_not_in_flow', () => {
+    const h = setup()
+    const ids = seedIds(h.db)
+    const { id, flow } = featureTask(h)
+    const other = ids.stages.Bugfix[0]
+    expect(reasonOf(() => setStage(h.d, USER, { id, stage_id: other }))).toEqual({
+      code: 'VALIDATION',
+      reason: 'stage_not_in_flow'
+    })
+    const gone = stageIdByName(h.db, flow, 'Review')
+    h.db.prepare('update flow_stage set deleted_at = ? where id = ?').run(h.nowIso(), gone)
+    expect(reasonOf(() => setStage(h.d, USER, { id, stage_id: gone }))).toEqual({
+      code: 'VALIDATION',
+      reason: 'stage_not_in_flow'
+    })
+  })
+
+  it('closeTask sem etapa final viva é CONFLICT no_final_stage', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    h.db.prepare('update flow_stage set is_final = 0 where flow_id = ?').run(flow)
+    expect(reasonOf(() => closeTask(h.d, USER, { id }))).toEqual({
+      code: 'CONFLICT',
+      reason: 'no_final_stage'
+    })
+  })
+
+  describe('outbox', () => {
+    const linked: RemotePort = { isLinked: () => true }
+
+    it('Feature vinculada enfileira 1 transition com idem_key da activity', () => {
+      const h = setup({ remote: linked })
+      const { id, flow } = featureTask(h)
+      const to = stageIdByName(h.db, flow, 'Review')
+      const r = setStage(h.d, USER, { id, stage_id: to })
+      expect(r.outbox).toBe('queued')
+      const rows = h.db.prepare('select * from sync_outbox').all() as Record<string, string>[]
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        op: 'transition',
+        task_id: id,
+        idem_key: `transition:${r.activity_id}`
+      })
+      expect(JSON.parse(rows[0].payload)).toEqual({ to_stage_id: to })
+      expect(readActivity(h.db, r.activity_id!)!.inverse!.outbox_id).toBe(rows[0].id)
+    })
+
+    it('Pessoal vinculada não enfileira', () => {
+      const h = setup({ remote: linked })
+      const ids = seedIds(h.db)
+      const id = createTask(h.d, USER, { title: 'p', type_id: ids.types.Pessoal }).row!.id
+      const r = setStage(h.d, USER, { id, stage_id: ids.stages.Pessoal[1] })
+      expect(r.outbox).toBe('none')
+      expect(h.db.prepare('select count(*) as n from sync_outbox').get()).toEqual({ n: 0 })
+    })
+
+    it('sem vínculo não enfileira', () => {
+      const h = setup({ remote: { isLinked: () => false } })
+      const { id, flow } = featureTask(h)
+      const r = setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
+      expect(r.outbox).toBe('none')
+      expect(h.db.prepare('select count(*) as n from sync_outbox').get()).toEqual({ n: 0 })
+    })
+  })
+
+  it('inverso da transição guarda expect e restore dos campos mudados', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    const from = raw(h.db, id).stage_id
+    const to = stageIdByName(h.db, flow, 'Refinamento')
+    const r = setStage(h.d, mcpOf(h), { id, stage_id: to })
+    const a = readActivity(h.db, r.activity_id!)!
+    expect(a).toMatchObject({
+      op: 'task_set_stage',
+      data: { from: 'Implementação', to: 'Refinamento' }
+    })
+    expect(a.data.fields).toEqual(['stage_id', 'done_at', 'turn_reason', 'turn_at'])
+    expect(a.inverse).toEqual({
+      op: 'set_stage',
+      task_id: id,
+      expect: { stage_id: to, done_at: null, turn_reason: 'voltou', turn_at: h.nowIso() },
+      restore: { stage_id: from, done_at: null, turn_reason: null, turn_at: null },
+      outbox_id: null
+    })
+  })
+
+  it('toca touched_at', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    h.tick(MIN)
+    setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
+    expect(raw(h.db, id).touched_at).toBe(h.nowIso())
+  })
+})
+
+describe('deleteTask', () => {
+  it('apagada some de list, ids e counts; comando nela é NOT_FOUND', () => {
+    const h = setup()
+    const { id, flow } = featureTask(h)
+    const pend = attentionCounts(h.d).pendente
+    const touched = raw(h.db, id).touched_at
+    h.tick(MIN)
+    h.events.length = 0
+    const r = deleteTask(h.d, USER, { id })
+    expect(r.row).toBeNull()
+    expect(listTasks(h.d, 'attention').map((x) => x.id)).not.toContain(id)
+    expect(listTasks(h.d, { ids: [id] })).toEqual([])
+    expect(attentionCounts(h.d).pendente).toBe(pend - 1)
+    expect(reasonOf(() => getTask(h.d, id)).code).toBe('NOT_FOUND')
+    expect(
+      reasonOf(() => setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') }))
+        .code
+    ).toBe('NOT_FOUND')
+    expect(h.events).toContainEqual({ entity: 'task', ids: [id], op: 'delete' })
+    expect(raw(h.db, id).touched_at).toBe(touched)
+    expect(readActivity(h.db, r.activity_id!)).toMatchObject({
+      op: 'task_delete',
+      inverse: {
+        op: 'undelete',
+        expect: { deleted_at: h.nowIso() },
+        restore: { deleted_at: null }
+      }
+    })
   })
 })

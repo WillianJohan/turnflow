@@ -1,10 +1,11 @@
 import { Limits, type CreateTaskInput, type TaskPatch, type TaskRow } from '../../shared/contracts'
 import { isAbsolutePath } from '../../shared/pathSyntax'
 import type { Db } from '../db/open'
-import { recordActivity } from './activity'
+import { readFields, recordActivity, type Inverse, type TaskField } from './activity'
 import { nowIso, type Actor, type DomainDeps, type Emit } from './context'
 import { checkMax, domainError, notFound } from './errors'
 import { rankAfter } from './rank'
+import { raiseTurn } from './turn'
 import { liveTask, taskRow, type TaskRecord } from './rows'
 
 /** `row` é `null` quando a task termina apagada (Decisão 28). */
@@ -157,6 +158,159 @@ export function updateTaskIn(
     task_id: rec.id,
     fields: [...changed],
     inverse: null
+  })
+  return { task_id: rec.id, activity_id }
+}
+
+type StageInfo = { id: string; position: number; name: string; is_final: number }
+type Outbox = 'queued' | 'none'
+type StageResult = { activity_id: string | null; outbox: Outbox }
+
+export function setStage(
+  d: DomainDeps,
+  actor: Actor,
+  i: { id: string; stage_id: string }
+): TaskCommandResult & { outbox: Outbox } {
+  const r = d.tx((emit) => {
+    const w = setStageIn(d, emit, actor, i)
+    return { ...w, task_id: liveTask(d.db, i.id).id }
+  })
+  return { ...finish(d, r), outbox: r.outbox }
+}
+
+/**
+ * Muda a etapa (Decisões 11, 12 e 13). `done_at` acompanha `is_final`; posição menor com ator IA
+ * liga `voltou`, posição maior limpa a vez. Mesma etapa é no-op. Com tipo `syncs=1` e task
+ * vinculada, enfileira a linha `transition` no outbox.
+ */
+export function setStageIn(
+  d: DomainDeps,
+  emit: Emit,
+  actor: Actor,
+  i: { id: string; stage_id: string }
+): StageResult {
+  const rec = liveTask(d.db, i.id)
+  const stageOf = d.db.prepare(
+    'select id, position, name, is_final, deleted_at from flow_stage where id = ? and flow_id = ?'
+  )
+  const to = stageOf.get(i.stage_id, rec.flow_id) as
+    (StageInfo & { deleted_at: string | null }) | undefined
+  if (!to || to.deleted_at !== null)
+    throw domainError('VALIDATION', 'stage_not_in_flow', { stage_id: i.stage_id })
+  if (to.id === rec.stage_id) return { activity_id: null, outbox: 'none' }
+  const from = stageOf.get(rec.stage_id, rec.flow_id) as StageInfo
+
+  const now = nowIso(d)
+  const next: Partial<Record<TaskField, string | null>> = {
+    stage_id: to.id,
+    done_at: to.is_final ? (rec.done_at ?? now) : null
+  }
+  if (to.position > from.position) {
+    next.turn_reason = null
+    next.turn_at = null
+  } else if (to.position < from.position && actor.kind !== 'user' && actor.kind !== 'import') {
+    Object.assign(next, raiseTurn(rec, 'voltou', now))
+  }
+  const keys = (Object.keys(next) as TaskField[]).filter(
+    (k) => k === 'stage_id' || k === 'done_at' || next[k] !== rec[k]
+  )
+  const before = readFields(d.db, rec.id, keys)
+  const expect = Object.fromEntries(keys.map((k) => [k, next[k] ?? null]))
+  const set = keys.map((k) => `${k} = @${k}`).join(', ')
+  d.db
+    .prepare(`update task set ${set}, touched_at = @now where id = @id`)
+    .run({ ...expect, now, id: rec.id })
+  emit({ entity: 'task', ids: [rec.id], op: 'upsert' })
+
+  const activity_id = d.newId()
+  const outbox_id = enqueueTransition(d, rec, to.id, activity_id, now)
+  const inverse: Inverse = {
+    op: 'set_stage',
+    task_id: rec.id,
+    expect,
+    restore: before,
+    outbox_id
+  }
+  recordActivity(d, emit, actor, {
+    id: activity_id,
+    op: 'task_set_stage',
+    task_id: rec.id,
+    fields: keys,
+    inverse,
+    data: { from: from.name, to: to.name }
+  })
+  return { activity_id, outbox: outbox_id ? 'queued' : 'none' }
+}
+
+/** Linha `transition` do outbox, só para tipo que sincroniza e task vinculada (Decisão 13). */
+function enqueueTransition(
+  d: DomainDeps,
+  rec: TaskRecord,
+  toStageId: string,
+  activityId: string,
+  now: string
+): string | null {
+  const syncs = d.db.prepare('select syncs from task_type where id = ?').get(rec.type_id) as
+    { syncs: number } | undefined
+  if (!syncs?.syncs || !d.remote.isLinked(d.db, rec.id)) return null
+  const id = d.newId()
+  d.db
+    .prepare(
+      `insert into sync_outbox(id, task_id, op, payload, idem_key, created_at)
+       values (?, ?, 'transition', ?, ?, ?)`
+    )
+    .run(id, rec.id, JSON.stringify({ to_stage_id: toStageId }), `transition:${activityId}`, now)
+  return id
+}
+
+/** Encerra: vai para a etapa final viva de menor posição (`CONFLICT no_final_stage` se não há). */
+export function closeTask(
+  d: DomainDeps,
+  actor: Actor,
+  i: { id: string }
+): TaskCommandResult & { outbox: Outbox } {
+  const r = d.tx((emit) => {
+    const rec = liveTask(d.db, i.id)
+    const fin = d.db
+      .prepare(
+        `select id from flow_stage where flow_id = ? and is_final = 1 and deleted_at is null
+         order by position, id limit 1`
+      )
+      .get(rec.flow_id) as { id: string } | undefined
+    if (!fin) throw domainError('CONFLICT', 'no_final_stage')
+    return { ...setStageIn(d, emit, actor, { id: rec.id, stage_id: fin.id }), task_id: rec.id }
+  })
+  return { ...finish(d, r), outbox: r.outbox }
+}
+
+export function deleteTask(d: DomainDeps, actor: Actor, i: { id: string }): TaskCommandResult {
+  return finish(
+    d,
+    d.tx((emit) => deleteTaskIn(d, emit, actor, i))
+  )
+}
+
+/** Apaga (soft) sem tocar `touched_at`; o inverso `undelete` devolve a task. */
+export function deleteTaskIn(
+  d: DomainDeps,
+  emit: Emit,
+  actor: Actor,
+  i: { id: string }
+): TaskWrite {
+  const rec = liveTask(d.db, i.id)
+  const now = nowIso(d)
+  d.db.prepare('update task set deleted_at = ? where id = ?').run(now, rec.id)
+  emit({ entity: 'task', ids: [rec.id], op: 'delete' })
+  const activity_id = recordActivity(d, emit, actor, {
+    op: 'task_delete',
+    task_id: rec.id,
+    fields: ['deleted_at'],
+    inverse: {
+      op: 'undelete',
+      task_id: rec.id,
+      expect: { deleted_at: now },
+      restore: { deleted_at: null }
+    }
   })
   return { task_id: rec.id, activity_id }
 }
