@@ -31,7 +31,8 @@ export const VAULT_COPY = {
   badState: {
     keyringNotReal: 'O chaveiro do sistema não protege a chave; use uma senha mestra',
     notPasswordMode: 'A chave não está protegida por senha',
-    notKeyringMode: 'A chave não está no chaveiro do sistema'
+    notKeyringMode: 'A chave não está no chaveiro do sistema',
+    kdfOutOfRange: 'Parâmetros de derivação da chave fora do permitido'
   },
   /** `WORDS_UNKNOWN` com a posição (1-based) da primeira palavra desconhecida. */
   wordUnknown: (position: number): string => `A palavra ${position} não existe na lista`,

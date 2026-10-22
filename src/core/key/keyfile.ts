@@ -155,13 +155,16 @@ export async function wrapWithPassword(
   assertDek(dek)
   if ([...password.normalize('NFC')].length < MIN_PASSWORD_CODE_POINTS)
     throw new VaultError('PASSWORD_TOO_SHORT')
-  // Lança (ZodError) se os parâmetros pedidos saírem do que o `readKeyFile` aceita.
-  const kdf: KdfParams = KdfParamsZ.parse({
+  // quem grava não pode produzir parâmetros que o `readKeyFile` recusaria
+  const parsed = KdfParamsZ.safeParse({
     alg: 'argon2id',
     ...KDF_DEFAULT,
     ...params,
     salt: randomBytes(SALT_BYTES).toString('base64')
   })
+  if (!parsed.success)
+    throw new VaultError('BAD_STATE', { message: VAULT_COPY.badState.kdfOutOfRange })
+  const kdf: KdfParams = parsed.data
   const kek = await deriveKek(password, kdf)
   try {
     const nonce = randomBytes(NONCE_BYTES)

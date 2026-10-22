@@ -91,9 +91,9 @@ describe('key.enc', () => {
 
   it('parâmetros fora do teto: wrap recusa e o arquivo é KEYFILE_CORRUPT', async () => {
     const dek = randomBytes(32)
-    await expect(wrapWithPassword(dek, PASSWORD, { m: 262_145 })).rejects.toThrow()
-    await expect(wrapWithPassword(dek, PASSWORD, { t: 11 })).rejects.toThrow()
-    await expect(wrapWithPassword(dek, PASSWORD, { m: 1024, p: 200 })).rejects.toThrow()
+    await expect(wrapWithPassword(dek, PASSWORD, { m: 262_145 })).rejects.toMatchObject({ code: 'BAD_STATE' })
+    await expect(wrapWithPassword(dek, PASSWORD, { t: 11 })).rejects.toMatchObject({ code: 'BAD_STATE' })
+    await expect(wrapWithPassword(dek, PASSWORD, { m: 1024, p: 200 })).rejects.toMatchObject({ code: 'BAD_STATE' })
     const file = join(tmpDir(), 'key.enc')
     const kf = await wrapWithPassword(dek, PASSWORD, FAST)
     for (const kdf of [{ m: 262_145 }, { t: 11 }]) {
