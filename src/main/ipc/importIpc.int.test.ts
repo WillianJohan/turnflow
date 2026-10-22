@@ -375,6 +375,18 @@ describe('canais do import', () => {
       expect(cfg).toMatchObject({ theme: 'night', termFont: 'Fira Code' })
     })
 
+    it('export pelo IPC: grava a pasta nova e dest relativo volta VALIDATION', async () => {
+      const e = setup({ files: BRAIN })
+      const p = data<ImportPreview>(await e.call('importDryRun', { root: e.root }))
+      await e.call('importApply', { root: e.root, token: p.token })
+      const dest = tmpDir()
+      const r = data<{ dir: string; tasks: number }>(await e.call('exportMarkdown', { dest }))
+      expect(r.tasks).toBe(2)
+      expect(readdirSync(join(r.dir, 'current')).sort()).toEqual(['ABC-1', 'ABC-2'])
+      const bad = await e.call('exportMarkdown', { dest: 'relative' })
+      expect(bad).toMatchObject({ ok: false, error: { code: 'VALIDATION' } })
+    })
+
     it('tema legado aparece em Ajustes → Tema', async () => {
       const e = setup()
       seedLegacy(e.legacy)

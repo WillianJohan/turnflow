@@ -158,6 +158,15 @@ export const IMPORT_COPY = {
       `Imported ${themes} ${themes === 1 ? 'theme' : 'themes'} and ${keys} ${keys === 1 ? 'setting' : 'settings'}.`,
     skippedFiles: (ids: string): string => `Already existed and were left as they are: ${ids}`
   },
+  /** Export de tudo para markdown (Ajustes → Import). */
+  export: {
+    button: 'Export to markdown…',
+    intro:
+      'Write every task, open and done, as a markdown README in the brain format, into a new folder you choose the location of. Nothing is overwritten.',
+    exporting: 'Exporting…',
+    done: (n: number, dir: string): string =>
+      `Exported ${n} ${n === 1 ? 'task' : 'tasks'} to ${dir}`
+  },
   importedStatus: (status: string): string => `Imported status: ${status}`,
   /** Por que um caminho ficou de fora do import. */
   ignored: {

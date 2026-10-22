@@ -82,6 +82,7 @@ export const CHANNELS = {
   importApply: imp.importApply,
   importPickFolder: imp.importPickFolder,
   importLegacyDryRun: imp.importLegacyDryRun,
-  importLegacyApply: imp.importLegacyApply
+  importLegacyApply: imp.importLegacyApply,
+  exportMarkdown: imp.exportMarkdown
 } as const
 export type Channels = typeof CHANNELS

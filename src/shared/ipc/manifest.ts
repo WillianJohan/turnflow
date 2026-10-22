@@ -70,5 +70,6 @@ export const MANIFEST = {
   importApply: ['import.apply', 'invoke'],
   importPickFolder: ['import.pickFolder', 'invoke'],
   importLegacyDryRun: ['import.legacyDryRun', 'invoke'],
-  importLegacyApply: ['import.legacyApply', 'invoke']
+  importLegacyApply: ['import.legacyApply', 'invoke'],
+  exportMarkdown: ['export.markdown', 'invoke']
 } as const satisfies { [K in keyof Channels]: readonly [string, Channels[K]['kind']] }

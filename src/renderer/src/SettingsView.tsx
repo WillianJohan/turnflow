@@ -8,6 +8,7 @@ import { WipeAll } from './features/vault/WipeAll'
 import { COPY as VAULT_SCREENS } from './features/vault/copy'
 import { ImportBrain } from './features/import/ImportBrain'
 import { ImportLegacy } from './features/import/ImportLegacy'
+import { ExportMarkdown } from './features/import/ExportMarkdown'
 import { IMPORT_COPY } from '../../shared/copy/import'
 
 // Número que aceita digitação: "12" passa por "1", então só valida ao confirmar.
@@ -204,6 +205,7 @@ export function SettingsView({
           <h3>{IMPORT_COPY.screen.title}</h3>
           <ImportBrain brainDir={c.brainDir} />
           <ImportLegacy />
+          <ExportMarkdown />
         </section>
 
         <section className="sp-card" data-testid="settings-wipe">

@@ -5,6 +5,7 @@ import type { DomainDeps } from '../../core/domain/context'
 import { applyDkdesk } from '../../core/import/dkdesk/apply'
 import { planDkdesk } from '../../core/import/dkdesk/plan'
 import { readDkdesk } from '../../core/import/dkdesk/read'
+import { exportMarkdown } from '../../core/export/markdown'
 import { importError } from '../../core/import/errors'
 import { applyBrain, previewBrain } from '../../core/import/markdown'
 import type { ImportOptions } from '../../core/import/markdown/plan'
@@ -139,6 +140,10 @@ export function registerImportIpc(h: Register, deps: ImportIpcDeps): void {
         writeConfig: deps.writeConfig
       })
     })
+  )
+
+  h(I.exportMarkdown, ({ dest }) =>
+    guard(async () => exportMarkdown(deps.domainFor(deps.vault.db()), dest))
   )
 
   h(I.importPickFolder, async () => ({ path: await deps.pickFolder() }))

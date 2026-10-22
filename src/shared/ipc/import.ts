@@ -110,6 +110,13 @@ export const importLegacyApply = defineChannel(
   LegacyApplyResultZ
 )
 
+// Export de tudo para markdown no formato do brain (E4.4): escreve só numa pasta nova dentro de `dest`.
+export const exportMarkdown = defineChannel(
+  'export.markdown',
+  z.object({ dest: z.string().min(1).max(Limits.workdir) }).strict(),
+  z.object({ dir: z.string(), tasks: z.number().int().min(0) }).strict()
+)
+
 export type LegacyPlan = z.output<typeof LegacyPlanZ>
 export type LegacyApplyResult = z.output<typeof LegacyApplyResultZ>
 export type ImportDryRunInput = z.input<typeof importDryRun.input>
