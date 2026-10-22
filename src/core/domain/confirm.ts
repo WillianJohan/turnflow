@@ -31,5 +31,6 @@ const CONFIRM: Record<CommandOp, boolean> = {
 
 /** A única regra de confirmação: UI, MCP e assistente passam por `runCommand`, que pergunta aqui. */
 export function needsConfirm(op: CommandOp): boolean {
-  return CONFIRM[op]
+  // Fail-closed: op desconhecida em runtime (fora da tabela) pede confirmação.
+  return CONFIRM[op] ?? true
 }

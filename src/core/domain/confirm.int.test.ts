@@ -3,6 +3,7 @@ import type { Db } from '../db/open'
 import { insertMcpClient, insertTask, openTestDb, seedIds } from '../testing/db'
 import { readActivity } from './activity'
 import { runCommand } from './commands'
+import { DomainError } from './errors'
 import { createDomain, type Actor, type DomainDeps } from './context'
 import { undoState } from './undo'
 
@@ -91,5 +92,38 @@ describe('runCommand: confirmação é uma regra só', () => {
       expect(h.db.prepare('select id from project where id = ?').get(id)).toBeUndefined()
       expect(count(h.db, 'activity')).toBe(before + 1)
     }
+  })
+
+  it('project_update: id dentro do patch não troca o alvo', () => {
+    const h = setup()
+    const actor: Actor = { kind: 'user' }
+    const mk = (name: string): string => {
+      const o = runCommand(h.d, actor, { op: 'project_create', input: { name } })
+      if (o.status !== 'done') throw new Error('esperava done')
+      return o.result.id
+    }
+    const a = mk('A')
+    const b = mk('B')
+    const patch = { name: 'Novo', id: b } as unknown as { name: string }
+    runCommand(h.d, actor, { op: 'project_update', id: a, patch })
+    const name = (id: string): unknown =>
+      (h.db.prepare('select name from project where id = ?').get(id) as { name: string }).name
+    expect(name(a)).toBe('Novo')
+    expect(name(b)).toBe('B')
+  })
+
+  it('op desconhecida: VALIDATION, sem tocar no banco', () => {
+    const h = setup()
+    const before = count(h.db, 'activity')
+    const cmd = { op: 'op_que_nao_existe' } as never
+    let err: unknown
+    try {
+      runCommand(h.d, { kind: 'user' }, cmd, { confirmed: true })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(DomainError)
+    expect((err as DomainError).code).toBe('VALIDATION')
+    expect(count(h.db, 'activity')).toBe(before)
   })
 })

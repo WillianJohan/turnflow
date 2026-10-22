@@ -16,6 +16,7 @@ const ERRORS = {
   stage_has_tasks: 'A etapa tem tasks: escolha para onde elas vão antes de apagar',
   choose_keep_adopt: 'O projeto usa outro fluxo: mantenha o da task ou adote o do projeto',
   remap_required: 'Escolha a etapa equivalente no fluxo novo',
+  unknown_op: 'Operação desconhecida',
   not_undoable: 'Essa ação não pode ser desfeita',
   already_undone: 'Já foi desfeito',
   expired: 'Passou o prazo de 7 dias para desfazer',

@@ -39,4 +39,8 @@ describe('needsConfirm', () => {
       ['comment_remote', 'project_delete', 'task_delete'].sort()
     )
   })
+
+  it('op desconhecida em runtime pede confirmação (fail-closed)', () => {
+    expect(needsConfirm('op_que_nao_existe' as CommandOp)).toBe(true)
+  })
 })

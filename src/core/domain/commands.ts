@@ -12,6 +12,7 @@ import { blockTask, unblockTask } from './block'
 import { addCheckpoint } from './checkpoint'
 import { needsConfirm, type CommandOp } from './confirm'
 import type { Actor, DomainDeps } from './context'
+import { domainError } from './errors'
 import { deleteStage, saveStage, setTaskFlow } from './flow'
 import { createProject, deleteProject, moveTask, updateProject } from './project'
 import {
@@ -48,7 +49,7 @@ export const COMMAND_OPS = [
 
 type Outbox = 'queued' | 'none'
 
-export type Command = (
+export type Command =
   | { op: 'task_create'; input: CreateTaskInput }
   | { op: 'task_update'; id: string; patch: TaskPatch }
   | { op: 'task_set_stage'; id: string; stage_id: string }
@@ -66,12 +67,12 @@ export type Command = (
   | { op: 'project_delete'; id: string }
   | { op: 'flow_save_stage'; input: SaveStageInput }
   | { op: 'flow_delete_stage'; id: string; to_stage_id?: string }
-) & { op: (typeof COMMAND_OPS)[number] }
 
-// Mão dupla: toda op da lista tem variante em `Command`.
-type _EveryOpHasVariant = (typeof COMMAND_OPS)[number] extends Command['op'] ? true : never
-const _everyOpHasVariant: _EveryOpHasVariant = true
-void _everyOpHasVariant
+type Op = (typeof COMMAND_OPS)[number]
+type Assert<T extends true> = T
+type SameOps = [Op] extends [Command['op']] ? ([Command['op']] extends [Op] ? true : false) : false
+/** Falha o typecheck se uma variante de `Command` ficar fora de `COMMAND_OPS` ou o contrário. */
+export type CommandOpsMatch = Assert<SameOps>
 
 export type CommandResults = {
   task_create: TaskCommandResult
@@ -95,6 +96,10 @@ export type CommandResults = {
 
 export type CommandOutcome<R> =
   { status: 'done'; result: R } | { status: 'needs_confirmation'; op: CommandOp }
+
+function assertNever(cmd: never): never {
+  throw domainError('VALIDATION', 'unknown_op', { op: (cmd as { op?: unknown }).op })
+}
 
 function dispatch(d: DomainDeps, actor: Actor, cmd: Command): CommandResults[Command['op']] {
   switch (cmd.op) {
@@ -128,13 +133,15 @@ function dispatch(d: DomainDeps, actor: Actor, cmd: Command): CommandResults[Com
     case 'project_create':
       return createProject(d, actor, cmd.input)
     case 'project_update':
-      return updateProject(d, actor, { id: cmd.id, ...cmd.patch })
+      return updateProject(d, actor, { ...cmd.patch, id: cmd.id })
     case 'project_delete':
       return deleteProject(d, actor, { id: cmd.id })
     case 'flow_save_stage':
       return saveStage(d, actor, cmd.input)
     case 'flow_delete_stage':
       return deleteStage(d, actor, { id: cmd.id, to_stage_id: cmd.to_stage_id })
+    default:
+      return assertNever(cmd)
   }
 }
 
