@@ -38,12 +38,13 @@ describe('migrate', () => {
     const quebra = lista(() => {
       throw new Error('boom')
     })
-    expect.assertions(7)
+    expect.assertions(8)
     try {
       openDb({ file, dek: TEST_DEK, create: true, migrations: quebra })
     } catch (e) {
       expect((e as DbOpenError).code).toBe('MIGRATION_FAILED')
       expect((e as DbOpenError).details?.version).toBe(3)
+      expect(((e as DbOpenError).cause as Error).message).toBe('boom')
     }
     const db = openDb({ file, dek: TEST_DEK, create: false, migrate: false })
     expect(db.pragma('user_version', { simple: true })).toBe(0)

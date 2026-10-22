@@ -89,4 +89,19 @@ describe('openDb', () => {
     }).close()
     expect(chamado).toBe(true)
   })
+
+  it('create:true sobre arquivo existente não trunca', () => {
+    const dir = tmpDir()
+    openTestDb(dir).close()
+    const file = join(dir, 'turnflow.db')
+    const antes = sha(file)
+    openDb({ file, dek: TEST_DEK, create: true, migrate: false }).close()
+    expect(sha(file)).toBe(antes)
+  })
+
+  it('recusa chave que não tem 32 bytes', () => {
+    expect(() =>
+      openDb({ file: join(tmpDir(), 'k.db'), dek: Buffer.alloc(16), create: true })
+    ).toThrow(/32 bytes/)
+  })
 })

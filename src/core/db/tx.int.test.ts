@@ -46,4 +46,42 @@ describe('createTx', () => {
     expect(createTx(db, () => {})(() => 7)).toBe(7)
     db.close()
   })
+
+  it('listener que lança não perde eventos nem vira erro da escrita', () => {
+    const db = openTestDb()
+    const vistos: string[] = []
+    const erros: unknown[] = []
+    const tx = createTx(
+      db,
+      (c) => {
+        vistos.push(c.ids[0])
+        if (c.ids[0] === 'a') throw new Error('listener')
+      },
+      (e) => erros.push(e)
+    )
+    const r = tx((emit) => {
+      db.prepare('insert into secret(name, service, value, created_at) values (?,?,?,?)').run(
+        'y',
+        's',
+        'v',
+        't'
+      )
+      emit({ entity: 'task', ids: ['a'], op: 'upsert' })
+      emit({ entity: 'task', ids: ['b'], op: 'upsert' })
+      return 5
+    })
+    expect(r).toBe(5)
+    expect(vistos).toEqual(['a', 'b'])
+    expect(erros).toHaveLength(1)
+    expect(db.prepare("select count(*) as n from secret where name = 'y'").get()).toEqual({ n: 1 })
+    db.close()
+  })
+
+  it('recusa fn assíncrona', () => {
+    const db = openTestDb()
+    const tx = createTx(db, () => {})
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => tx((() => Promise.resolve(1)) as any)).toThrow(/síncrona/)
+    db.close()
+  })
 })

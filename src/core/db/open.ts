@@ -1,21 +1,12 @@
 import { existsSync, writeFileSync } from 'node:fs'
 import Database from 'better-sqlite3-multiple-ciphers'
+import { DbOpenError } from './errors'
 import { fold } from './fold'
 import { migrate, type Migration } from './migrate'
 import { MIGRATIONS } from './migrations'
 
+export { DbOpenError }
 export type Db = import('better-sqlite3-multiple-ciphers').Database
-
-export class DbOpenError extends Error {
-  constructor(
-    readonly code: 'WRONG_KEY' | 'NOT_FOUND' | 'NEWER_SCHEMA' | 'MIGRATION_FAILED',
-    message: string,
-    readonly details?: { version?: number }
-  ) {
-    super(message)
-    this.name = 'DbOpenError'
-  }
-}
 
 export type OpenOpts = {
   file: string
@@ -31,10 +22,18 @@ export type OpenOpts = {
 export const keyPragma = (dek: Buffer): string => `key="x'${dek.toString('hex')}'"`
 
 export function openDb(o: OpenOpts): Db {
+  if (o.dek.length !== 32) throw new Error('openDb: a DEK precisa ter 32 bytes')
   const exists = existsSync(o.file)
   if (!exists && !o.create) throw new DbOpenError('NOT_FOUND', 'Banco não encontrado.')
   // Cria vazio com 0600 antes do SQLite; o -wal e o -shm herdam o modo do arquivo principal.
-  if (!exists) writeFileSync(o.file, '', { mode: 0o600 })
+  // 'wx' nunca trunca: se alguém criou o arquivo entre o existsSync e aqui, segue com ele.
+  if (!exists) {
+    try {
+      writeFileSync(o.file, '', { mode: 0o600, flag: 'wx' })
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'EEXIST') throw e
+    }
+  }
   const db = new Database(o.file, { fileMustExist: true })
   try {
     db.pragma("cipher='sqlcipher'")

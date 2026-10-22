@@ -1,5 +1,6 @@
 import { VAULT_COPY } from '../../shared/copy/vault'
-import { DbOpenError, type Db } from './open'
+import { DbOpenError } from './errors'
+import type { Db } from './open'
 
 export type Migration = { version: number; name: string; up: (db: Db) => void }
 
@@ -34,9 +35,8 @@ export function migrate(
     throw new DbOpenError(
       'MIGRATION_FAILED',
       VAULT_COPY.migrationFailed(current.version, current.name, msg),
-      {
-        version: current.version
-      }
+      { version: current.version },
+      { cause: e }
     )
   }
   return { from, to: latest }
