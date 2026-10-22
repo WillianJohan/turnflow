@@ -15,7 +15,7 @@ export type QueryTimer = {
 }
 
 const NAME_MAX = 80
-const KEY_PRAGMA = /^\s*PRAGMA\s+(re)?key\b/i
+const KEY_PRAGMA = /^\s*(--[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*PRAGMA\s+(\w+\.)?(hex)?(re)?key\b/i
 
 const bucketOf = (ms: number): Bucket =>
   ms < 1 ? '<1' : ms < 4 ? '1-4' : ms < 16 ? '4-16' : ms <= 50 ? '16-50' : '>50'
@@ -36,8 +36,8 @@ export function createQueryTimer(o: {
   const byName = new Map<string, QueryStat>()
   return {
     record(sql, ms) {
+      if (KEY_PRAGMA.test(sql)) return
       const name = sql.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX)
-      if (KEY_PRAGMA.test(name)) return
       let s = byName.get(name)
       if (!s) {
         s = { name, count: 0, totalMs: 0, maxMs: 0, buckets: emptyBuckets() }
@@ -48,15 +48,23 @@ export function createQueryTimer(o: {
       s.maxMs = Math.max(s.maxMs, ms)
       s.buckets[bucketOf(ms)]++
       const line = `[db] ${ms.toFixed(1)}ms ${name}`
-      if (ms > 50) o.log('error', line)
-      else if (o.mode === 'dev' && ms > 16) o.log('warn', line)
+      try {
+        if (ms > 50) o.log('error', line)
+        else if (o.mode === 'dev' && ms > 16) o.log('warn', line)
+      } catch {
+        // o log nunca pode quebrar a query
+      }
     },
     stats: () => [...byName.values()].sort((a, b) => b.totalMs - a.totalMs),
     reset: () => byName.clear()
   }
 }
 
-/** Embrulha `db.prepare`: run/get/all/iterate de cada statement passam pelo timer. */
+/**
+ * Embrulha `db.prepare`: run/get/all/iterate de cada statement passam pelo timer.
+ * Não cobre `db.pragma()`/`db.exec()` (usam o prepare nativo). A duração do iterate
+ * inclui o tempo do consumidor entre os `next()`.
+ */
 export function instrumentDb(
   db: Db,
   timer: QueryTimer,

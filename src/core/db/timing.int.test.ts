@@ -106,11 +106,59 @@ describe('instrumentDb', () => {
     clock.step = 100
     const db = openTestDb()
     instrumentDb(db, timer, now)
+    const hex = TEST_DEK.toString('hex')
+    // db.pragma() usa o prepare nativo (não passa pelo embrulho); o caso real é db.prepare("PRAGMA ...").
     db.pragma(keyPragma(TEST_DEK))
-    timer.record(`PRAGMA key = "x'${TEST_DEK.toString('hex')}'"`, 100)
-    timer.record(`pragma rekey="x'${TEST_DEK.toString('hex')}'"`, 100)
+    db.prepare(`PRAGMA key="x'${hex}'"`).get()
+    db.prepare(`PRAGMA main.hexkey='${hex}'`).get()
+    db.prepare(`-- c\n  PRAGMA key="x'${hex}'"`).get()
+    db.prepare(`/* c */ pragma main.key="x'${hex}'"`).get()
+    // rekey trocaria a chave do banco aberto: só o timer, direto.
+    timer.record(`/* c */ pragma main.rekey="x'${hex}'"`, 100)
+    timer.record(`PRAGMA key = "x'${hex}'"`, 100)
     expect(timer.stats().some((s) => /key/i.test(s.name))).toBe(false)
-    expect(lines.some((l) => l[1].includes(TEST_DEK.toString('hex')))).toBe(false)
+    expect(lines.some((l) => l[1].includes(hex))).toBe(false)
+    db.close()
+  })
+
+  it('iterate é registrado no timer', () => {
+    const { timer, clock, now } = setup('dev')
+    const db = openTestDb()
+    instrumentDb(db, timer, now)
+    clock.step = 5
+    for (const _ of db.prepare('select 1 as n').iterate()) void _
+    const s = timer.stats().find((x) => x.name === 'select 1 as n')
+    expect(s?.count).toBe(1)
+    db.close()
+  })
+
+  it('erro do SQLite continua propagando', () => {
+    const { timer } = setup('dev')
+    const db = openTestDb()
+    instrumentDb(db, timer)
+    db.exec('create table u(n integer primary key)')
+    const ins = db.prepare('insert into u(n) values (?)')
+    ins.run(1)
+    expect(() => ins.run(1)).toThrowError(
+      expect.objectContaining({ code: 'SQLITE_CONSTRAINT_PRIMARYKEY' })
+    )
+    db.close()
+  })
+
+  it('log que lança não quebra a query nem perde o write', () => {
+    const timer = createQueryTimer({
+      mode: 'dev',
+      log: () => {
+        throw new Error('log quebrou')
+      }
+    })
+    const clock = { t: 0 }
+    const db = openTestDb()
+    instrumentDb(db, timer, () => (clock.t += 100))
+    db.exec('create table w(n integer)')
+    expect(db.prepare('select 7 as n').get()).toEqual({ n: 7 })
+    expect(() => db.prepare('insert into w(n) values (?)').run(1)).not.toThrow()
+    expect(db.prepare('select count(*) as c from w').get()).toEqual({ c: 1 })
     db.close()
   })
 })

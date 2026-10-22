@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createLocalLog } from './localLog'
@@ -26,5 +26,12 @@ describe('createLocalLog', () => {
     const now = readFileSync(file, 'utf8').trim().split('\n')
     expect(now).toHaveLength(1)
     expect(now[0]).toContain('b'.repeat(60))
+  })
+
+  it('nunca lança (diretório impossível)', () => {
+    const base = join(tmpDir(), 'arquivo')
+    writeFileSync(base, '')
+    const log = createLocalLog(join(base, 'sub', 'app.log'))
+    expect(() => log('x')).not.toThrow()
   })
 })
