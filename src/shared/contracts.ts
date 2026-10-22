@@ -174,6 +174,14 @@ export const TaskType = z.object({
 })
 export type TaskType = z.infer<typeof TaskType>
 
+/** Papel de uma etapa, independente do nome que o fluxo dá a ela (mapa de status do import). */
+export const StatusRoleZ = z.enum(['first', 'working', 'review', 'final', 'blocked'])
+/** Alvo de um status: um papel ou uma etapa pelo nome. */
+export const StatusTargetZ = z.union([
+  z.object({ role: StatusRoleZ }).strict(),
+  z.object({ stage: z.string().min(1).max(100) }).strict()
+])
+
 /** Etapa do fluxo de origem → etapa escolhida no fluxo de destino. */
 export const StageMapping = z.record(Id, Id)
 export type StageMapping = z.infer<typeof StageMapping>
