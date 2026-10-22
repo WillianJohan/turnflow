@@ -1,18 +1,25 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { COPY } from './copy'
-import { canContinue, useSubmit } from './form'
+import { canContinue, CLIPBOARD_TTL_MS, useSubmit } from './form'
 
-/** As 24 palavras do primeiro uso. Nada vai ao disco até o Continuar. */
+/**
+ * As 24 palavras do primeiro uso. Nada vai ao disco até o Continuar. As palavras são a DEK: o que
+ * foi copiado sai do clipboard em 60 s, no Continuar ou quando a tela some (se ainda estiver lá).
+ */
 export function RecoveryWords({
   words,
   error: beginError,
+  onRetry,
   onCopy,
+  onWipe,
   onSave,
   onContinue
 }: {
   words: string[] | null
   error: string | null
-  onCopy: () => void
+  onRetry: () => void
+  onCopy: (text: string) => void
+  onWipe: (text: string) => void
   onSave: () => Promise<string | null>
   onContinue: () => Promise<unknown>
 }): React.JSX.Element {
@@ -22,6 +29,26 @@ export function RecoveryWords({
   const save = useSubmit(async () => setSavedTo(await onSave()))
   const next = useSubmit(onContinue)
   const error = beginError ?? save.error ?? next.error
+
+  const inClipboard = useRef<string | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const wipe = useCallback((): void => {
+    clearTimeout(timer.current)
+    const text = inClipboard.current
+    inClipboard.current = null
+    if (text !== null) onWipe(text)
+  }, [onWipe])
+  useEffect(() => wipe, [wipe])
+
+  const copy = (): void => {
+    if (!words) return
+    const text = words.join(' ')
+    clearTimeout(timer.current)
+    onCopy(text)
+    inClipboard.current = text
+    timer.current = setTimeout(wipe, CLIPBOARD_TTL_MS)
+    setCopied(true)
+  }
 
   return (
     <div className="vault-card">
@@ -37,14 +64,7 @@ export function RecoveryWords({
         !beginError && <p className="vault-hint">{COPY.wordsLoading}</p>
       )}
       <div className="vault-row">
-        <button
-          data-testid="words-copy"
-          disabled={!words}
-          onClick={() => {
-            onCopy()
-            setCopied(true)
-          }}
-        >
+        <button data-testid="words-copy" disabled={!words} onClick={copy}>
           {copied ? COPY.copied : COPY.copy}
         </button>
         <button
@@ -65,12 +85,24 @@ export function RecoveryWords({
         />
         {COPY.savedCheck}
       </label>
-      {error && <p className="vault-error">{error}</p>}
+      {error && (
+        <p role="alert" className="vault-error">
+          {error}
+        </p>
+      )}
+      {beginError && (
+        <button className="vault-link" onClick={onRetry}>
+          {COPY.retry}
+        </button>
+      )}
       <button
         data-testid="words-continue"
         className="vault-primary"
         disabled={!canContinue(saved, words) || next.busy}
-        onClick={() => void next.submit()}
+        onClick={() => {
+          wipe()
+          void next.submit()
+        }}
       >
         {COPY.continue}
       </button>

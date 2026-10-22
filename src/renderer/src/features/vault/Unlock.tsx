@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { COPY } from './copy'
 import { useSubmit } from './form'
 
@@ -12,6 +12,7 @@ export function Unlock({
 }): React.JSX.Element {
   const [password, setPassword] = useState('')
   const { busy, error, submit } = useSubmit(onUnlock)
+  const errorId = useId()
 
   return (
     <form
@@ -29,12 +30,14 @@ export function Unlock({
           type="password"
           autoFocus
           autoComplete="current-password"
+          aria-invalid={error !== null}
+          aria-describedby={error !== null ? errorId : undefined}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
       </label>
       {error !== null && (
-        <p data-testid="unlock-error" className="vault-error">
+        <p id={errorId} role="alert" data-testid="unlock-error" className="vault-error">
           {error || COPY.wrongPassword}
         </p>
       )}

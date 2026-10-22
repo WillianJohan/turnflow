@@ -6,7 +6,16 @@ import { join, relative, sep } from 'path'
 import { fileURLToPath } from 'url'
 
 const NAME = 'Turnflow'
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'out', 'out-test', 'dist', '.superpowers'])
+const SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  'out',
+  'out-test',
+  'dist',
+  '.superpowers',
+  'test-results',
+  'playwright-report'
+])
 const SKIP_FILES = new Set(['package-lock.json', '.eslintcache'])
 const BINARY = /\.(png|ico|icns|jpg|jpeg|gif|woff2?|ttf|pdf|zip)$/i
 const ALLOWED_FILES = new Set([

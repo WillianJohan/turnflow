@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { Boot } from '../../../../shared/ipc/vault'
 import { COPY } from './copy'
 import { passwordProblem, useSubmit } from './form'
@@ -24,6 +24,9 @@ export function Recover({
   const blank = optional && !a && !b
   const problem = blank ? null : passwordProblem(a, b)
   const hint = !a || (problem === COPY.passwordMismatch && !b) ? null : problem
+  const hintId = useId()
+  const errorId = useId()
+  const aria = { 'aria-invalid': !!hint, 'aria-describedby': hint ? hintId : undefined }
 
   return (
     <form
@@ -44,6 +47,8 @@ export function Recover({
           rows={4}
           autoFocus
           spellCheck={false}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           value={words}
           onChange={(e) => setWords(e.target.value)}
         />
@@ -54,6 +59,7 @@ export function Recover({
           data-testid="recover-pw-new"
           type="password"
           autoComplete="new-password"
+          {...aria}
           value={a}
           onChange={(e) => setA(e.target.value)}
         />
@@ -64,14 +70,17 @@ export function Recover({
           data-testid="recover-pw-confirm"
           type="password"
           autoComplete="new-password"
+          {...aria}
           value={b}
           onChange={(e) => setB(e.target.value)}
         />
       </label>
       {optional && <p className="vault-hint">{COPY.recoverOptional}</p>}
-      {hint && <p className="vault-hint">{hint}</p>}
+      <p id={hintId} className="vault-hint" aria-live="polite" hidden={!hint}>
+        {hint}
+      </p>
       {error && (
-        <p data-testid="recover-error" className="vault-error">
+        <p id={errorId} role="alert" data-testid="recover-error" className="vault-error">
           {error}
         </p>
       )}

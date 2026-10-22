@@ -33,6 +33,37 @@ export function screenFor(b: Boot, mode: Mode, words: string[] | null): Screen {
   }
 }
 
+/** Quanto tempo as palavras copiadas podem ficar no clipboard. */
+export const CLIPBOARD_TTL_MS = 60_000
+
+/** Limpa o clipboard só se ele ainda tem `text` (não apaga o que o usuário copiou depois). */
+export async function clearClipboardIf(
+  text: string,
+  read: () => Promise<string | undefined>,
+  clear: () => void
+): Promise<boolean> {
+  if ((await read()) !== text) return false
+  clear()
+  return true
+}
+
+export type Gate = { boot: Boot | null; mode: Mode; fromEvent: boolean }
+export type GateAction =
+  { t: 'initial' | 'event' | 'result'; boot: Boot } | { t: 'mode'; mode: Mode }
+export const initialGate: Gate = { boot: null, mode: 'default', fromEvent: false }
+
+/**
+ * Estado do portão. `initial` (o `bootGet` do mount) perde para um `vault.changed` que chegou antes;
+ * `result` é a resposta de uma ação (commit, unlock, recover, tentar de novo). Mudou o estado do
+ * vault, o modo volta ao default.
+ */
+export function gateReducer(s: Gate, a: GateAction): Gate {
+  if (a.t === 'mode') return { ...s, mode: a.mode }
+  if (a.t === 'initial' && s.fromEvent) return s
+  const mode = s.boot?.state === a.boot.state ? s.mode : 'default'
+  return { boot: a.boot, mode, fromEvent: s.fromEvent || a.t === 'event' }
+}
+
 /** Erro de validação do zod chega como "<canal>: <mensagem>"; a tela mostra só a mensagem. */
 export function withoutChannel(message: string): string {
   return message.replace(/^[A-Za-z]+[.:][A-Za-z]+: /, '')

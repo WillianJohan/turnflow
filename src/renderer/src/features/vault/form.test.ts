@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Boot } from '../../../../shared/ipc/vault'
 import { COPY } from './copy'
-import { canContinue, passwordProblem, screenFor, withoutChannel } from './form'
+import {
+  canContinue,
+  clearClipboardIf,
+  gateReducer,
+  initialGate,
+  passwordProblem,
+  screenFor,
+  withoutChannel
+} from './form'
 
 const w24 = Array.from({ length: 24 }, (_, i) => `w${i}`)
 const boot = (o: Partial<Boot>): Boot => ({
@@ -82,5 +90,55 @@ describe('withoutChannel', () => {
     expect(withoutChannel('Senha incorreta. Esqueceu? Use a chave de recuperação.')).toBe(
       'Senha incorreta. Esqueceu? Use a chave de recuperação.'
     )
+  })
+})
+
+describe('clearClipboardIf', () => {
+  const clip = (
+    text: string | undefined
+  ): { cleared: number; read: () => Promise<string | undefined>; clear: () => void } => {
+    const c = {
+      cleared: 0,
+      read: async () => text,
+      clear: () => {
+        c.cleared++
+      }
+    }
+    return c
+  }
+  it('limpa quando o clipboard ainda tem as palavras', async () => {
+    const c = clip('a b c')
+    expect(await clearClipboardIf('a b c', c.read, c.clear)).toBe(true)
+    expect(c.cleared).toBe(1)
+  })
+  it('não mexe se o usuário já copiou outra coisa', async () => {
+    const c = clip('outra coisa')
+    expect(await clearClipboardIf('a b c', c.read, c.clear)).toBe(false)
+    expect(c.cleared).toBe(0)
+  })
+  it('não mexe se a leitura falhou', async () => {
+    const c = clip(undefined)
+    expect(await clearClipboardIf('a b c', c.read, c.clear)).toBe(false)
+    expect(c.cleared).toBe(0)
+  })
+})
+
+describe('gateReducer', () => {
+  const locked = boot({ state: 'locked', lock: 'password' })
+  const ready = boot({ state: 'ready' })
+  it('resposta do bootGet inicial depois de um vault.changed é ignorada', () => {
+    let s = gateReducer(initialGate, { t: 'event', boot: ready })
+    s = gateReducer(s, { t: 'initial', boot: locked })
+    expect(s.boot).toBe(ready)
+  })
+  it('bootGet inicial sem evento antes vale', () => {
+    expect(gateReducer(initialGate, { t: 'initial', boot: locked }).boot).toBe(locked)
+  })
+  it('modo recover volta ao default quando o estado muda', () => {
+    let s = gateReducer(initialGate, { t: 'initial', boot: locked })
+    s = gateReducer(s, { t: 'mode', mode: 'recover' })
+    expect(gateReducer(s, { t: 'event', boot: { ...locked } }).mode).toBe('recover')
+    s = gateReducer(s, { t: 'result', boot: ready })
+    expect(s.mode).toBe('default')
   })
 })

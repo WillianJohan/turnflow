@@ -11,7 +11,7 @@ export function Failed({
   return (
     <div className="vault-card">
       <h1>{COPY.failedTitle}</h1>
-      <p data-testid="failed-message" className="vault-error">
+      <p role="alert" data-testid="failed-message" className="vault-error">
         {message}
       </p>
       <button className="vault-primary" onClick={onRetry}>

@@ -1,18 +1,13 @@
-import { _electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdirSync, mkdtempSync } from 'fs'
+import { _electron, test as base, type ElectronApplication, type Page } from '@playwright/test'
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 export type Keyring = 'basic_text' | 'real'
+export type Launched = { app: ElectronApplication; page: Page }
 
-/** Pasta de configuração isolada para um teste (some com o tmp do SO). */
-export const tempConfigDir = (): string => mkdtempSync(join(tmpdir(), 'tf-e2e-'))
-
-/** Abre o build de teste com config, brain e chaveiro falso isolados. */
-export async function launch(
-  dir: string,
-  keyring: Keyring
-): Promise<{ app: ElectronApplication; page: Page }> {
+/** Abre o build de teste com config, socket, brain e chaveiro falso isolados em `dir`. */
+export async function launch(dir: string, keyring: Keyring): Promise<Launched> {
   const brain = join(dir, 'brain')
   mkdirSync(brain, { recursive: true })
   const env: Record<string, string> = {}
@@ -23,6 +18,7 @@ export async function launch(
     env: {
       ...env,
       TURNFLOW_CONFIG_DIR: dir,
+      TURNFLOW_SOCKET: join(dir, 's.sock'),
       TURNFLOW_TEST_KEYRING: keyring,
       TURNFLOW_BRAIN: brain
     }
@@ -30,3 +26,34 @@ export async function launch(
   const page = await app.firstWindow()
   return { app, page }
 }
+
+/**
+ * `dir`: pasta de configuração do teste, apagada no fim. `launch`: abre o app nela; o que o teste
+ * não fechou (falha no meio) é fechado no teardown.
+ */
+export const test = base.extend<{ dir: string; launch: (keyring: Keyring) => Promise<Launched> }>({
+  // eslint-disable-next-line no-empty-pattern
+  dir: async ({}, provide) => {
+    const dir = mkdtempSync(join(tmpdir(), 'tf-e2e-'))
+    try {
+      await provide(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  },
+  launch: async ({ dir }, provide) => {
+    const open = new Set<ElectronApplication>()
+    try {
+      await provide(async (keyring) => {
+        const l = await launch(dir, keyring)
+        open.add(l.app)
+        l.app.on('close', () => open.delete(l.app))
+        return l
+      })
+    } finally {
+      for (const app of open) await app.close().catch(() => undefined)
+    }
+  }
+})
+
+export { expect } from '@playwright/test'

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { COPY } from './copy'
 import { passwordProblem, useSubmit } from './form'
 
@@ -14,6 +14,8 @@ export function NewPassword({
   const problem = passwordProblem(a, b)
   // "não são iguais" só depois que a confirmação começou a ser digitada
   const hint = !a || (problem === COPY.passwordMismatch && !b) ? null : problem
+  const hintId = useId()
+  const aria = { 'aria-invalid': !!hint, 'aria-describedby': hint ? hintId : undefined }
 
   return (
     <form
@@ -33,6 +35,7 @@ export function NewPassword({
           type="password"
           autoFocus
           autoComplete="new-password"
+          {...aria}
           value={a}
           onChange={(e) => setA(e.target.value)}
         />
@@ -43,12 +46,19 @@ export function NewPassword({
           data-testid="pw-confirm"
           type="password"
           autoComplete="new-password"
+          {...aria}
           value={b}
           onChange={(e) => setB(e.target.value)}
         />
       </label>
-      {hint && <p className="vault-hint">{hint}</p>}
-      {error && <p className="vault-error">{error}</p>}
+      <p id={hintId} className="vault-hint" aria-live="polite" hidden={!hint}>
+        {hint}
+      </p>
+      {error && (
+        <p role="alert" className="vault-error">
+          {error}
+        </p>
+      )}
       <button data-testid="pw-submit" className="vault-primary" disabled={!!problem || busy}>
         {COPY.passwordSubmit}
       </button>

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import type { Boot } from '../../../../shared/ipc/vault'
-import { orThrow } from '../../ipc'
+import { orThrow, unwrap } from '../../ipc'
 import { COPY } from './copy'
-import { screenFor, withoutChannel, type Mode } from './form'
+import { clearClipboardIf, gateReducer, initialGate, screenFor, withoutChannel } from './form'
 import { Failed } from './Failed'
 import { NewPassword } from './NewPassword'
 import { Recover } from './Recover'
@@ -18,43 +18,60 @@ const message = (e: unknown): string => withoutChannel(e instanceof Error ? e.me
  */
 export function VaultGate({ children }: { children: ReactNode }): React.JSX.Element {
   const api = window.turnflow
-  const [boot, setBoot] = useState<Boot | null>(null)
+  const [{ boot, mode }, dispatch] = useReducer(gateReducer, initialGate)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [mode, setMode] = useState<Mode>('default')
   const [words, setWords] = useState<string[] | null>(null)
   const [beginError, setBeginError] = useState<string | null>(null)
   const begun = useRef(false)
 
-  const fetchBoot = useCallback((): void => {
-    orThrow(api.bootGet()).then(
-      (b) => {
-        setLoadError(null)
-        setBoot(b)
-      },
-      (e) => setLoadError(message(e))
-    )
-  }, [api])
+  const fetchBoot = useCallback(
+    (t: 'initial' | 'result'): void => {
+      orThrow(api.bootGet()).then(
+        (b) => {
+          setLoadError(null)
+          dispatch({ t, boot: b })
+        },
+        (e) => setLoadError(message(e))
+      )
+    },
+    [api]
+  )
+  const retryBoot = useCallback(() => fetchBoot('result'), [fetchBoot])
+  const applyResult = useCallback((b: Boot) => dispatch({ t: 'result', boot: b }), [])
 
   useEffect(() => {
-    fetchBoot()
-    return api.onVaultChanged(setBoot)
+    fetchBoot('initial')
+    return api.onVaultChanged((b) => dispatch({ t: 'event', boot: b }))
   }, [api, fetchBoot])
 
   // chaveiro de verdade: sem senha, as palavras saem direto do begin
-  useEffect(() => {
-    if (boot?.state !== 'first_run' || boot.backend !== 'real' || begun.current) return
+  const beginKeyring = useCallback((): void => {
     begun.current = true
     orThrow(api.firstRunBegin({})).then(
       (r) => setWords(r.words),
       (e) => setBeginError(message(e))
     )
-  }, [api, boot])
+  }, [api])
+  useEffect(() => {
+    if (boot?.state === 'first_run' && boot.backend === 'real' && !begun.current) beginKeyring()
+  }, [boot, beginKeyring])
+
+  const wipeClipboard = useCallback(
+    (text: string): void => {
+      void clearClipboardIf(
+        text,
+        () => unwrap(api.readClipboard()).then((c) => c?.text),
+        () => api.writeClipboard({ text: '' })
+      )
+    },
+    [api]
+  )
 
   if (!boot)
     return (
       <div className="vault">
         {loadError ? (
-          <Failed message={loadError} onRetry={fetchBoot} />
+          <Failed message={loadError} onRetry={retryBoot} />
         ) : (
           <p className="vault-hint">{COPY.loading}</p>
         )}
@@ -77,32 +94,37 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
         <RecoveryWords
           words={words}
           error={beginError}
-          onCopy={() => words && api.writeClipboard({ text: words.join(' ') })}
+          onRetry={() => {
+            setBeginError(null)
+            beginKeyring()
+          }}
+          onCopy={(text) => api.writeClipboard({ text })}
+          onWipe={wipeClipboard}
           onSave={() => orThrow(api.firstRunSaveWords()).then((r) => r?.path ?? null)}
           onContinue={() =>
             orThrow(api.firstRunCommit({ saved: true })).then((b) => {
               setWords(null)
-              setBoot(b)
+              applyResult(b)
             })
           }
         />
       )}
       {screen === 'unlock' && (
         <Unlock
-          onUnlock={(password) => orThrow(api.vaultUnlock({ password })).then(setBoot)}
-          onRecover={() => setMode('recover')}
+          onUnlock={(password) => orThrow(api.vaultUnlock({ password })).then(applyResult)}
+          onRecover={() => dispatch({ t: 'mode', mode: 'recover' })}
         />
       )}
       {screen === 'recover' && (
         <Recover
           boot={boot}
           onRecover={(w, newPassword) =>
-            orThrow(api.vaultRecover({ words: w, newPassword })).then(setBoot)
+            orThrow(api.vaultRecover({ words: w, newPassword })).then(applyResult)
           }
-          onBack={() => setMode('default')}
+          onBack={() => dispatch({ t: 'mode', mode: 'default' })}
         />
       )}
-      {screen === 'failed' && <Failed message={boot.failure?.message ?? ''} onRetry={fetchBoot} />}
+      {screen === 'failed' && <Failed message={boot.failure?.message ?? ''} onRetry={retryBoot} />}
     </div>
   )
 }
