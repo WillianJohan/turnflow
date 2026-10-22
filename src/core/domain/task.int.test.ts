@@ -67,16 +67,11 @@ describe('createTask', () => {
     const t = getTask(h.d, r.row!.id)
     expect(raw(h.db, t.id).flow_id).toBe(ids.flows.Bugfix)
     expect(t.type_id).toBe(ids.types.Bugfix)
-    expect(t.stage).toMatchObject({ name: 'Reproduzir', position: 1, count: 4, is_final: false })
+    expect(t.stage).toMatchObject({ name: 'Reproduce', position: 1, count: 4, is_final: false })
     expect(t.key).toBe('T-1')
     expect(t.touched_at).toBe(h.nowIso())
     expect(raw(h.db, t.id).created_at).toBe(h.nowIso())
-    expect(t.flow_stages.map((s) => s.name)).toEqual([
-      'Reproduzir',
-      'Corrigir',
-      'Review',
-      'Entregue'
-    ])
+    expect(t.flow_stages.map((s) => s.name)).toEqual(['Reproduce', 'Fix', 'Review', 'Done'])
     expect(createTask(h.d, USER, { title: 'b', type_id: ids.types.Bugfix }).row!.key).toBe('T-2')
     expect(r.activity_id).not.toBeNull()
     const a = readActivity(h.db, r.activity_id!)!
@@ -90,7 +85,7 @@ describe('createTask', () => {
     const r = createTask(h.d, USER, { title: 'a' })
     expect(r.row!.type_id).toBe(ids.types.Feature)
     expect(raw(h.db, r.row!.id).flow_id).toBe(ids.flows.Feature)
-    expect(r.row!.stage.name).toBe('Refinamento')
+    expect(r.row!.stage.name).toBe('Refinement')
   })
 
   it('título é aparado e vazio é VALIDATION title_required', () => {
@@ -121,7 +116,7 @@ describe('createTask', () => {
     const id = createTask(h.d, USER, { title: 'a', type_id: ids.types.Bugfix }).row!.id
     h.db
       .prepare('update task_type set flow_id = ? where id = ?')
-      .run(ids.flows.Pessoal, ids.types.Bugfix)
+      .run(ids.flows.Personal, ids.types.Bugfix)
     const t = getTask(h.d, id)
     expect(raw(h.db, id).flow_id).toBe(ids.flows.Bugfix)
     expect(t.stage.id).toBe(ids.stages.Bugfix[0])
@@ -177,16 +172,16 @@ describe('createTask', () => {
 })
 
 describe('createTask (casos de borda)', () => {
-  it('projeto precede o tipo: projeto Pessoal + tipo Bugfix fica em Pessoal/A fazer', () => {
+  it('projeto precede o tipo: projeto Personal + tipo Bugfix fica em Personal/To do', () => {
     const h = setup()
     const ids = seedIds(h.db)
     h.db
       .prepare("insert into project(id, name, flow_id) values ('p1', 'P', ?)")
-      .run(ids.flows.Pessoal)
+      .run(ids.flows.Personal)
     const r = createTask(h.d, USER, { title: 'a', type_id: ids.types.Bugfix, project_id: 'p1' })
-    expect(raw(h.db, r.row!.id).flow_id).toBe(ids.flows.Pessoal)
+    expect(raw(h.db, r.row!.id).flow_id).toBe(ids.flows.Personal)
     expect(r.row!).toMatchObject({ type_id: ids.types.Bugfix, project_id: 'p1' })
-    expect(r.row!.stage).toMatchObject({ name: 'A fazer', position: 1, count: 3 })
+    expect(r.row!.stage).toMatchObject({ name: 'To do', position: 1, count: 3 })
   })
 
   it('etapa inicial final grava done_at', () => {
@@ -503,7 +498,7 @@ const stageIdByName = (db: Db, flow: string, name: string): string =>
 
 const mcpOf = (h: Harness): Actor => ({ kind: 'mcp', client_id: insertMcpClient(h.db) })
 
-function featureTask(h: Harness, stage = 'Implementação'): { id: string; flow: string } {
+function featureTask(h: Harness, stage = 'Implementation'): { id: string; flow: string } {
   const ids = seedIds(h.db)
   const id = createTask(h.d, USER, { title: 'f', type_id: ids.types.Feature }).row!.id
   h.db
@@ -513,12 +508,12 @@ function featureTask(h: Harness, stage = 'Implementação'): { id: string; flow:
 }
 
 describe('setStage e closeTask', () => {
-  it('encerrar: Entregue, done_at, concluída, sai de attention, entra em done_since; de novo é no-op', () => {
+  it('encerrar: Done, done_at, concluída, sai de attention, entra em done_since; de novo é no-op', () => {
     const h = setup()
     const { id } = featureTask(h)
     h.tick(MIN)
     const r = closeTask(h.d, USER, { id })
-    expect(r.row).toMatchObject({ group: 'concluida', stage: { name: 'Entregue' } })
+    expect(r.row).toMatchObject({ group: 'concluida', stage: { name: 'Done' } })
     expect(raw(h.db, id).done_at).toBe(h.nowIso())
     expect(listTasks(h.d, 'attention').map((x) => x.id)).not.toContain(id)
     expect(listTasks(h.d, { done_since: h.nowIso() }).map((x) => x.id)).toContain(id)
@@ -545,7 +540,7 @@ describe('setStage e closeTask', () => {
   it('voltar pela IA liga voltou; pelo usuário não', () => {
     const h = setup()
     const { id, flow } = featureTask(h)
-    const ref = stageIdByName(h.db, flow, 'Refinamento')
+    const ref = stageIdByName(h.db, flow, 'Refinement')
     h.tick(MIN)
     const r = setStage(h.d, mcpOf(h), { id, stage_id: ref })
     expect(raw(h.db, id)).toMatchObject({ turn_reason: 'voltou', turn_at: h.nowIso() })
@@ -562,7 +557,7 @@ describe('setStage e closeTask', () => {
   it('avançar limpa a vez', () => {
     const h = setup()
     const { id, flow } = featureTask(h)
-    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinamento') })
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinement') })
     expect(raw(h.db, id).turn_reason).toBe('voltou')
     setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
     expect(raw(h.db, id)).toMatchObject({ turn_reason: null, turn_at: null })
@@ -571,10 +566,10 @@ describe('setStage e closeTask', () => {
   it('voltar pela IA não rebaixa nem adianta o turn_at de uma vez já ligada', () => {
     const h = setup()
     const { id, flow } = featureTask(h, 'Review')
-    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Implementação') })
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Implementation') })
     const at = raw(h.db, id).turn_at
     h.tick(MIN)
-    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinamento') })
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinement') })
     expect(raw(h.db, id)).toMatchObject({ turn_reason: 'voltou', turn_at: at })
   })
 
@@ -625,11 +620,11 @@ describe('setStage e closeTask', () => {
       expect(readActivity(h.db, r.activity_id!)!.inverse!.outbox_id).toBe(rows[0].id)
     })
 
-    it('Pessoal vinculada não enfileira', () => {
+    it('Personal vinculada não enfileira', () => {
       const h = setup({ remote: linked })
       const ids = seedIds(h.db)
-      const id = createTask(h.d, USER, { title: 'p', type_id: ids.types.Pessoal }).row!.id
-      const r = setStage(h.d, USER, { id, stage_id: ids.stages.Pessoal[1] })
+      const id = createTask(h.d, USER, { title: 'p', type_id: ids.types.Personal }).row!.id
+      const r = setStage(h.d, USER, { id, stage_id: ids.stages.Personal[1] })
       expect(r.outbox).toBe('none')
       expect(h.db.prepare('select count(*) as n from sync_outbox').get()).toEqual({ n: 0 })
     })
@@ -647,12 +642,12 @@ describe('setStage e closeTask', () => {
     const h = setup()
     const { id, flow } = featureTask(h)
     const from = raw(h.db, id).stage_id
-    const to = stageIdByName(h.db, flow, 'Refinamento')
+    const to = stageIdByName(h.db, flow, 'Refinement')
     const r = setStage(h.d, mcpOf(h), { id, stage_id: to })
     const a = readActivity(h.db, r.activity_id!)!
     expect(a).toMatchObject({
       op: 'task_set_stage',
-      data: { from: 'Implementação', to: 'Refinamento' }
+      data: { from: 'Implementation', to: 'Refinement' }
     })
     expect(a.data.fields).toEqual(['stage_id', 'done_at', 'turn_reason', 'turn_at'])
     expect(a.inverse).toEqual({
@@ -667,7 +662,7 @@ describe('setStage e closeTask', () => {
   it('avançar limpa: inverso restaura voltou e expect tem turn_* null', () => {
     const h = setup()
     const { id, flow } = featureTask(h)
-    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinamento') })
+    setStage(h.d, mcpOf(h), { id, stage_id: stageIdByName(h.db, flow, 'Refinement') })
     const old = raw(h.db, id).turn_at as string
     h.tick(MIN)
     const r = setStage(h.d, USER, { id, stage_id: stageIdByName(h.db, flow, 'Review') })
@@ -681,12 +676,12 @@ describe('setStage e closeTask', () => {
     const { id, flow } = featureTask(h, 'Review')
     h.db
       .prepare(
-        "update flow_stage set is_final = 1 where flow_id = ? and name in ('Review', 'Entregue')"
+        "update flow_stage set is_final = 1 where flow_id = ? and name in ('Review', 'Done')"
       )
       .run(flow)
-    const impl = stageIdByName(h.db, flow, 'Implementação')
+    const impl = stageIdByName(h.db, flow, 'Implementation')
     const review = stageIdByName(h.db, flow, 'Review')
-    const entregue = stageIdByName(h.db, flow, 'Entregue')
+    const entregue = stageIdByName(h.db, flow, 'Done')
     h.db.prepare('update task set stage_id = ? where id = ?').run(impl, id)
     h.tick(MIN)
     closeTask(h.d, USER, { id })

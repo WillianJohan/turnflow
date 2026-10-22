@@ -98,7 +98,7 @@ export function insertMcpClient(db: Db, name = 'cliente'): string {
   return id
 }
 
-type SeedName = 'Feature' | 'Bugfix' | 'Pessoal'
+type SeedName = 'Feature' | 'Bugfix' | 'Personal'
 
 /** Ids da semente da migration 0004, por nome (etapas por `position`). */
 export function seedIds(db: Db): {
@@ -106,7 +106,7 @@ export function seedIds(db: Db): {
   types: Record<SeedName, string>
   stages: Record<SeedName, string[]>
 } {
-  const names: SeedName[] = ['Feature', 'Bugfix', 'Pessoal']
+  const names: SeedName[] = ['Feature', 'Bugfix', 'Personal']
   const one = (sql: string, n: string): string => (db.prepare(sql).get(n) as { id: string }).id
   const flows = {} as Record<SeedName, string>
   const types = {} as Record<SeedName, string>

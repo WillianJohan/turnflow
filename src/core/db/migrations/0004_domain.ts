@@ -12,10 +12,10 @@ const SEED: SeedFlow[] = [
     icon: 'sparkles',
     syncs: true,
     stages: [
-      { name: 'Refinamento', short: 'Ref.' },
-      { name: 'Implementação', short: 'Impl.' },
+      { name: 'Refinement', short: 'Refine' },
+      { name: 'Implementation', short: 'Impl.' },
       { name: 'Review', short: 'Review', waitsOther: true },
-      { name: 'Entregue', short: 'Entr.' }
+      { name: 'Done', short: 'Done' }
     ]
   },
   {
@@ -23,20 +23,20 @@ const SEED: SeedFlow[] = [
     icon: 'bug',
     syncs: true,
     stages: [
-      { name: 'Reproduzir', short: 'Repr.' },
-      { name: 'Corrigir', short: 'Corr.' },
+      { name: 'Reproduce', short: 'Repro' },
+      { name: 'Fix', short: 'Fix' },
       { name: 'Review', short: 'Review', waitsOther: true },
-      { name: 'Entregue', short: 'Entr.' }
+      { name: 'Done', short: 'Done' }
     ]
   },
   {
-    name: 'Pessoal',
+    name: 'Personal',
     icon: 'user',
     syncs: false,
     stages: [
-      { name: 'A fazer', short: 'A fazer' },
-      { name: 'Fazendo', short: 'Fazendo' },
-      { name: 'Feito', short: 'Feito' }
+      { name: 'To do', short: 'To do' },
+      { name: 'Doing', short: 'Doing' },
+      { name: 'Done', short: 'Done' }
     ]
   }
 ]

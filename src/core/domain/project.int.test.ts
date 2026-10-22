@@ -151,7 +151,7 @@ describe('moveTask: pergunta antes de escrever', () => {
         id,
         project_id: p.id,
         choice: 'adopt',
-        mapping: { [cur.stage_id]: h.ids.stages.Pessoal[0] }
+        mapping: { [cur.stage_id]: h.ids.stages.Personal[0] }
       })
     )
     expect([e.code, e.details?.reason]).toEqual(['VALIDATION', 'stage_not_in_flow'])

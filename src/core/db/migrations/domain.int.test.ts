@@ -15,21 +15,21 @@ import {
 
 const STAGES = {
   Feature: [
-    ['Refinamento', 'Ref.', 0, 0],
-    ['Implementação', 'Impl.', 0, 0],
+    ['Refinement', 'Refine', 0, 0],
+    ['Implementation', 'Impl.', 0, 0],
     ['Review', 'Review', 1, 0],
-    ['Entregue', 'Entr.', 0, 1]
+    ['Done', 'Done', 0, 1]
   ],
   Bugfix: [
-    ['Reproduzir', 'Repr.', 0, 0],
-    ['Corrigir', 'Corr.', 0, 0],
+    ['Reproduce', 'Repro', 0, 0],
+    ['Fix', 'Fix', 0, 0],
     ['Review', 'Review', 1, 0],
-    ['Entregue', 'Entr.', 0, 1]
+    ['Done', 'Done', 0, 1]
   ],
-  Pessoal: [
-    ['A fazer', 'A fazer', 0, 0],
-    ['Fazendo', 'Fazendo', 0, 0],
-    ['Feito', 'Feito', 0, 1]
+  Personal: [
+    ['To do', 'To do', 0, 0],
+    ['Doing', 'Doing', 0, 0],
+    ['Done', 'Done', 0, 1]
   ]
 } as const
 
@@ -56,7 +56,7 @@ describe('migration 0004 domain', () => {
   it('semente dos 3 fluxos', () => {
     const db = openTestDb()
     const ids = seedIds(db)
-    for (const n of ['Feature', 'Bugfix', 'Pessoal'] as const) {
+    for (const n of ['Feature', 'Bugfix', 'Personal'] as const) {
       const rows = db
         .prepare(
           'select name, short_name, waits_other, is_final from flow_stage where flow_id = ? order by position'
@@ -80,13 +80,13 @@ describe('migration 0004 domain', () => {
       db.prepare('select * from task_type where name = ?').get(n) as Record<string, unknown>
     expect(t('Feature').syncs).toBe(1)
     expect(t('Bugfix').syncs).toBe(1)
-    expect(t('Pessoal').syncs).toBe(0)
-    expect([t('Feature').icon, t('Bugfix').icon, t('Pessoal').icon]).toEqual([
+    expect(t('Personal').syncs).toBe(0)
+    expect([t('Feature').icon, t('Bugfix').icon, t('Personal').icon]).toEqual([
       'sparkles',
       'bug',
       'user'
     ])
-    for (const n of ['Feature', 'Bugfix', 'Pessoal'] as const) {
+    for (const n of ['Feature', 'Bugfix', 'Personal'] as const) {
       expect(t(n).flow_id).toBe(ids.flows[n])
       expect(
         (db.prepare('select name from flow where id = ?').get(ids.flows[n]) as { name: string })
@@ -106,17 +106,17 @@ describe('migration 0004 domain', () => {
     db.close()
   })
 
-  it('Pessoal nunca ganha outbox', () => {
+  it('Personal nunca ganha outbox', () => {
     const db = openTestDb()
     const ids = seedIds(db)
-    const mk = (key: string, n: 'Feature' | 'Pessoal'): string =>
+    const mk = (key: string, n: 'Feature' | 'Personal'): string =>
       insertTask(db, {
         key,
         type_id: ids.types[n],
         flow_id: ids.flows[n],
         stage_id: ids.stages[n][0]
       })
-    const pessoal = mk('T-1', 'Pessoal')
+    const pessoal = mk('T-1', 'Personal')
     const feature = mk('T-2', 'Feature')
     const ins = (task: string, k: string): void => {
       db.prepare(
@@ -297,15 +297,15 @@ describe('migration 0004 domain', () => {
     const ids = seedIds(db)
     const id = insertTask(db, {
       key: 'T-1',
-      type_id: ids.types.Pessoal,
-      flow_id: ids.flows.Pessoal,
-      stage_id: ids.stages.Pessoal[0]
+      type_id: ids.types.Personal,
+      flow_id: ids.flows.Personal,
+      stage_id: ids.stages.Personal[0]
     })
     const r = db.prepare('select * from task where id = ?').get(id) as Record<string, unknown>
     expect([r.type_id, r.flow_id, r.stage_id]).toEqual([
-      ids.types.Pessoal,
-      ids.flows.Pessoal,
-      ids.stages.Pessoal[0]
+      ids.types.Personal,
+      ids.flows.Personal,
+      ids.stages.Personal[0]
     ])
     expect(r.touched_at).toBe(r.created_at)
     db.close()

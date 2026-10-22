@@ -119,14 +119,14 @@ describe('listFlows e listTypes', () => {
     expect(flows.map((f) => [f.name, f.is_default])).toEqual([
       ['Feature', true],
       ['Bugfix', false],
-      ['Pessoal', false]
+      ['Personal', false]
     ])
     const feature = flows[0]
     expect(feature.stages.map((s) => [s.name, s.position, s.live_task_count])).toEqual([
-      ['Refinamento', 1, 0],
-      ['Implementação', 2, 1],
+      ['Refinement', 1, 0],
+      ['Implementation', 2, 1],
       ['Review', 3, 0],
-      ['Entregue', 4, 0]
+      ['Done', 4, 0]
     ])
     expect(feature.stages[2]).toMatchObject({ waits_other: true, is_final: false })
     expect(feature.stages[3]).toMatchObject({ is_final: true, remote_star_status: null })
@@ -135,7 +135,7 @@ describe('listFlows e listTypes', () => {
     expect(types.map((t) => [t.name, t.flow_id, t.syncs])).toEqual([
       ['Feature', h.ids.flows.Feature, true],
       ['Bugfix', h.ids.flows.Bugfix, true],
-      ['Pessoal', h.ids.flows.Pessoal, false]
+      ['Personal', h.ids.flows.Personal, false]
     ])
   })
 })
@@ -167,13 +167,13 @@ describe('deleteStage', () => {
     }
     expect(st.deleted_at).toBe(h.nowIso())
     expect(flow.stages.map((s) => [s.name, s.position])).toEqual([
-      ['Refinamento', 1],
+      ['Refinement', 1],
       ['Review', 2],
-      ['Entregue', 3]
+      ['Done', 3]
     ])
     expect(flowOf(h, h.ids.flows.Feature)).toEqual(flow)
     expectContiguous(h.db, h.ids.flows.Feature)
-    expect(getTask(h.d, id).stage).toMatchObject({ name: 'Refinamento', position: 1, count: 3 })
+    expect(getTask(h.d, id).stage).toMatchObject({ name: 'Refinement', position: 1, count: 3 })
 
     const acts = h.db.prepare("select id from activity where op = 'stage_remap'").all() as {
       id: string
@@ -181,7 +181,7 @@ describe('deleteStage', () => {
     expect(acts).toHaveLength(1)
     const a = readActivity(h.db, acts[0].id)!
     expect(a).toMatchObject({ task_id: id, inverse: null, actor: 'user' })
-    expect(a.data).toMatchObject({ from: 'Implementação', to: 'Refinamento' })
+    expect(a.data).toMatchObject({ from: 'Implementation', to: 'Refinement' })
     expect(a.data.fields).toContain('stage_id')
     expect(h.events).toContainEqual({ entity: 'flow', ids: [h.ids.flows.Feature], op: 'upsert' })
     expect(h.events).toContainEqual(
@@ -224,7 +224,7 @@ describe('deleteStage', () => {
     ).toBe(0)
     // desapagar (o Desfazer do Task 8 só zera deleted_at) cai numa etapa viva
     h.db.prepare('update task set deleted_at = null where id = ?').run(id)
-    expect(taskRow(h.d, id)!.stage).toMatchObject({ name: 'Entregue', is_final: true })
+    expect(taskRow(h.d, id)!.stage).toMatchObject({ name: 'Done', is_final: true })
   })
 
   it('remap não toca touched_at nem a vez', () => {
@@ -344,11 +344,11 @@ describe('saveStage', () => {
       position: 2
     })
     expect(f.stages.map((s) => [s.name, s.short_name, s.position])).toEqual([
-      ['Refinamento', 'Ref.', 1],
+      ['Refinement', 'Refine', 1],
       ['Teste', 'Tst', 2],
-      ['Implementação', 'Impl.', 3],
+      ['Implementation', 'Impl.', 3],
       ['Review', 'Review', 4],
-      ['Entregue', 'Entr.', 5]
+      ['Done', 'Done', 5]
     ])
     expectContiguous(h.db, h.ids.flows.Feature)
     expect(h.events).toContainEqual({ entity: 'flow', ids: [h.ids.flows.Feature], op: 'upsert' })
@@ -357,13 +357,13 @@ describe('saveStage', () => {
   it('sem position cria no fim', () => {
     const h = setup()
     const f = saveStage(h.d, USER, {
-      flow_id: h.ids.flows.Pessoal,
+      flow_id: h.ids.flows.Personal,
       name: 'Arquivado',
       short_name: 'Arq.',
       waits_other: false,
       is_final: true
     })
-    expect(f.stages.map((s) => s.name)).toEqual(['A fazer', 'Fazendo', 'Feito', 'Arquivado'])
+    expect(f.stages.map((s) => s.name)).toEqual(['To do', 'Doing', 'Done', 'Arquivado'])
     expect(f.stages[3]).toMatchObject({ position: 4, is_final: true })
   })
 
@@ -395,31 +395,21 @@ describe('saveStage', () => {
     const [, , review, entregue] = h.ids.stages.Feature
     const id = featureAt(h, 2)
     let f = saveStage(h.d, USER, { ...stageInput(h, review), position: 1 })
-    expect(f.stages.map((s) => s.name)).toEqual([
-      'Review',
-      'Refinamento',
-      'Implementação',
-      'Entregue'
-    ])
+    expect(f.stages.map((s) => s.name)).toEqual(['Review', 'Refinement', 'Implementation', 'Done'])
     expectContiguous(h.db, h.ids.flows.Feature)
     expect(taskRow(h.d, id)!.stage.position).toBe(1)
 
     // posição além do fim vai para o fim
     f = saveStage(h.d, USER, { ...stageInput(h, review), position: 99 })
-    expect(f.stages.map((s) => s.name)).toEqual([
-      'Refinamento',
-      'Implementação',
-      'Entregue',
-      'Review'
-    ])
+    expect(f.stages.map((s) => s.name)).toEqual(['Refinement', 'Implementation', 'Done', 'Review'])
     expectContiguous(h.db, h.ids.flows.Feature)
 
     deleteStage(h.d, USER, { id: h.ids.stages.Feature[1] })
     expectContiguous(h.db, h.ids.flows.Feature)
     f = saveStage(h.d, USER, { ...stageInput(h, entregue), position: 1 })
     expect(f.stages.map((s) => [s.name, s.position])).toEqual([
-      ['Entregue', 1],
-      ['Refinamento', 2],
+      ['Done', 1],
+      ['Refinement', 2],
       ['Review', 3]
     ])
     expectContiguous(h.db, h.ids.flows.Feature)
@@ -466,30 +456,30 @@ describe('saveStage', () => {
 describe('previewRemap', () => {
   it('prévia lista cada etapa com par', () => {
     const h = setup()
-    const [, , bReview, bEntregue] = h.ids.stages.Bugfix
+    const [, , bReview, bDone] = h.ids.stages.Bugfix
     const p = previewRemap(h.d, h.ids.flows.Feature, h.ids.flows.Bugfix)
     for (const x of p) StagePairing.parse(x)
     expect(p.map((x) => [x.from.name, x.from.position, x.to_stage_id])).toEqual([
-      ['Refinamento', 1, null],
-      ['Implementação', 2, null],
+      ['Refinement', 1, null],
+      ['Implementation', 2, null],
       ['Review', 3, bReview],
-      ['Entregue', 4, bEntregue]
+      ['Done', 4, bDone]
     ])
   })
 
   it('casa por short_name e final↔final, ignorando acento e caixa', () => {
     const h = setup()
-    const [aFazer, , feito] = h.ids.stages.Pessoal
+    const [aFazer, , feito] = h.ids.stages.Personal
     const [ref, impl] = h.ids.stages.Feature
-    // Refinamento ganha short_name 'a FAZER' (casa por short_name); Implementação vira 'fazendo'
-    saveStage(h.d, USER, { ...stageInput(h, ref), short_name: 'a FAZER' })
-    saveStage(h.d, USER, { ...stageInput(h, impl), name: 'FAZÊNDO' })
-    const p = previewRemap(h.d, h.ids.flows.Feature, h.ids.flows.Pessoal)
+    // Refinement ganha short_name 'TO DO' (casa por short_name); Implementation vira 'doing'
+    saveStage(h.d, USER, { ...stageInput(h, ref), short_name: 'TO DO' })
+    saveStage(h.d, USER, { ...stageInput(h, impl), name: 'DÓING' })
+    const p = previewRemap(h.d, h.ids.flows.Feature, h.ids.flows.Personal)
     expect(p.map((x) => x.to_stage_id)).toEqual([
       aFazer,
-      h.ids.stages.Pessoal[1],
+      h.ids.stages.Personal[1],
       null,
-      feito // Entregue não tem par por nome: final↔final
+      feito // Done casa por nome (e seria final↔final de qualquer jeito)
     ])
   })
 
@@ -528,7 +518,7 @@ describe('setTaskFlow', () => {
       touched_at: h.nowIso(),
       done_at: null
     })
-    expect(r.row!.stage.name).toBe('Corrigir')
+    expect(r.row!.stage.name).toBe('Fix')
     expect(r.row!.touched_at).toBe(h.nowIso())
     const a = readActivity(h.db, r.activity_id!)!
     expect(a).toMatchObject({ op: 'task_set_flow', task_id: id, inverse: null })
@@ -555,7 +545,7 @@ describe('setTaskFlow', () => {
       setTaskFlow(h.d, USER, {
         id,
         flow_id: h.ids.flows.Bugfix,
-        mapping: { [impl]: h.ids.stages.Pessoal[0] }
+        mapping: { [impl]: h.ids.stages.Personal[0] }
       })
     )
     expect([e.code, e.details?.reason]).toEqual(['VALIDATION', 'stage_not_in_flow'])
@@ -565,15 +555,15 @@ describe('setTaskFlow', () => {
   it('ir para a final grava done_at; sair dela limpa', () => {
     const h = setup()
     const review = h.ids.stages.Feature[2]
-    const [, , , bEntregue] = h.ids.stages.Bugfix
+    const [, , , bDone] = h.ids.stages.Bugfix
     const id = featureAt(h, 2)
     h.tick(MIN)
-    setTaskFlow(h.d, USER, { id, flow_id: h.ids.flows.Bugfix, mapping: { [review]: bEntregue } })
+    setTaskFlow(h.d, USER, { id, flow_id: h.ids.flows.Bugfix, mapping: { [review]: bDone } })
     expect(raw(h.db, id).done_at).toBe(h.nowIso())
     setTaskFlow(h.d, USER, {
       id,
       flow_id: h.ids.flows.Feature,
-      mapping: { [bEntregue]: review }
+      mapping: { [bDone]: review }
     })
     expect(raw(h.db, id).done_at).toBeNull()
   })
