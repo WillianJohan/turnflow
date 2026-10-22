@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { draftPayload } from './draft'
+import { unwrap } from './ipc'
 
 const key = (id: string): string => `turnflow.draft.${id}`
 const load = (id: string): string => {
@@ -42,7 +43,7 @@ export function Composer({
     const p = draftPayload(text)
     if (!p) return
     // sessão morreu entre o render e o clique: mantém o texto
-    window.dk.send(id, p).then((ok) => {
+    unwrap(window.turnflow.send({ id, data: p })).then((ok) => {
       setLost(!ok)
       if (!ok) return
       save('')

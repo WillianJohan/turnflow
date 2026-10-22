@@ -12,6 +12,7 @@ import { isTextField } from './focus'
 import { notifyText, shouldNotify, type HookInfo } from './notify'
 import { Icon } from './Icon'
 import { appCommand } from './shortcuts'
+import { unwrap } from './ipc'
 
 const LAYOUT_KEY = 'turnflow.layout'
 const readLayout = (): string | null => {
@@ -56,21 +57,21 @@ function App(): React.JSX.Element {
       silent: false
     })
     n.onclick = () => {
-      window.dk.focusWindow()
+      window.turnflow.focusWindow()
       dispatch({ t: 'open', taskId: id })
     }
   }
 
   useEffect(() => {
-    window.dk.listTasks().then(setTasks)
+    unwrap(window.turnflow.listTasks()).then((t) => t && setTasks(t))
     const offs = [
-      window.dk.onTasksChanged(setTasks),
-      window.dk.onState((id, st, info) => {
+      window.turnflow.onTasksChanged(setTasks),
+      window.turnflow.onState((id, st, info) => {
         setLive((l) => ({ ...l, states: { ...l.states, [id]: st } }))
         if (info) notifyPending(id, st, info)
       }),
       // aba "Claude sem task" que criou/assumiu uma task: vira a aba da task (mesmo processo)
-      window.dk.onRenamed((from, to) => {
+      window.turnflow.onRenamed((from, to) => {
         renameTerm(from, to)
         setLive((l) => {
           const mv = <T,>(o: Record<string, T>): Record<string, T> => {
@@ -83,7 +84,7 @@ function App(): React.JSX.Element {
         })
         dispatch({ t: 'rename', from, to })
       }),
-      window.dk.onExit((id, code) =>
+      window.turnflow.onExit((id, code) =>
         setLive((l) => {
           const alive = new Set(l.alive)
           alive.delete(id)
@@ -129,7 +130,7 @@ function App(): React.JSX.Element {
     })
   }, [])
 
-  const endSession = useCallback((id: string) => window.dk.kill(id), [])
+  const endSession = useCallback((id: string) => window.turnflow.kill({ id }), [])
 
   // aba fechada + processo morto: o xterm não tem mais por que existir
   useEffect(() => {
@@ -158,15 +159,15 @@ function App(): React.JSX.Element {
   }, [sb])
   const [root, setRoot] = useState('')
   useEffect(() => {
-    window.dk.tasksRoot().then(setRoot)
+    unwrap(window.turnflow.tasksRoot()).then((r) => r && setRoot(r))
   }, [])
   const [cfg, setCfg] = useState<ConfigState | null>(null)
   useEffect(() => {
     now.current = { layout, cfg, tasks }
   }, [layout, cfg, tasks])
   useEffect(() => {
-    window.dk.config().then(setCfg)
-    return window.dk.onConfig(setCfg)
+    unwrap(window.turnflow.config()).then((c) => c && setCfg(c))
+    return window.turnflow.onConfig(setCfg)
   }, [])
   useEffect(() => {
     if (cfg) applyTheme(cfg.theme, cfg.config)
@@ -204,7 +205,10 @@ function App(): React.JSX.Element {
   const activeId = layout.panels[layout.focused]?.tabs[layout.panels[layout.focused].active]
 
   const toggleDraft = useCallback(() => {
-    if (cfg) window.dk.setConfig({ draftMode: !cfg.config.draftMode }).then(setCfg)
+    if (cfg)
+      unwrap(window.turnflow.setConfig({ draftMode: !cfg.config.draftMode })).then(
+        (c) => c && setCfg(c)
+      )
   }, [cfg])
 
   const focusActive = useCallback(() => {
@@ -224,9 +228,9 @@ function App(): React.JSX.Element {
       if ((cmd === 'copy' || cmd === 'paste') && typing) {
         if (cmd === 'copy') document.execCommand('copy')
         else
-          window.dk.clipboard
-            .read()
-            .then(({ text }) => text && document.execCommand('insertText', false, text))
+          unwrap(window.turnflow.readClipboard()).then(
+            (c) => c?.text && document.execCommand('insertText', false, c.text)
+          )
         return
       }
       if (cmd === 'draft') toggleDraft()
@@ -251,9 +255,9 @@ function App(): React.JSX.Element {
         else focusActive()
       } else if (cmd === 'copy') {
         const sel = term?.getSelection()
-        if (sel) window.dk.clipboard.writeText(sel)
+        if (sel) window.turnflow.writeClipboard({ text: sel })
       } else if (cmd === 'paste') {
-        window.dk.clipboard.read().then(({ text }) => text && term?.paste(text))
+        unwrap(window.turnflow.readClipboard()).then((c) => c?.text && term?.paste(c.text))
       } else if (cmd === 'update') window.dispatchEvent(new Event('dk:update'))
       else if ('tab' in cmd) act({ t: 'focusTab', n: cmd.tab })
       else if ('panel' in cmd) act({ t: 'focusPanel', dir: cmd.panel })
@@ -327,7 +331,7 @@ function App(): React.JSX.Element {
         <UpdateModal
           onClose={() => {
             setUpdating(false)
-            window.dk.listTasks().then(setTasks)
+            unwrap(window.turnflow.listTasks()).then((t) => t && setTasks(t))
             focusActive()
           }}
         />

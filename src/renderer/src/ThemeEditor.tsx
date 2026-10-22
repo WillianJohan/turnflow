@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ConfigState, Theme } from '../../shared/types'
 import { applyTheme } from './theme'
 import { slug } from './slug'
+import { orThrow, unwrap } from './ipc'
 
 const UI_LABELS: [key: string, label: string][] = [
   ['bg', 'Fundo'],
@@ -97,19 +98,18 @@ export function ThemeEditor({
     setErr('')
     const clean = (o: Record<string, string>): Record<string, string> =>
       Object.fromEntries(Object.entries(o).filter(([, v]) => v))
-    window.dk
-      .saveTheme(id, {
-        name: name.trim() || id,
-        ui: clean(draft.ui),
-        terminal: clean(draft.terminal)
+    orThrow(
+      window.turnflow.saveTheme({
+        id,
+        theme: { name: name.trim() || id, ui: clean(draft.ui), terminal: clean(draft.terminal) }
       })
-      .then(
-        (s) => {
-          setDirty(false)
-          onChange(s)
-        },
-        (e) => setErr(String(e?.message ?? e).replace(/^Error invoking[^:]+: (Error: )?/, ''))
-      )
+    ).then(
+      (s) => {
+        setDirty(false)
+        onChange(s)
+      },
+      (e) => setErr(String(e?.message ?? e).replace(/^Error invoking[^:]+: (Error: )?/, ''))
+    )
   }
 
   const newId = slug(name)
@@ -148,7 +148,11 @@ export function ThemeEditor({
           {canOverwrite && (
             <button
               className="danger"
-              onClick={() => window.dk.deleteTheme(cfg.config.theme).then(onChange)}
+              onClick={() =>
+                unwrap(window.turnflow.deleteTheme({ id: cfg.config.theme })).then(
+                  (s) => s && onChange(s)
+                )
+              }
             >
               Excluir tema
             </button>

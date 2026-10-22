@@ -7,6 +7,7 @@ import { Header } from './Header'
 import { Composer } from './Composer'
 import { Icon } from './Icon'
 import { renderMd } from './markdown'
+import { orThrow, unwrap } from './ipc'
 
 type Props = {
   task: Task
@@ -54,8 +55,7 @@ export function TaskView({
     if (launching.current) return // duplo clique: um start por vez
     launching.current = true
     const e = getTerm(id)
-    window.dk
-      .start(id, how, e.term.cols, e.term.rows)
+    orThrow(window.turnflow.start({ id, how, cols: e.term.cols, rows: e.term.rows }))
       .then(
         () => onStarted(id),
         (x) => {
@@ -80,18 +80,18 @@ export function TaskView({
   }
 
   const switchTo = (uuid: string): void => {
-    if (alive) window.dk.kill(id)
+    if (alive) window.turnflow.kill({ id })
     getTerm(id).term.write('\r\n\x1b[2m── trocando de sessão ──\x1b[0m\r\n')
     start({ resume: uuid })
   }
 
   useEffect(() => {
-    window.dk.plan(id).then(setPlan, (e) => setErr(cleanErr(e)))
+    orThrow(window.turnflow.plan({ id })).then(setPlan, (e) => setErr(cleanErr(e)))
   }, [id])
 
   // README recarrega quando a lista de tasks muda (o objeto task vem novo)
   useEffect(() => {
-    window.dk.readme(id).then(setReadme)
+    unwrap(window.turnflow.readme({ id })).then((r) => setReadme(r ?? ''))
   }, [id, task])
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export function TaskView({
 
   // Reabrir após o processo sair: se não dá pra retomar, larga o xterm velho e mostra o aviso com "Nova sessão".
   const reopen = (): void => {
-    window.dk.plan(id).then(
+    orThrow(window.turnflow.plan({ id })).then(
       (p) => {
         setPlan(p)
         if (p.kind === 'resume') start({ resume: p.uuid })
@@ -176,7 +176,11 @@ export function TaskView({
       )}
       {plan?.kind === 'none' && <span>Essa task ainda não tem sessão.</span>}
       {plan?.kind === 'elsewhere' && (
-        <button onClick={() => window.dk.plan(id).then(setPlan, (e) => setErr(cleanErr(e)))}>
+        <button
+          onClick={() =>
+            orThrow(window.turnflow.plan({ id })).then(setPlan, (e) => setErr(cleanErr(e)))
+          }
+        >
           Já fechei lá — tentar de novo
         </button>
       )}

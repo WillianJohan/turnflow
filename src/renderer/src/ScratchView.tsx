@@ -4,6 +4,7 @@ import { tabLabel, scratchKind } from './layout'
 import { attachTerm, getTerm, hasTerm } from './terms'
 import { Composer } from './Composer'
 import { Icon } from './Icon'
+import { orThrow } from './ipc'
 
 type Props = {
   id: string
@@ -32,7 +33,7 @@ export function ScratchView({
   const start = (): void => {
     const e = getTerm(id)
     setErr('')
-    window.dk.startScratch(id, e.term.cols, e.term.rows).then(
+    orThrow(window.turnflow.startScratch({ id, cols: e.term.cols, rows: e.term.rows })).then(
       () => onStarted(id),
       (x) => setErr(String(x?.message ?? x).replace(/^Error invoking[^:]+: (Error: )?/, ''))
     )

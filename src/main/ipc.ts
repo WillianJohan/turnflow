@@ -1,8 +1,9 @@
 import { BrowserWindow, clipboard, ipcMain, shell } from 'electron'
+import { is } from '@electron-toolkit/utils'
 import { execFile } from 'child_process'
 import { appendFileSync } from 'fs'
 import { join } from 'path'
-import type { AppConfig, ConfigState, Theme } from '../shared/types'
+import type { ConfigState, Task } from '../shared/types'
 import {
   cloneTheme,
   ensureDefaults,
@@ -17,7 +18,9 @@ import {
   writeConfig
 } from './appConfig'
 import { access, readFile } from 'fs/promises'
-import type { How, SessionInfo, Task } from '../shared/types'
+import type { Events } from '../shared/ipc/events'
+import type { Channel } from '../shared/ipc/define'
+import * as C from '../shared/ipc/registry'
 import { BRAIN_TASKS, DIGITALK_HOME, configDir, userDataDir } from './config'
 import { startHookServer, writeHookSettings } from './hooks'
 import { claudeArgv, inUseBy, resolveLaunch } from './launch'
@@ -38,13 +41,20 @@ import { createPtyGuard } from './ptyGuard'
 import { findSessionFile, runningElsewhere } from './sessions'
 import { loadTasks, watchTasks } from './tasks'
 import { getHeader, readCache } from './header'
+import { handle as handleOn, IpcError, type Handler } from './ipc/handle'
+import { registerPtyIo } from './ipc/ptyIo'
 
 export const UPDATE_ID = '__update__'
 
 export async function registerIpc(win: BrowserWindow): Promise<() => void> {
-  const send = (ch: string, ...a: unknown[]): void => {
+  // guard primeiro: adopt() e o exit dos ptys usam ele, e podem rodar antes do fim do registro
+  const guard = createPtyGuard()
+  const owner = win.webContents.id
+  const send = <K extends keyof Events>(ch: K, ...a: Events[K]): void => {
     if (!win.isDestroyed()) win.webContents.send(ch, ...a)
   }
+  const handle = <Ch extends Channel>(ch: Ch, fn: Handler<Ch>): void =>
+    handleOn(ipcMain, ch, fn, { validateOutput: is.dev })
   let tasks = new Map<string, Task>()
   const reload = async (): Promise<Task[]> => {
     const list = await loadTasks()
@@ -100,11 +110,9 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
   })
   const task = (id: string): Task => {
     const t = tasks.get(id)
-    if (!t) throw new Error(`task ${id} não encontrada`)
+    if (!t) throw new IpcError('NOT_FOUND', `task ${id} não encontrada`)
     return t
   }
-  const guard = createPtyGuard()
-  const owner = win.webContents.id
   const ptyEvents = {
     data: (id: string, d: string) => send('pty:data', id, d),
     exit: (id: string, code: number) => {
@@ -130,11 +138,11 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
       orig(id, d)
     })(ptyEvents.data)
 
-  ipcMain.handle('clip:read', async () => ({
+  handle(C.CHANNELS.readClipboard, async () => ({
     text: await clipboard.readText(),
     image: await clipboard.has('image/png')
   }))
-  ipcMain.on('clip:write', (_e, t: string) => clipboard.writeText(t))
+  handle(C.CHANNELS.writeClipboard, ({ text }) => clipboard.writeText(text))
   // config.json + themes/ em ~/.config/turnflow; editar à mão aplica na hora
   const cfgDir = configDir()
   await ensureDefaults(cfgDir)
@@ -155,25 +163,25 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
       () => undefined
     )
   )
-  ipcMain.handle('config:get', () => configState())
-  ipcMain.handle('config:set', async (_e, patch: Partial<AppConfig>) => {
+  handle(C.CHANNELS.config, () => configState())
+  handle(C.CHANNELS.setConfig, async (patch) => {
     await writeConfig(cfgDir, patch)
     return configState()
   })
-  ipcMain.handle('config:cloneTheme', async (_e, from: string) => {
+  handle(C.CHANNELS.cloneTheme, async ({ from }) => {
     const id = await cloneTheme(cfgDir, from)
     await writeConfig(cfgDir, { theme: id })
     shell.openPath(join(cfgDir, 'themes', `${id}.json`))
     return configState()
   })
-  ipcMain.on('config:openDir', () => shell.openPath(cfgDir))
-  ipcMain.handle('theme:read', async (_e, id: string) => (await readTheme(cfgDir, id)).theme)
-  ipcMain.handle('theme:save', async (_e, id: string, theme: Theme) => {
+  handle(C.CHANNELS.openConfigDir, () => void shell.openPath(cfgDir))
+  handle(C.CHANNELS.readTheme, async ({ id }) => (await readTheme(cfgDir, id)).theme)
+  handle(C.CHANNELS.saveTheme, async ({ id, theme }) => {
     await saveTheme(cfgDir, id, theme)
     await writeConfig(cfgDir, { theme: id })
     return configState()
   })
-  ipcMain.handle('theme:delete', async (_e, id: string) => {
+  handle(C.CHANNELS.deleteTheme, async ({ id }) => {
     await deleteTheme(cfgDir, id)
     const { config } = await readConfig(cfgDir)
     if (config.theme === id) await writeConfig(cfgDir, { theme: 'escuro' })
@@ -184,16 +192,14 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     new Promise((res) =>
       execFile('fc-list', [pattern, 'family'], (err, out) => res(err ? [] : parseFcList(out)))
     )
-  ipcMain.handle('fonts:list', async () => ({
+  handle(C.CHANNELS.fonts, async () => ({
     all: await fc(':'),
     mono: await fc(':spacing=mono')
   }))
 
-  ipcMain.handle('tasks:list', () => reload())
-  ipcMain.handle('task:plan', (_e, id: string, uuid?: string) =>
-    resolveLaunch(task(id), depsFor(id), uuid)
-  )
-  ipcMain.handle('pty:start', async (_e, id: string, how: How, cols: number, rows: number) => {
+  handle(C.CHANNELS.listTasks, () => reload())
+  handle(C.CHANNELS.plan, ({ id, uuid }) => resolveLaunch(task(id), depsFor(id), uuid))
+  handle(C.CHANNELS.start, async ({ id, how, cols, rows }) => {
     if (alivePtys().includes(id)) return // start duplicado (duplo clique): o primeiro já subiu
     const t = task(id)
     let cwd = DIGITALK_HOME
@@ -201,13 +207,15 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
       // revalida logo antes de lançar: a sessão pode ter sido aberta fora nesse meio tempo
       const plan = await resolveLaunch(t, depsFor(id), how.resume)
       if (plan.kind === 'elsewhere')
-        throw new Error(
+        throw new IpcError(
+          'CONFLICT',
           plan.by
             ? `essa conversa já está aberta na aba ${plan.by}`
             : `sessão aberta fora do ${BRAND.name} (PID ${plan.pid})`
         )
-      if (plan.kind === 'gone') throw new Error(`a pasta dessa sessão não existe mais: ${plan.cwd}`)
-      if (plan.kind !== 'resume') throw new Error('sessão não existe mais')
+      if (plan.kind === 'gone')
+        throw new IpcError('NOT_FOUND', `a pasta dessa sessão não existe mais: ${plan.cwd}`)
+      if (plan.kind !== 'resume') throw new IpcError('NOT_FOUND', 'sessão não existe mais')
       cwd = plan.cwd || DIGITALK_HOME
     }
     const [, ...args] = claudeArgv(t, settingsPath, how)
@@ -218,26 +226,24 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     if ('resume' in how) uuidOf.set(id, how.resume)
   })
   // comando fixo: o renderer não escolhe o que executar
-  ipcMain.handle('pty:startUpdate', async (_e, cols: number, rows: number) => {
+  handle(C.CHANNELS.startUpdate, async ({ cols, rows }) => {
     if (alivePtys().includes(UPDATE_ID)) return
     const argv = [(await loginEnv()).claude, '/revisao-demandas', '--settings', settingsPath]
     startPty(UPDATE_ID, argv, DIGITALK_HOME, await env(UPDATE_ID), cols, rows, ptyEvents)
     guard.register(UPDATE_ID, owner)
   })
-  ipcMain.handle('tasks:root', () => BRAIN_TASKS)
+  handle(C.CHANNELS.tasksRoot, () => BRAIN_TASKS)
   // clique na notificação: traz a janela pra frente
-  ipcMain.on('win:focus', () => {
+  handle(C.CHANNELS.focusWindow, () => {
     if (win.isMinimized()) win.restore()
     win.show()
     win.focus()
   })
-  ipcMain.handle('task:readme', (_e, id: string) =>
-    readFile(task(id).readmePath, 'utf8').catch(() => '')
-  )
+  handle(C.CHANNELS.readme, ({ id }) => readFile(task(id).readmePath, 'utf8').catch(() => ''))
   // abas avulsas: claude sem task ou terminal puro, em ~/Documents/Digitalk
-  ipcMain.handle('pty:startScratch', async (_e, id: string, cols: number, rows: number) => {
+  handle(C.CHANNELS.startScratch, async ({ id, cols, rows }) => {
     const kind = id.match(/^~(claude|shell)-\d+$/)?.[1]
-    if (!kind) throw new Error(`aba inválida: ${id}`)
+    if (!kind) throw new IpcError('VALIDATION', `aba inválida: ${id}`)
     if (alivePtys().includes(id)) return
     const argv =
       kind === 'claude'
@@ -246,26 +252,12 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     startPty(id, argv, DIGITALK_HOME, await env(id), cols, rows, ptyEvents)
     guard.register(id, owner)
   })
-  ipcMain.on('pty:write', (e, id: string, d: string) => {
-    if (guard.canWrite(id, e.sender.id)) writePty(id, d)
+  registerPtyIo(ipcMain, {
+    guard,
+    pty: { write: writePty, resize: resizePty, kill: killPty, alive: alivePtys },
+    onKill: (id) => uuidOf.delete(id)
   })
-  // rascunho: só limpa no renderer se a sessão ainda estava viva pra receber
-  ipcMain.handle('pty:send', (e, id: string, d: string) => {
-    if (!guard.canWrite(id, e.sender.id) || !alivePtys().includes(id)) return false
-    writePty(id, d)
-    setTimeout(() => writePty(id, '\r'), 60) // Enter separado: o claude fecha o paste antes
-    return true
-  })
-  ipcMain.on('pty:resize', (e, id: string, c: number, r: number) => {
-    if (guard.canWrite(id, e.sender.id)) resizePty(id, c, r)
-  })
-  ipcMain.on('pty:kill', (e, id: string) => {
-    if (!guard.canWrite(id, e.sender.id)) return
-    uuidOf.delete(id)
-    guard.release(id)
-    killPty(id)
-  })
-  ipcMain.handle('task:sessions', async (_e, id: string): Promise<SessionInfo[]> =>
+  handle(C.CHANNELS.sessionInfo, async ({ id }) =>
     Promise.all(
       [...task(id).sessions].reverse().map(async (s) => ({
         ...s,
@@ -274,9 +266,9 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
       }))
     )
   )
-  ipcMain.handle('settings:path', () => settingsPath)
-  ipcMain.handle('header:cached', (_e, id: string) => readCache(task(id)))
-  ipcMain.handle('header:get', (_e, id: string, force: boolean) => getHeader(task(id), force))
+  handle(C.CHANNELS.settingsPath, () => settingsPath)
+  handle(C.CHANNELS.headerCached, ({ id }) => readCache(task(id)))
+  handle(C.CHANNELS.header, ({ id, force }) => getHeader(task(id), force))
 
   return () => {
     unwatchCfg()

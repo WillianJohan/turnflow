@@ -7,6 +7,8 @@ import { windowPrefs } from './windowPrefs'
 import { isExternalLink } from './links'
 import { configDir } from './config'
 import { BRAND } from '../shared/brand'
+import { createChangeBus } from './changeBus'
+import type { Events } from '../shared/ipc/events'
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -51,6 +53,14 @@ function createWindow(): BrowserWindow {
 Menu.setApplicationMenu(null)
 
 app.setPath('userData', join(configDir(), 'electron'))
+
+// domain.changed agregado, pra todas as janelas. afterCommit é a porta do banco (E2) depois do commit.
+const broadcast = (...a: Events['domain.changed']): void =>
+  BrowserWindow.getAllWindows().forEach(
+    (w) => !w.isDestroyed() && w.webContents.send('domain.changed', ...a)
+  )
+export const changeBus = createChangeBus({ emit: broadcast })
+app.on('will-quit', changeBus.dispose)
 
 app.whenReady().then(async () => {
   const win = createWindow()

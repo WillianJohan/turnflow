@@ -5,6 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import { appCommand, termKey } from './shortcuts'
 import { oscRgb } from '../../shared/color'
 import { zoomFont } from './zoom'
+import { unwrap } from './ipc'
 
 // Zoom por aba (Ctrl+scroll): diferença em px sobre a fonte das Configurações, salva por id.
 const zoomKey = (id: string): string => `turnflow.zoom.${id}`
@@ -67,7 +68,7 @@ let wired = false
 function wire(): void {
   if (wired) return
   wired = true
-  window.dk.onData((id, d) => {
+  window.turnflow.onData((id, d) => {
     terms.get(id)?.term.write(d)
   })
 }
@@ -85,7 +86,7 @@ export function getTerm(id: string): Entry {
     if (!files.length) return
     const q = (p: string): string =>
       /[^\w@%+=:,./-]/.test(p) ? `'${p.replace(/'/g, `'\\''`)}'` : p
-    e?.term.paste(files.map((f) => q(window.dk.pathForFile(f))).join(' ') + ' ')
+    e?.term.paste(files.map((f) => q(window.turnflow.pathForFile(f))).join(' ') + ' ')
   })
   // Ctrl+scroll: zoom só desta aba (o Chromium zoomaria a janela inteira)
   el.addEventListener(
@@ -120,20 +121,19 @@ export function getTerm(id: string): Entry {
     if (!cmd) return true
     if (e.type !== 'keydown') return false
     e.preventDefault()
-    const cb = window.dk.clipboard
     if (cmd === 'copy') {
-      cb.writeText(term.getSelection())
+      window.turnflow.writeClipboard({ text: term.getSelection() })
       term.clearSelection()
     } else if (cmd === 'paste') {
       // só imagem na área de transferência: deixa o claude colar (ele lê o clipboard no Ctrl+V)
-      cb.read().then(({ text, image }) => {
-        if (text) term.paste(text)
-        else if (image) window.dk.write(ref.id, '\x16')
+      unwrap(window.turnflow.readClipboard()).then((c) => {
+        if (c?.text) term.paste(c.text)
+        else if (c?.image) window.turnflow.write({ id: ref.id, data: '\x16' })
       })
-    } else window.dk.write(ref.id, '\x1b\r') // Shift+Enter: Alt+Enter é quebra de linha no claude
+    } else window.turnflow.write({ id: ref.id, data: '\x1b\r' }) // Shift+Enter: Alt+Enter é quebra de linha no claude
     return false
   })
-  term.onData((d) => window.dk.write(ref.id, d))
+  term.onData((data) => window.turnflow.write({ id: ref.id, data }))
   // O claude consulta as cores (OSC 10/11) no boot e espera resposta; o xterm.js não responde sozinho.
   // Responde com as cores do tema atual: o claude escolhe paleta clara/escura por elas.
   const reply = (code: number, key: 'foreground' | 'background') => (data: string) => {
@@ -141,12 +141,12 @@ export function getTerm(id: string): Entry {
     const rgb =
       oscRgb(termTheme[key] ?? '') ??
       (key === 'background' ? 'rgb:1414/1616/1a1a' : 'rgb:c9c9/d1d1/d9d9')
-    window.dk.write(ref.id, `\x1b]${code};${rgb}\x1b\\`)
+    window.turnflow.write({ id: ref.id, data: `\x1b]${code};${rgb}\x1b\\` })
     return true
   }
   term.parser.registerOscHandler(10, reply(10, 'foreground'))
   term.parser.registerOscHandler(11, reply(11, 'background'))
-  term.onResize(({ cols, rows }) => window.dk.resize(ref.id, cols, rows))
+  term.onResize(({ cols, rows }) => window.turnflow.resize({ id: ref.id, cols, rows }))
   e = { term, fit, el, ref }
   terms.set(id, e)
   return e

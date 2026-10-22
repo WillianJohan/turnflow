@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { HeaderCache, SessionInfo, Task } from '../../shared/types'
 import { Icon } from './Icon'
+import { unwrap } from './ipc'
 
 type Props = {
   task: Task
@@ -28,15 +29,14 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
 
   const refresh = (force: boolean): void => {
     setLoading(true)
-    window.dk
-      .header(id, force)
+    unwrap(window.turnflow.header({ id, force }))
       .then((x) => x && setH(x))
       .finally(() => setLoading(false))
   }
 
   // cache na hora; geração (lenta) só se README ou sessão mudaram
   useEffect(() => {
-    window.dk.headerCached(id).then((c) => c && setH(c))
+    unwrap(window.turnflow.headerCached({ id })).then((c) => c && setH(c))
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca ao montar a aba, não é estado derivado
     refresh(false)
   }, [id])
@@ -72,7 +72,9 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
           <span className="menu-wrap">
             <button
               onClick={() =>
-                sessions ? setSessions(null) : window.dk.sessionInfo(id).then(setSessions)
+                sessions
+                  ? setSessions(null)
+                  : unwrap(window.turnflow.sessionInfo({ id })).then((s) => s && setSessions(s))
               }
             >
               Sessões <Icon name="chevron" size={12} />

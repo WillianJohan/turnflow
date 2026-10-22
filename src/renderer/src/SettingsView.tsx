@@ -3,6 +3,7 @@ import type { AppConfig, ConfigState } from '../../shared/types'
 import { ThemeEditor } from './ThemeEditor'
 import { IconPicker } from './IconPicker'
 import { StatusIcon } from './StatusIcon'
+import { orThrow, unwrap } from './ipc'
 
 // Número que aceita digitação: "12" passa por "1", então só valida ao confirmar.
 function SizeField({
@@ -69,10 +70,10 @@ export function SettingsView({
   const [picking, setPicking] = useState<string | null>(null)
   const [fonts, setFonts] = useState<{ all: string[]; mono: string[] }>({ all: [], mono: [] })
   useEffect(() => {
-    window.dk.fonts().then(setFonts)
+    unwrap(window.turnflow.fonts()).then((f) => f && setFonts(f))
   }, [])
   const set = (patch: Partial<AppConfig>): void => {
-    window.dk.setConfig(patch).then(onChange, (e) => setErr(String(e?.message ?? e)))
+    orThrow(window.turnflow.setConfig(patch)).then(onChange, (e) => setErr(String(e?.message ?? e)))
   }
   const c = cfg.config
   return (
@@ -191,7 +192,7 @@ export function SettingsView({
             Tudo fica em <code>{cfg.dir}</code>: <code>config.json</code> e{' '}
             <code>themes/*.json</code>. Editou e salvou, o app aplica na hora.
           </p>
-          <button onClick={() => window.dk.openConfigDir()}>Abrir pasta de config</button>
+          <button onClick={() => window.turnflow.openConfigDir()}>Abrir pasta de config</button>
         </section>
       </div>
     </div>

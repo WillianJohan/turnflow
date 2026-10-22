@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { attachTerm, disposeTerm, getTerm } from './terms'
+import { orThrow } from './ipc'
 
 const ID = '__update__'
 
@@ -10,18 +11,16 @@ export function UpdateModal({ onClose }: { onClose(): void }): React.JSX.Element
   useEffect(() => {
     const e = attachTerm(ID, host.current!)
     e.term.focus()
-    window.dk
-      .startUpdate(e.term.cols, e.term.rows)
-      .catch((x) =>
-        e.term.write(
-          `\x1b[31mnão deu pra abrir a revisão: ${String(x?.message ?? x).replace(/^Error invoking[^:]+: (Error: )?/, '')}\x1b[0m\r\n`
-        )
+    orThrow(window.turnflow.startUpdate({ cols: e.term.cols, rows: e.term.rows })).catch((x) =>
+      e.term.write(
+        `\x1b[31mnão deu pra abrir a revisão: ${String(x?.message ?? x).replace(/^Error invoking[^:]+: (Error: )?/, '')}\x1b[0m\r\n`
       )
+    )
     const ro = new ResizeObserver(() => e.fit.fit())
     ro.observe(host.current!)
     return () => {
       ro.disconnect()
-      window.dk.kill(ID)
+      window.turnflow.kill({ id: ID })
       disposeTerm(ID)
     }
   }, [])
