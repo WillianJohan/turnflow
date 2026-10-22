@@ -98,6 +98,16 @@ describe('handle (invoke)', () => {
       error: { code: 'NOT_FOUND', message: 'task x não encontrada' }
     })
   })
+  it('IpcError com details chega no Result', async () => {
+    const ipc = fakeIpc()
+    handle(ipc, echo, () => {
+      throw new IpcError('VALIDATION', 'x', { index: 4 })
+    })
+    expect(await ipc.invoke('t:echo', { id: 'a' })).toEqual({
+      ok: false,
+      error: { code: 'VALIDATION', message: 'x', details: { index: 4 } }
+    })
+  })
   it('ok → { ok: true, data }', async () => {
     const ipc = fakeIpc()
     handle(ipc, echo, (input) => ({ id: input.id + '!' }))

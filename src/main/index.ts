@@ -1,6 +1,7 @@
-import { app, shell, BrowserWindow, Menu } from 'electron'
+import { app, dialog, ipcMain, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { mkdirSync, writeFileSync } from 'fs'
+import { chmod, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
@@ -13,6 +14,13 @@ import { cliUserDataDir } from '../shared/paths'
 import { parseCli, runCli } from '../cli/dispatch'
 import { detectShimTarget, shimContent, writeShim } from './shim'
 import { startSocketServer, stubMcpHandler } from './socketServer'
+import { createQueryTimer, instrumentDb, type QueryTimer } from '../core/db/timing'
+import { vaultPaths } from '../core/key/paths'
+import { createVault, type Vault } from '../core/key/vault'
+import { selectKeyBackend } from './keychain'
+import { createLocalLog } from './localLog'
+import { installDevMenu } from './devMenu'
+import { wireVaultEvents, type VaultDialogs } from './ipc/vault'
 
 // Despacho do modo CLI (`turnflow mcp`): antes do lock, do whenReady e de qualquer janela.
 // O lock é da instância com janela; a CLI nunca o disputa nem foca a janela aberta.
@@ -123,9 +131,60 @@ async function startLocalSurface(): Promise<void> {
   }
 }
 
+// Diálogo de salvar nativo; o arquivo (chave de recuperação) fica só para o dono.
+function vaultDialogs(win: BrowserWindow): VaultDialogs {
+  return {
+    async save(defaultName, text) {
+      const r = await dialog.showSaveDialog(win, {
+        defaultPath: join(app.getPath('documents'), defaultName)
+      })
+      if (r.canceled || !r.filePath) return null
+      await writeFile(r.filePath, text, { mode: 0o600 })
+      await chmod(r.filePath, 0o600) // o mode do writeFile não vale para arquivo que já existia
+      return r.filePath
+    }
+  }
+}
+
+/**
+ * Cofre do banco. O timer entra pelo `instrument` do `openDb`, que o instala depois do
+ * `PRAGMA key` (o `db.pragma()` nem passa pelo `prepare` instrumentado). O backup diário
+ * (na entrada em `ready` e o agendado) é do próprio vault.
+ */
+async function startVault(): Promise<{ vault: Vault; timer: QueryTimer }> {
+  const backend = await selectKeyBackend()
+  const paths = vaultPaths(configDir())
+  let log: (level: 'warn' | 'error', line: string) => void
+  if (is.dev) log = (level, line) => console[level](line)
+  else {
+    const fileLog = createLocalLog(join(paths.logs, `${BRAND.id}.log`))
+    log = (level, line) => fileLog(`${level} ${line}`)
+  }
+  const timer = createQueryTimer({ mode: is.dev ? 'dev' : 'prod', log })
+  const onChange = wireVaultEvents({
+    vault: () => vault,
+    version: app.getVersion(),
+    broadcast: (b) =>
+      BrowserWindow.getAllWindows().forEach(
+        (w) => !w.isDestroyed() && w.webContents.send('vault.changed', b)
+      )
+  })
+  const vault = createVault({
+    paths,
+    backend,
+    instrument: (db) => instrumentDb(db, timer),
+    onChange,
+    log
+  })
+  app.on('will-quit', () => vault.close())
+  await vault.boot()
+  return { vault, timer }
+}
+
 function startApp(): void {
-  // sem menu: os aceleradores padrão (Ctrl+R, Ctrl+Shift+R, Ctrl+W) recarregavam/fechavam a janela
-  Menu.setApplicationMenu(null)
+  // sem menu: os aceleradores padrão (Ctrl+R, Ctrl+Shift+R, Ctrl+W) recarregavam/fechavam a janela.
+  // No dev o menu é o de diagnóstico (installDevMenu), sem esses aceleradores.
+  if (!is.dev) Menu.setApplicationMenu(null)
 
   // antes do lock: o lock do Electron é por userData
   app.setPath('userData', join(configDir(), 'electron'))
@@ -145,10 +204,16 @@ function startApp(): void {
 
   app.whenReady().then(async () => {
     if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
+    const { vault, timer } = await startVault()
+    if (is.dev) installDevMenu(() => timer.stats())
     const win = createWindow()
     main = win
     // handlers registrados antes de carregar a página: senão o renderer chama antes de existirem
-    const dispose = await registerIpc(win)
+    const dispose = await registerIpc(win, ipcMain, {
+      vault,
+      version: app.getVersion(),
+      dialogs: vaultDialogs(win)
+    })
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])
     else win.loadFile(join(__dirname, '../renderer/index.html'))

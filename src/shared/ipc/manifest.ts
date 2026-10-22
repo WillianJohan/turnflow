@@ -28,5 +28,11 @@ export const MANIFEST = {
   deleteTheme: ['theme:delete', 'invoke'],
   fonts: ['fonts:list', 'invoke'],
   readClipboard: ['clip:read', 'invoke'],
-  writeClipboard: ['clip:write', 'send']
+  writeClipboard: ['clip:write', 'send'],
+  bootGet: ['boot.get', 'invoke'],
+  firstRunBegin: ['firstRun.begin', 'invoke'],
+  firstRunSaveWords: ['firstRun.saveWords', 'invoke'],
+  firstRunCommit: ['firstRun.commit', 'invoke'],
+  vaultUnlock: ['vault.unlock', 'invoke'],
+  vaultRecover: ['vault.recover', 'invoke']
 } as const satisfies { [K in keyof Channels]: readonly [string, Channels[K]['kind']] }

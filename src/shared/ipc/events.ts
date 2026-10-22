@@ -1,5 +1,6 @@
 // Eventos main → renderer. Sem zod: o main é a fonte confiável e o preload não carrega npm.
 import type { ConfigState, Task, TaskState } from '../types'
+import type { Boot } from './vault'
 
 export type Entity = 'task' | 'project' | 'flow' | 'session' | 'activity' | 'confirm'
 export type DomainChanged = { entity: Entity; ids: string[]; op: 'upsert' | 'delete' }
@@ -13,6 +14,7 @@ export type Events = {
   'pty:renamed': [from: string, to: string]
   'config:changed': [state: ConfigState]
   'domain.changed': [change: DomainChanged]
+  'vault.changed': [boot: Boot]
 }
 
 // nome no window.turnflow → canal
@@ -23,5 +25,6 @@ export const EVENTS = {
   onState: 'pty:state',
   onRenamed: 'pty:renamed',
   onConfig: 'config:changed',
-  onDomainChanged: 'domain.changed'
+  onDomainChanged: 'domain.changed',
+  onVaultChanged: 'vault.changed'
 } as const satisfies Record<string, keyof Events>

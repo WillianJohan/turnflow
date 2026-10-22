@@ -9,7 +9,8 @@ export type IpcLike = Pick<IpcMain, 'handle' | 'on'>
 export class IpcError extends Error {
   constructor(
     readonly code: ErrCode,
-    message: string
+    message: string,
+    readonly details?: unknown
   ) {
     super(message)
   }
@@ -35,7 +36,7 @@ function parseInput<C extends Channel>(ch: C, args: unknown[]): Result<z.output<
 
 const toErr = (e: unknown): Result<never> =>
   e instanceof IpcError
-    ? err(e.code, e.message)
+    ? err(e.code, e.message, e.details)
     : err('INTERNAL', e instanceof Error ? e.message : String(e))
 
 export function handle<C extends Channel>(

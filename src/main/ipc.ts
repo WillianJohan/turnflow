@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard, ipcMain, shell } from 'electron'
+import { BrowserWindow, clipboard, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { execFile } from 'child_process'
 import { appendFileSync } from 'fs'
@@ -44,10 +44,18 @@ import { getHeader, readCache } from './header'
 import { handle as handleOn, IpcError, type Handler, type IpcLike } from './ipc/handle'
 import { registerPtyIo } from './ipc/ptyIo'
 import { onPtyExit } from './ipc/ptyExit'
+import { registerVaultIpc, type VaultDialogs } from './ipc/vault'
+import type { Vault } from '../core/key/vault'
 
 export const UPDATE_ID = '__update__'
 
-export async function registerIpc(win: BrowserWindow, ipc: IpcLike = ipcMain): Promise<() => void> {
+export type IpcDeps = { vault: Vault; version: string; dialogs: VaultDialogs }
+
+export async function registerIpc(
+  win: BrowserWindow,
+  ipc: IpcLike,
+  deps: IpcDeps
+): Promise<() => void> {
   // guard primeiro: adopt() e o exit dos ptys usam ele, e podem rodar antes do fim do registro
   const guard = createPtyGuard()
   const owner = win.webContents.id
@@ -264,6 +272,7 @@ export async function registerIpc(win: BrowserWindow, ipc: IpcLike = ipcMain): P
   handle(C.CHANNELS.settingsPath, () => settingsPath)
   handle(C.CHANNELS.headerCached, ({ id }) => readCache(task(id)))
   handle(C.CHANNELS.header, ({ id, force }) => getHeader(task(id), force))
+  registerVaultIpc(handle, deps)
 
   return () => {
     unwatchCfg()

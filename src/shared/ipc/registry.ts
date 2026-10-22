@@ -8,6 +8,7 @@ import * as session from './session'
 import * as settings from './settings'
 import * as tasks from './tasks'
 import * as theme from './theme'
+import * as vault from './vault'
 import * as win from './win'
 
 export const CHANNELS = {
@@ -36,6 +37,12 @@ export const CHANNELS = {
   deleteTheme: theme.themeDelete,
   fonts: fonts.fontsList,
   readClipboard: clip.clipRead,
-  writeClipboard: clip.clipWrite
+  writeClipboard: clip.clipWrite,
+  bootGet: vault.bootGet,
+  firstRunBegin: vault.firstRunBegin,
+  firstRunSaveWords: vault.firstRunSaveWords,
+  firstRunCommit: vault.firstRunCommit,
+  vaultUnlock: vault.vaultUnlock,
+  vaultRecover: vault.vaultRecover
 } as const
 export type Channels = typeof CHANNELS
