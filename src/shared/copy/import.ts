@@ -7,6 +7,7 @@ export const IMPORT_COPY = {
     import_root_invalid:
       'This folder is not a valid brain folder: it needs an absolute path with a current, backlog or done folder.',
     too_many_tasks: 'This folder has too many tasks to import at once.',
+    too_large: 'The task READMEs in this folder are too large to read at once.',
     preview_stale: 'The folder changed since the preview. Preview it again before importing.',
     legacy_not_found: 'The legacy source was not found.',
     export_dest_invalid: 'The export destination is not a valid folder.'
@@ -20,6 +21,9 @@ export const IMPORT_COPY = {
     not_a_key: 'The folder name is not a task key.',
     no_readme: 'The task folder has no README.md.',
     duplicate: 'Another folder already provides this task key.',
-    unreadable: 'The file or folder could not be read.'
+    unreadable: 'The file or folder could not be read.',
+    loose_file: 'Only task folders are imported; this file is not inside one.',
+    skipped_dir: 'Hidden and dependency folders are not scanned.',
+    truncated: 'Too many items to list; the rest were counted but not listed.'
   }
 } as const
