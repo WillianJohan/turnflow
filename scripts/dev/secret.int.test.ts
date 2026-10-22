@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
+import { createServer } from 'node:net'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { VAULT_COPY } from '../../src/shared/copy/vault'
 import { LATEST } from '../../src/core/db/migrations'
 import { openDb } from '../../src/core/db/open'
 import type { KeyBackend } from '../../src/core/key/backend'
@@ -11,7 +13,7 @@ import { recoveryFileText } from '../../src/core/key/recovery'
 import { createVault } from '../../src/core/key/vault'
 import { tmpDir } from '../../src/core/testing/db'
 import { fakeKeyBackend } from '../../src/core/testing/fakeKeyBackend'
-import { runSecretCli, type SecretIo } from './secret'
+import { runSecretCli, socketAccepts, type SecretIo } from './secret'
 
 const PASSWORD = 'senha-correta-123'
 const sha = (f: string): string => createHash('sha256').update(readFileSync(f)).digest('hex')
@@ -47,7 +49,7 @@ async function makeVault(
 
 function run(
   argv: string[],
-  o: { stdin?: string; password?: string; running?: boolean } = {}
+  o: { stdin?: string; password?: string; running?: boolean; at?: string } = {}
 ): Promise<{ code: number; out: string; err: string; prompts: string[] }> {
   const stdin = new PassThrough()
   stdin.end(o.stdin ?? '')
@@ -66,7 +68,7 @@ function run(
   }
   return runSecretCli(argv, io, {
     appRunning: async () => o.running ?? false,
-    now: () => new Date('2026-10-22T12:00:00.000Z')
+    now: () => new Date(o.at ? `${o.at}T00:00:00.000Z` : '2026-10-22T12:00:00.000Z')
   }).then((code) => ({ code, out: stdout.text(), err: stderr.text(), prompts }))
 }
 
@@ -128,15 +130,37 @@ describe('dev:secret', () => {
     ])
   })
 
-  it('set repetido é upsert: uma linha só, valor novo', async () => {
+  it('set repetido é upsert: uma linha, valor novo, created_at e flags antigas preservados', async () => {
     const { wordsFile } = await makeVault(dir, fakeKeyBackend('basic_text'), PASSWORD)
-    await run(['set', 'jira'], { stdin: 'velho\n', password: PASSWORD })
-    const r = await run(['set', 'jira'], { stdin: 'novo', password: PASSWORD })
+    await run(['set', 'jira', '--service', 'atl', '--allow-host', 'a.example'], {
+      stdin: 'velho\n',
+      password: PASSWORD
+    })
+    const r = await run(['set', 'jira'], { stdin: 'novo', password: PASSWORD, at: '2027-01-01' })
     expect(r.code).toBe(0)
-    const all = rows(dir, await dekOf(wordsFile)) as { value: string; allow_hosts: string }[]
+    const all = rows(dir, await dekOf(wordsFile)) as Record<string, unknown>[]
     expect(all).toHaveLength(1)
-    expect(all[0].value).toBe('novo')
-    expect(all[0].allow_hosts).toBe('[]')
+    expect(all[0]).toMatchObject({
+      value: 'novo',
+      service: 'atl',
+      allow_hosts: '["a.example"]',
+      inject: null,
+      created_at: '2026-10-22T12:00:00.000Z'
+    })
+    await run(['set', 'jira', '--service', 'outro', '--allow-host', 'b.example'], {
+      stdin: 'x',
+      password: PASSWORD
+    })
+    expect(rows(dir, await dekOf(wordsFile))[0]).toMatchObject({
+      service: 'outro',
+      allow_hosts: '["b.example"]'
+    })
+  })
+
+  it('sem --service o service nasce igual ao name', async () => {
+    const { wordsFile } = await makeVault(dir, fakeKeyBackend('basic_text'), PASSWORD)
+    await run(['set', 'jira'], { stdin: 'x', password: PASSWORD })
+    expect(rows(dir, await dekOf(wordsFile))[0]).toMatchObject({ service: 'jira' })
   })
 
   it('list mostra name, service e hosts, nunca o valor', async () => {
@@ -212,6 +236,36 @@ describe('dev:secret', () => {
     expect(r.err).toContain('Banco desatualizado: abra o app uma vez para migrar')
   })
 
+  it('banco de versão mais nova: 1 e texto do newerSchema', async () => {
+    const { wordsFile } = await makeVault(dir, fakeKeyBackend('real'))
+    const db = openDb({
+      file: vaultPaths(dir).db,
+      dek: await dekOf(wordsFile),
+      create: false,
+      migrate: false
+    })
+    db.pragma(`user_version = ${LATEST + 1}`)
+    db.close()
+    const r = await run(['set', 'jira', '--words-file', wordsFile], { stdin: 'x' })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain(VAULT_COPY.newerSchema(LATEST + 1, LATEST))
+  })
+
+  it('o valor não aparece em stdout/stderr nos caminhos de erro', async () => {
+    const { wordsFile } = await makeVault(dir, fakeKeyBackend('real'))
+    const other = await makeVault(tmpDir(), fakeKeyBackend('real'))
+    const cases = [
+      run(['set', 'jira'], { stdin: 'VALOR-SECRETO\n' }),
+      run(['set', 'jira', '--words-file', wordsFile], { stdin: 'VALOR-SECRETO\n', running: true }),
+      run(['set', 'jira', '--words-file', other.wordsFile], { stdin: 'VALOR-SECRETO\n' }),
+      run(['set', 'jira', '--words-file', '/nao/existe'], { stdin: 'VALOR-SECRETO\n' })
+    ]
+    for (const r of await Promise.all(cases)) {
+      expect(r.code).toBe(1)
+      expect(r.out + r.err).not.toContain('VALOR-SECRETO')
+    }
+  })
+
   it('palavras de outro banco: 1 e WRONG_KEY', async () => {
     await makeVault(dir, fakeKeyBackend('real'))
     const other = await makeVault(tmpDir(), fakeKeyBackend('real'))
@@ -224,5 +278,20 @@ describe('dev:secret', () => {
     expect((await run(['set', 'jira'], { stdin: '\n' })).code).toBe(1)
     expect((await run(['set'])).code).toBe(1)
     expect((await run(['nada'])).code).toBe(1)
+  })
+})
+
+describe('socketAccepts', () => {
+  it('true com servidor ouvindo, false sem ninguém', async () => {
+    const path = join(tmpDir(), 's.sock')
+    expect(await socketAccepts(path)).toBe(false)
+    const server = createServer()
+    await new Promise<void>((r) => server.listen(path, r))
+    try {
+      expect(await socketAccepts(path)).toBe(true)
+    } finally {
+      await new Promise((r) => server.close(r))
+    }
+    expect(await socketAccepts(path)).toBe(false)
   })
 })
