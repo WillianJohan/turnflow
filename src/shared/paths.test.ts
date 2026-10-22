@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND } from './brand'
-import { binDir, cliUserDataDir, configDir, runDir, socketPath } from './paths'
+import { binDir, cliUserDataDir, configDir, isAbsolutePath, runDir, socketPath } from './paths'
 
 const home = '/home/u'
 
@@ -99,5 +99,14 @@ describe('paths', () => {
     expect(cliUserDataDir({}, 'win32', 'C:\\Users\\u')).toBe(
       `C:\\Users\\u\\AppData\\Roaming\\${BRAND.name}\\cli`
     )
+  })
+})
+
+describe('isAbsolutePath', () => {
+  it.each(['/a', 'C:\\a', 'C:/a', 'c:\\', '\\\\srv\\x'])('%s é absoluto', (s) => {
+    expect(isAbsolutePath(s)).toBe(true)
+  })
+  it.each(['', 'a/b', './a', '../a', '~/a', 'C:a', 'C:', '1:/a', '\\a'])('%s não é', (s) => {
+    expect(isAbsolutePath(s)).toBe(false)
   })
 })

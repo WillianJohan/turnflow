@@ -84,3 +84,11 @@ export function socketPath(
   }
   return pathFor(platform).join(runDir(env, platform, home, dev), `${BRAND.id}.sock`)
 }
+
+/**
+ * Caminho absoluto em qualquer SO, sem `path` do Node (o renderer usa via contracts):
+ * `/…` (posix), `X:\…`/`X:/…` (drive) ou `\\…` (UNC). `C:a` e `\a` dependem da pasta atual: não.
+ */
+export function isAbsolutePath(s: string): boolean {
+  return s.startsWith('/') || /^[A-Za-z]:[\\/]/.test(s) || s.startsWith('\\\\')
+}
