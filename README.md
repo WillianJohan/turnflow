@@ -66,5 +66,5 @@ Quando um Claude pede permissão ou termina o turno e você não está vendo aqu
 ## Dev
 
 - `TURNFLOW_BRAIN=<dir>` usa um brain de teste.
-- `TURNFLOW_SHOT=<png> [TURNFLOW_SHOT_MS] [TURNFLOW_SHOT_LAYOUT=<json>] [TURNFLOW_SHOT_JS=<js>] npm run start` tira um print e fecha.
+- `TURNFLOW_SHOT=<png> [TURNFLOW_SHOT_MS] [TURNFLOW_SHOT_JS=<js>] npm run start` tira um print e fecha.
 - `TURNFLOW_DEBUG=<arquivo>` grava a saída crua dos PTYs e o console do renderer.

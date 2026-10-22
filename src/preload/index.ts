@@ -47,7 +47,3 @@ const dk: DkApi = {
   header: (id, force) => ipcRenderer.invoke('header:get', id, force)
 }
 contextBridge.exposeInMainWorld('dk', dk)
-
-// dev: TURNFLOW_SHOT_LAYOUT semeia o layout antes do app ler (prints automatizados)
-if (process.env.TURNFLOW_SHOT_LAYOUT)
-  localStorage.setItem('turnflow.layout', process.env.TURNFLOW_SHOT_LAYOUT)

@@ -34,6 +34,7 @@ import {
   writePty
 } from './pty'
 import { adoptions } from './adopt'
+import { createPtyGuard } from './ptyGuard'
 import { findSessionFile, runningElsewhere } from './sessions'
 import { loadTasks, watchTasks } from './tasks'
 import { getHeader, readCache } from './header'
@@ -64,6 +65,8 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     for (const { from, to } of adoptions(uuidOf, [...tasks.values()], busy)) {
       if (!renamePty(from, to)) continue
       alias.set(from, to)
+      guard.release(from)
+      guard.register(to, owner)
       for (const [k, v] of alias) if (v === from) alias.set(k, to)
       uuidOf.set(to, uuidOf.get(from)!)
       uuidOf.delete(from)
@@ -100,10 +103,13 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     if (!t) throw new Error(`task ${id} não encontrada`)
     return t
   }
+  const guard = createPtyGuard()
+  const owner = win.webContents.id
   const ptyEvents = {
     data: (id: string, d: string) => send('pty:data', id, d),
     exit: (id: string, code: number) => {
       uuidOf.delete(id)
+      guard.release(id)
       for (const [k, v] of alias) if (v === id) alias.delete(k)
       send('pty:exit', id, code)
       send('pty:state', id, 'idle')
@@ -208,6 +214,7 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     const bin = (await loginEnv()).claude
     if (alivePtys().includes(id)) return
     startPty(id, [bin, ...args], cwd, await env(id), cols, rows, ptyEvents)
+    guard.register(id, owner)
     if ('resume' in how) uuidOf.set(id, how.resume)
   })
   // comando fixo: o renderer não escolhe o que executar
@@ -215,6 +222,7 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
     if (alivePtys().includes(UPDATE_ID)) return
     const argv = [(await loginEnv()).claude, '/revisao-demandas', '--settings', settingsPath]
     startPty(UPDATE_ID, argv, DIGITALK_HOME, await env(UPDATE_ID), cols, rows, ptyEvents)
+    guard.register(UPDATE_ID, owner)
   })
   ipcMain.handle('tasks:root', () => BRAIN_TASKS)
   // clique na notificação: traz a janela pra frente
@@ -236,18 +244,25 @@ export async function registerIpc(win: BrowserWindow): Promise<() => void> {
         ? [(await loginEnv()).claude, '--settings', settingsPath]
         : [process.env.SHELL || '/bin/bash', '-i']
     startPty(id, argv, DIGITALK_HOME, await env(id), cols, rows, ptyEvents)
+    guard.register(id, owner)
   })
-  ipcMain.on('pty:write', (_e, id: string, d: string) => writePty(id, d))
+  ipcMain.on('pty:write', (e, id: string, d: string) => {
+    if (guard.canWrite(id, e.sender.id)) writePty(id, d)
+  })
   // rascunho: só limpa no renderer se a sessão ainda estava viva pra receber
-  ipcMain.handle('pty:send', (_e, id: string, d: string) => {
-    if (!alivePtys().includes(id)) return false
+  ipcMain.handle('pty:send', (e, id: string, d: string) => {
+    if (!guard.canWrite(id, e.sender.id) || !alivePtys().includes(id)) return false
     writePty(id, d)
     setTimeout(() => writePty(id, '\r'), 60) // Enter separado: o claude fecha o paste antes
     return true
   })
-  ipcMain.on('pty:resize', (_e, id: string, c: number, r: number) => resizePty(id, c, r))
-  ipcMain.on('pty:kill', (_e, id: string) => {
+  ipcMain.on('pty:resize', (e, id: string, c: number, r: number) => {
+    if (guard.canWrite(id, e.sender.id)) resizePty(id, c, r)
+  })
+  ipcMain.on('pty:kill', (e, id: string) => {
+    if (!guard.canWrite(id, e.sender.id)) return
     uuidOf.delete(id)
+    guard.release(id)
     killPty(id)
   })
   ipcMain.handle('task:sessions', async (_e, id: string): Promise<SessionInfo[]> =>

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { writeFileSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
+import { windowPrefs } from './windowPrefs'
 import { isExternalLink } from './links'
 import { configDir } from './config'
 import { BRAND } from '../shared/brand'
@@ -16,7 +17,7 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#14161a',
     title: BRAND.name,
     icon: join(__dirname, `../../resources/${BRAND.id}.png`),
-    webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
+    webPreferences: windowPrefs(join(__dirname, '../preload/index.js'))
   })
   win.on('ready-to-show', () => win.show())
   // arquivo solto na janela ou link não pode trocar a página: o reload mataria todos os PTYs
