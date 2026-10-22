@@ -276,6 +276,28 @@ describe('importCreateTaskIn', () => {
   })
 })
 
+describe('importCreateTaskIn validações', () => {
+  it('workdir relativo: workdir_relative', () => {
+    const { d, db, ids } = setup()
+    expect(errOf(() => create(d, base(ids, { workdir: 'rel/dir' })))).toEqual({
+      code: 'VALIDATION',
+      reason: 'workdir_relative'
+    })
+    expect(count(db, 'select count(*) as n from task')).toBe(0)
+  })
+
+  it('key duplicada: CONFLICT key_exists e nada novo', () => {
+    const { d, db, ids } = setup()
+    create(d, base(ids))
+    expect(errOf(() => create(d, base(ids, { sessions: [sess(1)] })))).toEqual({
+      code: 'CONFLICT',
+      reason: 'key_exists'
+    })
+    expect(count(db, 'select count(*) as n from task')).toBe(1)
+    expect(count(db, 'select count(*) as n from ai_session')).toBe(0)
+  })
+})
+
 describe('importUpdateTaskIn', () => {
   it('não liga a vez: etapa para trás deixa turn_reason nulo', () => {
     const { d, db, ids } = setup()
@@ -361,6 +383,14 @@ describe('importUpdateTaskIn', () => {
     expect(u2.sessions_taken).toEqual([{ external_id: SID(1), task_key: 'ABC-1' }])
     const u3 = update(d, { task_id: a.task_id, sessions: [sess(1, 'renamed')] })
     expect(u3.activity_id).toBeNull()
+  })
+
+  it('sessão que reimporta sem label fica com label NULL', () => {
+    const { d, db, ids } = setup()
+    const r = create(d, base(ids, { sessions: [sess(1, 'named')] }))
+    const u = update(d, { task_id: r.task_id, sessions: [sess(1, null)] })
+    expect(u.activity_id).not.toBeNull()
+    expect(db.prepare('select label from ai_session').get()).toEqual({ label: null })
   })
 
   it('sessão órfã é adotada no update', () => {
@@ -489,6 +519,13 @@ describe('checkpointHash', () => {
 })
 
 describe('appendLinks', () => {
+  it('com Links no meio, entra no bloco e antes da próxima seção', () => {
+    const cur = 'intro\n\n## Links\n\n- a => https://example.com/1\n\n## Notes\n\ntext\n'
+    expect(appendLinks(cur, ['- b => https://example.com/2'])).toBe(
+      'intro\n\n## Links\n\n- a => https://example.com/1\n- b => https://example.com/2\n\n## Notes\n\ntext\n'
+    )
+  })
+
   it('cria o cabeçalho quando falta', () => {
     expect(appendLinks('body', ['- repo => https://example.com/mr/1'])).toBe(
       'body\n\n## Links\n\n- repo => https://example.com/mr/1'

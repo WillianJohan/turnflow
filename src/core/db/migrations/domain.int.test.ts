@@ -341,13 +341,13 @@ describe('migration 0004 domain', () => {
     db.close()
   })
 
-  it('banco v3 migra para 4 com a task intacta', () => {
+  it('banco v3 migra para LATEST com a task intacta', () => {
     const file = join(tmpDir(), 'v3.db')
     const db = openDb({ file, dek: TEST_DEK, create: true, migrations: MIGRATIONS.slice(0, 3) })
     expect(db.pragma('user_version', { simple: true })).toBe(3)
     const id = insertTask(db, { key: 'T-1', title: 'antiga' })
-    expect(migrate(db, MIGRATIONS.slice(0, 4))).toEqual({ from: 3, to: 4 })
-    expect(db.pragma('user_version', { simple: true })).toBe(4)
+    expect(migrate(db, MIGRATIONS)).toEqual({ from: 3, to: LATEST })
+    expect(db.pragma('user_version', { simple: true })).toBe(LATEST)
     const r = db.prepare('select key, title from task where id = ?').get(id)
     expect(r).toEqual({ key: 'T-1', title: 'antiga' })
     expect((db.prepare('select count(*) as n from flow').get() as { n: number }).n).toBe(4)

@@ -1,4 +1,5 @@
 import { Limits } from '../../shared/contracts'
+import { isAbsolutePath } from '../../shared/pathSyntax'
 import { recordActivity } from './activity'
 import { checkpointHash } from './checkpoint'
 import { emitCounters, type Actor, type DomainDeps, type Emit } from './context'
@@ -65,8 +66,9 @@ export function importCreateTaskIn(
 ): ImportWriteResult {
   const title = cleanTitle(t.title)
   const description = cleanDescription(t.description)
-  const workdir =
-    t.workdir === null || t.workdir === '' ? null : checkMax('workdir', t.workdir, Limits.workdir)
+  const workdir = cleanWorkdir(t.workdir)
+  if (d.db.prepare('select 1 from task where key = ?').get(t.key) !== undefined)
+    throw domainError('CONFLICT', 'key_exists', { field: 'key' })
   const blockedReason = cleanReason(t.stage.blocked_reason)
   const stage = requireStage(d, t.flow_id, t.stage.stage_id)
   const cps = cleanCheckpoints(t.checkpoints)
@@ -180,7 +182,7 @@ export function importUpdateTaskIn(
     next.project_id = set.project_id!
   }
   if (u.workdir !== undefined && u.workdir !== '' && !rec.workdir)
-    next.workdir = checkMax('workdir', u.workdir, Limits.workdir)
+    next.workdir = cleanWorkdir(u.workdir)
 
   const columns = Object.keys(next).filter((k) => next[k] !== (rec as Record<string, unknown>)[k])
   const wrote = columns.length > 0
@@ -245,10 +247,20 @@ const LINKS_HEADER = /^## Links[ \t]*$/m
 
 /** Acrescenta linhas ao bloco `## Links` no fim da descrição, criando o cabeçalho se faltar. */
 export function appendLinks(description: string | null, lines: string[]): string {
-  const body = (description ?? '').replace(/\s+$/, '')
   if (lines.length === 0) return description ?? ''
   const block = lines.join('\n')
-  if (LINKS_HEADER.test(body)) return `${body}\n${block}`
+  const head = LINKS_HEADER.exec(description ?? '')
+  if (head) {
+    // entra dentro do bloco Links: antes da próxima seção, se houver
+    const text = description as string
+    const start = head.index + head[0].length
+    const rest = text.slice(start)
+    const next = rest.search(/^## /m)
+    const links = (next < 0 ? rest : rest.slice(0, next)).replace(/\s+$/, '')
+    const tail = next < 0 ? '' : `\n\n${rest.slice(next)}`
+    return `${text.slice(0, start)}${links}\n${block}${tail}`
+  }
+  const body = (description ?? '').replace(/\s+$/, '')
   return body === '' ? `## Links\n\n${block}` : `${body}\n\n## Links\n\n${block}`
 }
 
@@ -262,6 +274,14 @@ function cleanTitle(v: string): string {
 function cleanDescription(v: string | null): string | null {
   if (v === null || v === '') return null
   return checkMax('description', v, Limits.description)
+}
+
+/** `''`/`null` = sem pasta própria; senão absoluta (Decisão 20 do E3). */
+function cleanWorkdir(v: string | null): string | null {
+  if (v === null || v === '') return null
+  checkMax('workdir', v, Limits.workdir)
+  if (!isAbsolutePath(v)) throw domainError('VALIDATION', 'workdir_relative', { field: 'workdir' })
+  return v
 }
 
 function cleanReason(v: string | null): string | null {

@@ -27,6 +27,7 @@ const ERRORS = {
   needs_confirmation: 'Essa ação precisa de confirmação',
   text_required: 'Escreva o texto',
   not_found: 'Não encontrado',
+  key_exists: 'Já existe uma task com essa key',
   too_long: 'Texto longo demais'
 } as const
 
