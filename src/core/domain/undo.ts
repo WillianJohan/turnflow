@@ -8,7 +8,8 @@ import {
   type ActivityRecord,
   type Inverse,
   type InverseOp,
-  type TaskField
+  type TaskField,
+  TASK_FIELDS
 } from './activity'
 import { DAY_MS } from './attention'
 import { nowIso, type Actor, type DomainDeps, type Emit } from './context'
@@ -38,16 +39,19 @@ export type UndoState = { undoable: boolean; code?: UndoBlock; label?: string }
 type Values = Partial<Record<TaskField, string | null>>
 type Item = { project_id: string; rank: string }
 
-/** Chaves de task de um `expect`/`restore` (`item` e `notification_ids` não são colunas). */
+/**
+ * Chaves de task de um `expect`/`restore`: só nomes da lista fechada `TASK_FIELDS`, porque viram
+ * coluna no SQL dinâmico (`item` e `notification_ids` não são colunas e ficam de fora).
+ */
 const taskKeys = (v: Inverse['restore']): TaskField[] =>
-  Object.keys(v).filter((k) => k !== 'item' && k !== 'notification_ids') as TaskField[]
+  Object.keys(v).filter((k) => TASK_FIELDS.has(k)) as TaskField[]
 
 /**
  * Se a activity pode ser desfeita agora, nesta ordem: sem inverso, fora da janela de 7 dias, já
  * desfeita, task apagada (menos o próprio `undelete`), e por fim conflito: algum campo do `expect`
- * mudou depois, ou o que o `restore` aponta (etapa, projeto) já não serve. No conflito, `label` é
- * o "mudou depois (por <ator>)" com o ator da escrita mais nova que tocou o `expect`, ou só
- * "mudou depois" quando nenhuma Atividade explica a mudança.
+ * mudou depois, ou o que o `restore` aponta (etapa, projeto) já não serve. Com `expect` divergente,
+ * `label` é "mudou depois (por <ator>)" com o ator da escrita mais nova que tocou o `expect` (ou só
+ * "mudou depois" sem Atividade que explique); com o destino inválido, sempre "mudou depois".
  */
 export function undoState(d: DomainDeps, a: ActivityRecord): UndoState {
   const inv = a.inverse
@@ -59,12 +63,15 @@ export function undoState(d: DomainDeps, a: ActivityRecord): UndoState {
     { flow_id: string; deleted_at: string | null } | undefined
   if (!t || (t.deleted_at !== null && inv.op !== 'undelete'))
     return { undoable: false, code: 'task_deleted' }
-  if (!expectHolds(d.db, inv) || !restorable(d.db, inv, t.flow_id))
+  if (!expectHolds(d.db, inv))
     return {
       undoable: false,
       code: 'changed_after',
       label: DOMAIN_COPY.changedAfter(changedBy(d.db, a.id, inv))
     }
+  // expect bate mas o destino sumiu: nenhuma escrita na task explica, então sem ator
+  if (!restorable(d.db, inv, t.flow_id))
+    return { undoable: false, code: 'changed_after', label: DOMAIN_COPY.changedAfter() }
   return { undoable: true }
 }
 

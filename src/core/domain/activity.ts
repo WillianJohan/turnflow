@@ -13,7 +13,7 @@ export type TaskField =
   | 'blocked_reason'
   | 'blocked_at'
 
-const TASK_FIELDS: ReadonlySet<string> = new Set<TaskField>([
+export const TASK_FIELDS: ReadonlySet<string> = new Set<TaskField>([
   'stage_id',
   'flow_id',
   'done_at',

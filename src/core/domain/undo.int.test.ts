@@ -93,6 +93,18 @@ const rowOf = (h: Harness, activityId: string, task_id?: string): ActivityRow =>
   return ActivityRow.parse(r)
 }
 
+/** O mapa do brief, literal: o `INVERSE_OF` tem que ser exatamente este. */
+const EXPECTED_INVERSE: Record<string, string> = {
+  restore_turn: 'clear_turn',
+  clear_turn: 'restore_turn',
+  undelete: 'redelete',
+  redelete: 'undelete',
+  unblock: 'block',
+  block: 'unblock',
+  set_stage: 'set_stage',
+  move_project: 'move_project'
+}
+
 const TABLES = ['task', 'activity', 'sync_outbox', 'project_item']
 
 /** CONFLICT com `reason`, sem escrever nem emitir. */
@@ -122,11 +134,15 @@ function roundTrip(h: Harness, id: string, op: () => string | null): string {
   const undo = readActivity(h.db, r.activity_id!)!
   expect(undo.op).toBe('undo')
   expect(undo.data.of).toBe(aid)
-  expect(undo.inverse!.op).toBe(INVERSE_OF[orig.inverse!.op])
+  expect(undo.inverse!.op).toBe(EXPECTED_INVERSE[orig.inverse!.op])
   return r.activity_id!
 }
 
 describe('as 6 operações vão e voltam', () => {
+  it('INVERSE_OF é o mapa do brief', () => {
+    expect(INVERSE_OF).toEqual(EXPECTED_INVERSE)
+  })
+
   it('dispensar', () => {
     const h = setup()
     const id = feature(h)
@@ -317,16 +333,24 @@ describe('conflito por expect', () => {
   it('mudar e voltar ao mesmo valor não bloqueia (o expect bate de novo)', () => {
     const h = setup()
     const id = feature(h)
-    const x = blockTask(h.d, USER, { id, reason: 'x' }).activity_id!
-    expect(rowOf(h, x).undoable).toBe(true)
-    unblockTask(h.d, USER, { id })
+    const x = setStage(h.d, h.mcp, { id, stage_id: F(h, 1) }).activity_id!
+    h.tick(MIN)
+    setStage(h.d, USER, { id, stage_id: F(h, 2) })
     expect(rowOf(h, x).undoable).toBe(false)
+    h.tick(MIN)
+    setStage(h.d, USER, { id, stage_id: F(h, 1) }) // volta: stage_id e done_at batem de novo
+    expect(rowOf(h, x).undoable).toBe(true)
+    undoActivity(h.d, USER, { activity_id: x })
+    expect(raw(h.db, id).stage_id).toBe(F(h, 0))
   })
 
   it('etapa a restaurar foi apagada: CONFLICT changed_after', () => {
     const h = setup()
     const id = feature(h)
-    const x = setStage(h.d, USER, { id, stage_id: F(h, 1) }).activity_id!
+    const x = setStage(h.d, h.mcp, { id, stage_id: F(h, 1) }).activity_id!
+    // escritas minhas que cruzam o expect e voltam: o rótulo não pode culpar ninguém
+    setStage(h.d, USER, { id, stage_id: F(h, 2) })
+    setStage(h.d, USER, { id, stage_id: F(h, 1) })
     deleteStage(h.d, USER, { id: F(h, 0) })
     expect(raw(h.db, id).stage_id).toBe(F(h, 1)) // expect ainda bate
     expect(rowOf(h, x)).toMatchObject({ undoable: false, undo_blocked_reason: 'mudou depois' })
@@ -410,6 +434,16 @@ describe('recusas', () => {
     h.tick(6 * DAY_MS + 23 * HOUR)
     undoActivity(h.d, USER, { activity_id: y })
     expect(raw(h.db, id2).blocked_reason).toBeNull()
+  })
+
+  it('exatamente 7 dias ainda desfaz (borda inclusiva)', () => {
+    const h = setup()
+    const id = feature(h)
+    const x = blockTask(h.d, USER, { id, reason: 'x' }).activity_id!
+    h.tick(UNDO_WINDOW_MS)
+    expect(rowOf(h, x).undoable).toBe(true)
+    undoActivity(h.d, USER, { activity_id: x })
+    expect(raw(h.db, id).blocked_reason).toBeNull()
   })
 
   it('sem inverso não desfaz', () => {
