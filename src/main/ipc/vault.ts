@@ -133,7 +133,10 @@ export function registerVaultIpc(
   h(V.vaultRetry, () =>
     guarded(async () => {
       if (vault.state() !== 'failed') throw new VaultError('BAD_STATE')
+      const resumingWipe = vault.failure()?.message === VAULT_COPY.wipeFailed
       await vault.boot()
+      // o wipe interrompido parou antes de limpar o storage do Chromium
+      if (resumingWipe && vault.state() === 'first_run') await deps.clearBrowserData?.()
     }).then(boot)
   )
 }

@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, session, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
-import { mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
@@ -158,6 +158,12 @@ function vaultDialogs(win: BrowserWindow): VaultDialogs {
   }
 }
 
+// rascunhos do Composer e layout ficam no localStorage, em texto plano (configDir/electron/)
+async function clearBrowserData(): Promise<void> {
+  await session.defaultSession.clearStorageData()
+  await session.defaultSession.clearCache()
+}
+
 type VaultLog = (level: 'warn' | 'error', line: string) => void
 
 /**
@@ -191,7 +197,10 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: Vau
     log
   })
   app.on('will-quit', () => vault.close())
+  // wipe interrompido (crash): o boot termina o vault, e o storage do Chromium fica para cá
+  const resumingWipe = existsSync(paths.wipeMarker)
   await vault.boot()
+  if (resumingWipe && vault.state() === 'first_run') await clearBrowserData()
   return { vault, timer, log }
 }
 
@@ -227,11 +236,7 @@ function startApp(): void {
       vault,
       version: app.getVersion(),
       dialogs: vaultDialogs(win),
-      // rascunhos do Composer e layout ficam no localStorage, em texto plano (configDir/electron/)
-      clearBrowserData: async () => {
-        await session.defaultSession.clearStorageData()
-        await session.defaultSession.clearCache()
-      },
+      clearBrowserData,
       log: (line) => log('error', line)
     })
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])

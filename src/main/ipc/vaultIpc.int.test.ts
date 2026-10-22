@@ -474,7 +474,8 @@ describe('canais do vault', () => {
     async () => {
       const dir = tmpDir()
       await committed(dir)
-      const { vault, invoke } = setup({ dir })
+      const clearBrowserData = vi.fn(async () => undefined)
+      const { vault, invoke } = setup({ dir, clearBrowserData })
       await vault.boot()
       const backups = join(dir, 'backups')
       chmodSync(backups, 0o500)
@@ -485,8 +486,10 @@ describe('canais do vault', () => {
       } finally {
         chmodSync(backups, 0o700)
       }
+      expect(clearBrowserData).not.toHaveBeenCalled()
       expect(await invoke(ch.vaultRetry.name)).toEqual(bootOk('first_run'))
       expect(existsSync(join(dir, BRAND.db))).toBe(false)
+      expect(clearBrowserData).toHaveBeenCalledOnce()
       vault.close()
     },
     20_000
