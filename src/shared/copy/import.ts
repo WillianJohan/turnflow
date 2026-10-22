@@ -38,6 +38,8 @@ export const IMPORT_COPY = {
     previewRefreshed:
       'The folder changed since the preview. The preview was refreshed: check it and apply again.',
     type: 'Task type',
+    /** Tipo da prévia que a lista de tipos não trouxe (lista falhou ou tipo fora dela). */
+    defaultType: 'Default type',
     counts: {
       create: 'To create',
       update: 'To update',
@@ -52,6 +54,7 @@ export const IMPORT_COPY = {
     statusCol: 'Status',
     tasksCol: 'Tasks',
     stageCol: 'Stage',
+    stageFor: (status: string): string => `Stage for "${status}"`,
     notMapped: 'Not mapped: first stage, with an imported-status checkpoint',
     missingStage: (name: string): string => `${name} (stage no longer exists)`,
     roles: {
@@ -83,11 +86,30 @@ export const IMPORT_COPY = {
       invalid: 'Invalid'
     },
     fields: { title: 'Title', description: 'Description', project: 'Project', stage: 'Stage' },
-    conflict: (field: string): string => `${field} changed on both sides`,
+    conflict: (key: string, field: string): string => `${key}: ${field} changed on both sides`,
     keepApp: `Keep ${BRAND.name}`,
     useMarkdown: 'Use markdown',
     workdirSuggestion: (dir: string): string => `Use ${dir} as the working folder`,
     attachments: (n: number): string => `Pending attachments (${n})`,
+    /** Motivo de task inválida (`too_long:<campo>` do plano); desconhecido cai no genérico. */
+    reasons: {
+      tooLong: (what: string): string => `${what} is too long to import.`,
+      unknown: 'This task cannot be imported.'
+    },
+    tooLongFields: {
+      title: 'The title',
+      description: 'The description',
+      checkpoint: 'A checkpoint',
+      blocked_reason: 'The blocked reason',
+      workdir: 'The working folder',
+      project: 'The project name'
+    },
+    size: {
+      b: (n: number): string => `${n} B`,
+      kb: (n: string): string => `${n} KB`,
+      mb: (n: string): string => `${n} MB`
+    },
+    ignoredWhy: (why: string): string => `— ${why}`,
     attachmentsHint: 'Attachments are listed only; they are not imported.',
     ignoredList: (n: number): string => `Ignored (${n})`,
     reportTitle: 'Import finished',
@@ -105,7 +127,7 @@ export const IMPORT_COPY = {
     conflictsKept: (n: number): string => `Conflicts kept with the app value: ${n}`,
     takenMarkdown: (n: number): string => `Conflicts resolved with markdown: ${n}`,
     deletedInApp: (keys: string): string => `Deleted in the app, not restored: ${keys}`,
-    invalidTask: (key: string, reason: string): string => `${key} was not imported: ${reason}`,
+    invalidTask: (key: string, why: string): string => `${key} was not imported. ${why}`,
     sessionTaken: (id: string, key: string): string =>
       `Session ${id} already belongs to ${key} and stays there.`
   },

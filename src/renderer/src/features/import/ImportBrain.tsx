@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ImportPreview, ImportReport, TaskType } from '../../../../shared/contracts'
+import type {
+  ImportConflict,
+  ImportPreview,
+  ImportReport,
+  TaskType
+} from '../../../../shared/contracts'
 import { IMPORT_COPY } from '../../../../shared/copy/import'
 import {
   applyInput,
@@ -13,6 +18,7 @@ import {
   withWorkdir,
   type ImportChoices
 } from './choices'
+import { reasonText, sizeText } from './format'
 import './import.css'
 
 const COPY = IMPORT_COPY.screen
@@ -27,6 +33,9 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
   const [root, setRoot] = useState(brainDir ?? '')
   const [choices, setChoices] = useState<ImportChoices>(emptyChoices)
   const [choicesRoot, setChoicesRoot] = useState<string | null>(null)
+  // conflitos resolvidos com o markdown saem da prévia nova (o core já não os vê como conflito):
+  // a tela guarda cada um para continuar mostrando a escolha e deixar desfazer
+  const [taken, setTaken] = useState<Record<string, ImportConflict>>({})
   const [shown, setShown] = useState<Shown | null>(null)
   const [report, setReport] = useState<ImportReport | null>(null)
   const [busy, setBusy] = useState<'preview' | 'apply' | null>(null)
@@ -50,6 +59,8 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
     if (r.ok) setShown({ root: dir, p: r.data })
     else {
       setShown(null)
+      // o aviso de "prévia refeita" não vale para uma prévia que falhou
+      setNotice(null)
       setError(r.error.message)
     }
   }
@@ -62,7 +73,9 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
 
   const onPreview = (): void => {
     const dir = root.trim()
-    const c = choicesRoot === dir ? choices : emptyChoices()
+    const same = choicesRoot === dir
+    const c = same ? choices : emptyChoices()
+    if (!same) setTaken({})
     setChoices(c)
     setChoicesRoot(dir)
     setReport(null)
@@ -75,6 +88,17 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
     setChoices(c)
     setNotice(null)
     void runPreview(shown.root, c)
+  }
+
+  const takeConflict = (c: ImportConflict, take: boolean): void => {
+    const k = takeKey(c.key, c.field)
+    setTaken((m) => {
+      const next = { ...m }
+      if (take) next[k] = c
+      else delete next[k]
+      return next
+    })
+    change(withTake(choices, c.key, c.field, take))
   }
 
   const browse = async (): Promise<void> => {
@@ -93,6 +117,7 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
       setReport(r.data)
       setShown(null)
       setChoices(emptyChoices())
+      setTaken({})
       return
     }
     const reason = (r.error.details as { reason?: unknown } | undefined)?.reason
@@ -129,23 +154,31 @@ export function ImportBrain({ brainDir }: { brainDir: string | null }): React.JS
           {COPY.preview}
         </button>
       </div>
-      {busy === 'preview' && (
-        <p className="import-dim" aria-live="polite">
-          {COPY.previewing}
-        </p>
-      )}
-      {notice && (
-        <p role="status" data-testid="import-notice" className="import-warn">
-          {notice}
-        </p>
-      )}
+      {/* sempre montada: leitor de tela só anuncia troca de texto numa região que já existe */}
+      <div data-testid="import-live" className="import-live" aria-live="polite">
+        {busy === 'preview' && <p className="import-dim">{COPY.previewing}</p>}
+        {notice && (
+          <p data-testid="import-notice" className="import-warn">
+            {notice}
+          </p>
+        )}
+        {report && <p className="import-sr">{COPY.reportTitle}</p>}
+      </div>
       {error && (
         <p role="alert" data-testid="import-error" className="import-error">
           {error}
         </p>
       )}
       {shown && (
-        <PreviewView p={shown.p} types={types} choices={choices} onChange={change} busy={!!busy} />
+        <PreviewView
+          p={shown.p}
+          types={types}
+          choices={choices}
+          onChange={change}
+          taken={taken}
+          onTake={takeConflict}
+          locked={busy === 'apply'}
+        />
       )}
       <button
         data-testid="import-apply"
@@ -171,17 +204,24 @@ function PreviewView({
   types,
   choices,
   onChange,
-  busy
+  taken,
+  onTake,
+  locked
 }: {
   p: ImportPreview
   types: TaskType[]
   choices: ImportChoices
   onChange(c: ImportChoices): void
-  busy: boolean
+  /** Conflitos já resolvidos com o markdown, por `'KEY|field'`. */
+  taken: Record<string, ImportConflict>
+  onTake(c: ImportConflict, take: boolean): void
+  /** Só durante o apply: na prévia refeita os controles seguem usáveis (e com o foco). */
+  locked: boolean
 }): React.JSX.Element {
-  const typeOpts = types.some((t) => t.id === p.type_id)
+  const typeId = choices.type_id ?? p.type_id
+  const typeOpts = types.some((t) => t.id === typeId)
     ? types
-    : [{ id: p.type_id, name: p.type_id }, ...types]
+    : [{ id: typeId, name: COPY.defaultType }, ...types]
   return (
     <div className="import-preview">
       <dl className="import-counts">
@@ -197,8 +237,8 @@ function PreviewView({
         {COPY.type}
         <select
           data-testid="import-type"
-          value={p.type_id}
-          disabled={busy}
+          value={typeId}
+          disabled={locked}
           onChange={(e) => onChange({ ...choices, type_id: e.target.value })}
         >
           {typeOpts.map((t) => (
@@ -234,8 +274,9 @@ function PreviewView({
                   <td>
                     <StatusSelect
                       s={s}
+                      target={choices.status_edits[s.key] ?? s.target}
                       stages={p.stages}
-                      disabled={busy}
+                      disabled={locked}
                       onPick={(t) => onChange(withStatus(choices, s.key, t))}
                     />
                   </td>
@@ -259,20 +300,20 @@ function PreviewView({
                   {COPY.actions[t.action]}
                 </span>
               </div>
-              {t.reason && <p className="import-dim">{t.reason}</p>}
-              {t.conflicts.map((c) => {
+              {t.action === 'invalid' && <p className="import-dim">{reasonText(t.reason)}</p>}
+              {conflictsOf(t, taken).map((c) => {
                 const taken = choices.take_markdown.has(takeKey(t.key, c.field))
                 const name = takeKey(t.key, c.field)
                 return (
-                  <fieldset key={c.field} className="import-conflict" disabled={busy}>
-                    <legend>{COPY.conflict(COPY.fields[c.field])}</legend>
+                  <fieldset key={c.field} className="import-conflict" disabled={locked}>
+                    <legend>{COPY.conflict(t.key, COPY.fields[c.field])}</legend>
                     <label>
                       <input
                         type="radio"
                         name={name}
                         value="app"
                         checked={!taken}
-                        onChange={() => onChange(withTake(choices, t.key, c.field, false))}
+                        onChange={() => onTake(c, false)}
                       />
                       {COPY.keepApp}
                       <span className="import-value">{c.app}</span>
@@ -283,7 +324,7 @@ function PreviewView({
                         name={name}
                         value="markdown"
                         checked={taken}
-                        onChange={() => onChange(withTake(choices, t.key, c.field, true))}
+                        onChange={() => onTake(c, true)}
                       />
                       {COPY.useMarkdown}
                       <span className="import-value">{c.markdown}</span>
@@ -295,7 +336,7 @@ function PreviewView({
                 <label className="import-check">
                   <input
                     type="checkbox"
-                    disabled={busy}
+                    disabled={locked}
                     checked={choices.workdirs[t.key] === t.workdir_hint}
                     onChange={(e) =>
                       onChange(
@@ -318,7 +359,7 @@ function PreviewView({
           <ul>
             {p.attachments.map((a) => (
               <li key={a.path}>
-                {a.path} <span className="import-dim">({size(a.size)})</span>
+                {a.path} <span className="import-dim">({sizeText(a.size)})</span>
               </li>
             ))}
           </ul>
@@ -330,7 +371,8 @@ function PreviewView({
           <ul>
             {p.ignored.map((i) => (
               <li key={`${i.path}|${i.reason}`}>
-                {i.path} <span className="import-dim">— {IMPORT_COPY.ignored[i.reason]}</span>
+                {i.path}{' '}
+                <span className="import-dim">{COPY.ignoredWhy(IMPORT_COPY.ignored[i.reason])}</span>
                 {i.count !== undefined && <span className="import-dim"> ({i.count})</span>}
               </li>
             ))}
@@ -341,18 +383,32 @@ function PreviewView({
   )
 }
 
+/** Conflitos da prévia + os resolvidos com o markdown, que a prévia nova já não lista. */
+function conflictsOf(
+  t: ImportPreview['tasks'][number],
+  taken: Record<string, ImportConflict>
+): ImportConflict[] {
+  const more = Object.values(taken).filter(
+    (c) => c.key === t.key && !t.conflicts.some((x) => x.field === c.field)
+  )
+  return [...t.conflicts, ...more]
+}
+
 function StatusSelect({
   s,
+  target,
   stages,
   disabled,
   onPick
 }: {
   s: ImportPreview['statuses'][number]
+  /** A escolha do usuário (se houver) vence a sugestão da prévia enquanto a nova não chega. */
+  target: ImportPreview['statuses'][number]['target']
   stages: ImportPreview['stages']
   disabled: boolean
   onPick(t: NonNullable<ReturnType<typeof parseTarget>>): void
 }): React.JSX.Element {
-  const t = s.target
+  const t = target
   const stage = t && 'stage' in t ? stages.find((st) => fold(st.name) === fold(t.stage)) : null
   const value = stage ? `stage:${stage.name}` : targetValue(t)
   // opção extra para o que a lista de etapas + "Blocked" não mostra
@@ -363,6 +419,7 @@ function StatusSelect({
   return (
     <select
       data-testid={`import-status-${s.key}`}
+      aria-label={COPY.stageFor(s.status)}
       value={value}
       disabled={disabled}
       onChange={(e) => {
@@ -383,7 +440,7 @@ function StatusSelect({
 
 function ReportView({ r }: { r: ImportReport }): React.JSX.Element {
   return (
-    <section className="import-report" data-testid="import-report" aria-live="polite">
+    <section className="import-report" data-testid="import-report">
       <h4>{COPY.reportTitle}</h4>
       {r.warnings.map((w) => (
         <p key={w} className="import-warn">
@@ -403,7 +460,7 @@ function ReportView({ r }: { r: ImportReport }): React.JSX.Element {
       {r.deleted_in_app.length > 0 && <p>{COPY.deletedInApp(r.deleted_in_app.join(', '))}</p>}
       {r.invalid.map((i) => (
         <p key={i.key} className="import-warn">
-          {COPY.invalidTask(i.key, i.reason)}
+          {COPY.invalidTask(i.key, reasonText(i.reason))}
         </p>
       ))}
       {r.sessions_taken.map((s) => (
@@ -413,10 +470,4 @@ function ReportView({ r }: { r: ImportReport }): React.JSX.Element {
       ))}
     </section>
   )
-}
-
-function size(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
 }

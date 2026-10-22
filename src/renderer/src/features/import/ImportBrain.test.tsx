@@ -239,3 +239,110 @@ it('resposta atrasada de uma prévia antiga não vale', async () => {
     expect.objectContaining({ token: 't2', status_edits: { 'weird status': { stage: 'Doing' } } })
   )
 })
+
+it('foco fica no select depois da escolha, durante e depois da nova prévia', async () => {
+  await render()
+  await clickPreview()
+  let answer!: () => void
+  api.importDryRun.mockImplementationOnce(
+    () => new Promise((r) => (answer = () => r({ ok: true, data: preview('t9') })))
+  )
+  const select = byTest<HTMLSelectElement>('import-status-weird status')
+  select.focus()
+  await choose(select, 'stage:Doing')
+  // prévia em andamento: o controle segue usável, só o Apply espera
+  expect(select.disabled).toBe(false)
+  expect(byTest<HTMLButtonElement>('import-apply').disabled).toBe(true)
+  expect(document.activeElement).toBe(select)
+  await act(async () => answer())
+  expect(document.activeElement).toBe(byTest('import-status-weird status'))
+  expect(byTest<HTMLButtonElement>('import-apply').disabled).toBe(false)
+})
+
+it('nomes acessíveis: select de status e legenda do conflito com a key', async () => {
+  await render()
+  await clickPreview()
+  expect(byTest('import-status-weird status').getAttribute('aria-label')).toBe(
+    IMPORT_COPY.screen.stageFor('weird status')
+  )
+  expect(host.querySelector('.import-conflict legend')?.textContent).toBe(
+    IMPORT_COPY.screen.conflict('ABC-1', IMPORT_COPY.screen.fields.title)
+  )
+})
+
+it('motivo de task inválida vira texto na prévia e no relatório', async () => {
+  const p = preview('t1')
+  p.tasks[0] = { ...p.tasks[0]!, action: 'invalid', conflicts: [], reason: 'too_long:title' }
+  api.importDryRun.mockResolvedValueOnce({ ok: true, data: p })
+  api.importApply.mockResolvedValueOnce({
+    ok: true,
+    data: { ...report, invalid: [{ key: 'ABC-1', reason: 'too_long:mystery' }] }
+  })
+  await render()
+  await clickPreview()
+  const why = IMPORT_COPY.screen.reasons.tooLong(IMPORT_COPY.screen.tooLongFields.title)
+  expect(byTest('import-task-ABC-1').textContent).toContain(why)
+  expect(host.textContent).not.toContain('too_long')
+  await act(async () => byTest<HTMLButtonElement>('import-apply').click())
+  expect(byTest('import-report').textContent).toContain(
+    IMPORT_COPY.screen.invalidTask('ABC-1', IMPORT_COPY.screen.reasons.unknown)
+  )
+  expect(host.textContent).not.toContain('too_long')
+})
+
+it('tipo fora da lista aparece como tipo padrão, nunca o id', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).turnflow.taskTypeList = vi.fn(async () => ({
+    ok: false,
+    error: { code: 'INTERNAL', message: 'x' }
+  }))
+  await render()
+  await clickPreview()
+  const select = byTest<HTMLSelectElement>('import-type')
+  expect(select.selectedOptions[0]?.textContent).toBe(IMPORT_COPY.screen.defaultType)
+  expect(host.textContent).not.toContain('type-1')
+})
+
+it('região aria-live fica montada e só troca o texto', async () => {
+  await render()
+  const live = byTest('import-live')
+  expect(live.getAttribute('aria-live')).toBe('polite')
+  await clickPreview()
+  expect(byTest('import-live')).toBe(live)
+})
+
+it('prévia refeita depois do preview_stale que falha limpa o aviso', async () => {
+  api.importApply.mockResolvedValueOnce({
+    ok: false,
+    error: { code: 'CONFLICT', message: 'stale', details: { reason: 'preview_stale' } }
+  })
+  await render()
+  await clickPreview()
+  api.importDryRun.mockResolvedValueOnce({
+    ok: false,
+    error: { code: 'VALIDATION', message: 'gone' }
+  })
+  await act(async () => byTest<HTMLButtonElement>('import-apply').click())
+  expect(byTest('import-error')?.textContent).toBe('gone')
+  expect(byTest('import-notice')).toBeNull()
+})
+
+it('conflito resolvido com o markdown continua na tela (a prévia nova não o lista mais)', async () => {
+  let n = 0
+  // como o core: com o campo em take_markdown, o conflito sai da prévia
+  api.importDryRun.mockImplementation(async (i: ImportDryRunInput) => {
+    const p = preview(`c${++n}`)
+    if (i.take_markdown?.length) p.tasks[0] = { ...p.tasks[0]!, conflicts: [] }
+    return { ok: true, data: p }
+  })
+  await render()
+  await clickPreview()
+  const radio = (v: string): HTMLInputElement =>
+    host.querySelector(`input[type=radio][value=${v}]`) as HTMLInputElement
+  await act(async () => radio('markdown').click())
+  expect(radio('markdown')?.checked).toBe(true)
+  // e dá para voltar atrás
+  await act(async () => radio('app').click())
+  expect(api.importDryRun).toHaveBeenLastCalledWith(expect.objectContaining({ take_markdown: [] }))
+  expect(radio('app').checked).toBe(true)
+})

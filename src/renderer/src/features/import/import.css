@@ -187,3 +187,12 @@
 .import summary {
   cursor: pointer;
 }
+/* só para leitor de tela */
+.import-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
