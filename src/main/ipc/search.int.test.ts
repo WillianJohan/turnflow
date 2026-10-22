@@ -8,14 +8,14 @@ import { searchQuery } from '../../shared/ipc/search'
 import { handle, type Handler, type IpcLike } from './handle'
 import { registerSearchIpc } from './search'
 
-function setup(vault: Vault): (input: unknown) => Promise<unknown> {
+function setup(vault: Vault, log?: (msg: string) => void): (input: unknown) => Promise<unknown> {
   const invokes = new Map<string, (...a: unknown[]) => unknown>()
   const ipc = {
     handle: (name: string, fn: (...a: never[]) => unknown) => void invokes.set(name, fn as never),
     on: () => undefined
   } as unknown as IpcLike
   const h = <C extends Channel>(ch: C, fn: Handler<C>): void =>
-    handle(ipc, ch, fn, { validateOutput: true })
+    handle(ipc, ch, fn, { validateOutput: true, log })
   registerSearchIpc(h, { vault })
   return async (input) => invokes.get(searchQuery.name)!({ sender: { id: 1 } }, input)
 }
@@ -39,8 +39,8 @@ describe('search.query', () => {
         throw new Error('segredo-do-sqlite')
       }
     } as unknown as Vault
-    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const r = (await setup(vault)({ q: 'abc' })) as {
+    const log = vi.fn()
+    const r = (await setup(vault, log)({ q: 'abc' })) as {
       ok: boolean
       error: { code: string; message: string }
     }
@@ -48,8 +48,7 @@ describe('search.query', () => {
     expect(r.error.code).toBe('INTERNAL')
     expect(r.error.message).toBe(VAULT_COPY.errors.INTERNAL)
     expect(r.error.message).not.toContain('segredo')
-    expect(err).toHaveBeenCalled()
-    err.mockRestore()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('segredo-do-sqlite'))
   })
 
   it('ready devolve os hits', async () => {

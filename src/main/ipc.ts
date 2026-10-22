@@ -50,7 +50,13 @@ import type { Vault } from '../core/key/vault'
 
 export const UPDATE_ID = '__update__'
 
-export type IpcDeps = { vault: Vault; version: string; dialogs: VaultDialogs }
+export type IpcDeps = {
+  vault: Vault
+  version: string
+  dialogs: VaultDialogs
+  /** Log local (o mesmo do vault): recebe a mensagem crua dos erros `INTERNAL`. */
+  log?: (line: string) => void
+}
 
 export async function registerIpc(
   win: BrowserWindow,
@@ -64,7 +70,7 @@ export async function registerIpc(
     if (!win.isDestroyed()) win.webContents.send(ch, ...a)
   }
   const handle = <Ch extends Channel>(ch: Ch, fn: Handler<Ch>): void =>
-    handleOn(ipc, ch, fn, { validateOutput: is.dev })
+    handleOn(ipc, ch, fn, { validateOutput: is.dev, log: deps.log })
   let tasks = new Map<string, Task>()
   const reload = async (): Promise<Task[]> => {
     const list = await loadTasks()

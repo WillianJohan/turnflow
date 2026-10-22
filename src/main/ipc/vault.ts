@@ -36,19 +36,18 @@ const IPC_CODE: Partial<Record<VaultErrorCode, ErrCode>> = {
   BAD_STATE: 'CONFLICT'
 }
 
-export function toIpcError(e: unknown): IpcError {
-  if (e instanceof IpcError) return e
-  if (e instanceof VaultError) {
-    const index = e.details?.index
-    return new IpcError(
-      IPC_CODE[e.code] ?? 'INTERNAL',
-      e.message,
-      e.code === 'WORDS_UNKNOWN' && index !== undefined ? { index } : undefined
-    )
-  }
-  // a mensagem crua (SQLite, caminho...) só vai pro log, nunca pro renderer
-  console.error('[ipc] erro inesperado:', e instanceof Error ? e.message : String(e))
-  return new IpcError('INTERNAL', VAULT_COPY.errors.INTERNAL)
+/**
+ * `VaultError` vira `IpcError` com o código do IPC. Outro erro passa intacto: o `handle` o
+ * transforma em `INTERNAL` genérico e manda a mensagem crua só pro log local.
+ */
+export function toIpcError(e: unknown): unknown {
+  if (!(e instanceof VaultError)) return e
+  const index = e.details?.index
+  return new IpcError(
+    IPC_CODE[e.code] ?? 'INTERNAL',
+    e.message,
+    e.code === 'WORDS_UNKNOWN' && index !== undefined ? { index } : undefined
+  )
 }
 
 export function bootOf(vault: Vault, version: string): Boot {

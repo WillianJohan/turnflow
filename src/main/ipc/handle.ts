@@ -1,5 +1,6 @@
 import type { IpcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { z } from 'zod'
+import { VAULT_COPY } from '../../shared/copy/vault'
 import type { Channel } from '../../shared/ipc/define'
 import { err, ok, type ErrCode, type Result } from '../../shared/ipc/result'
 
@@ -34,10 +35,12 @@ function parseInput<C extends Channel>(ch: C, args: unknown[]): Result<z.output<
   return err('VALIDATION', `${ch.name}: ${r.error.issues[0]?.message}`, r.error.issues)
 }
 
-const toErr = (e: unknown): Result<never> =>
-  e instanceof IpcError
-    ? err(e.code, e.message, e.details)
-    : err('INTERNAL', e instanceof Error ? e.message : String(e))
+// Erro sem código de domínio: a mensagem crua (SQLite, caminho...) vai pro log local, nunca pro renderer.
+function toErr(name: string, e: unknown, log: (msg: string) => void): Result<never> {
+  if (e instanceof IpcError) return err(e.code, e.message, e.details)
+  log(`[ipc] INTERNAL ${name}: ${e instanceof Error ? e.message : String(e)}`)
+  return err('INTERNAL', VAULT_COPY.errors.INTERNAL)
+}
 
 export function handle<C extends Channel>(
   ipc: IpcLike,
@@ -70,7 +73,7 @@ export function handle<C extends Channel>(
       log(`[ipc] output fora do contrato em ${ch.name}: ${out.error.message}`)
       return err('INTERNAL', `${ch.name}: resposta fora do contrato`, out.error.issues)
     } catch (x) {
-      return toErr(x)
+      return toErr(ch.name, x, log)
     }
   })
 }

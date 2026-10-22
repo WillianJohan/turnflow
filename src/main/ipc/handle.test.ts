@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { VAULT_COPY } from '../../shared/copy/vault'
 import { defineChannel } from '../../shared/ipc/define'
 import { handle, IpcError, type IpcLike } from './handle'
 
@@ -70,23 +71,50 @@ describe('handle (invoke)', () => {
       data: true
     })
   })
-  it('fn que lança vira INTERNAL sem rethrow', async () => {
+  it('fn que lança vira INTERNAL genérico; a mensagem crua só vai pro log', async () => {
     const ipc = fakeIpc()
-    handle(ipc, echo, () => {
-      throw new Error('boom')
-    })
+    const log = vi.fn()
+    handle(
+      ipc,
+      echo,
+      () => {
+        throw new Error('boom /caminho/secreto')
+      },
+      { log }
+    )
     await expect(ipc.invoke('t:echo', { id: 'a' })).resolves.toEqual({
       ok: false,
-      error: { code: 'INTERNAL', message: 'boom' }
+      error: { code: 'INTERNAL', message: VAULT_COPY.errors.INTERNAL }
     })
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('boom /caminho/secreto'))
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('t:echo'))
   })
-  it('promise rejeitada também vira INTERNAL', async () => {
+  it('promise rejeitada também vira INTERNAL genérico', async () => {
     const ipc = fakeIpc()
-    handle(ipc, echo, async () => Promise.reject(new Error('async boom')))
-    expect(await ipc.invoke('t:echo', { id: 'a' })).toMatchObject({
+    const log = vi.fn()
+    handle(ipc, echo, async () => Promise.reject(new Error('async boom')), { log })
+    expect(await ipc.invoke('t:echo', { id: 'a' })).toEqual({
       ok: false,
-      error: { code: 'INTERNAL', message: 'async boom' }
+      error: { code: 'INTERNAL', message: VAULT_COPY.errors.INTERNAL }
     })
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('async boom'))
+  })
+  it('lançar algo que não é Error também vira INTERNAL genérico', async () => {
+    const ipc = fakeIpc()
+    const log = vi.fn()
+    handle(
+      ipc,
+      echo,
+      () => {
+        throw 'cru'
+      },
+      { log }
+    )
+    expect(await ipc.invoke('t:echo', { id: 'a' })).toEqual({
+      ok: false,
+      error: { code: 'INTERNAL', message: VAULT_COPY.errors.INTERNAL }
+    })
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('cru'))
   })
   it('IpcError carrega o código de domínio', async () => {
     const ipc = fakeIpc()

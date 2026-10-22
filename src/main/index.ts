@@ -158,15 +158,17 @@ function vaultDialogs(win: BrowserWindow): VaultDialogs {
   }
 }
 
+type VaultLog = (level: 'warn' | 'error', line: string) => void
+
 /**
  * Cofre do banco. O timer entra pelo `instrument` do `openDb`, que o instala depois do
  * `PRAGMA key` (o `db.pragma()` nem passa pelo `prepare` instrumentado). O backup diário
  * (na entrada em `ready` e o agendado) é do próprio vault.
  */
-async function startVault(): Promise<{ vault: Vault; timer: QueryTimer }> {
+async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: VaultLog }> {
   const backend = await selectKeyBackend()
   const paths = vaultPaths(configDir())
-  let log: (level: 'warn' | 'error', line: string) => void
+  let log: VaultLog
   if (is.dev) log = (level, line) => console[level](line)
   else {
     const fileLog = createLocalLog(join(paths.logs, `${BRAND.id}.log`))
@@ -190,7 +192,7 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer }> {
   })
   app.on('will-quit', () => vault.close())
   await vault.boot()
-  return { vault, timer }
+  return { vault, timer, log }
 }
 
 function startApp(): void {
@@ -216,7 +218,7 @@ function startApp(): void {
 
   app.whenReady().then(async () => {
     if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
-    const { vault, timer } = await startVault()
+    const { vault, timer, log } = await startVault()
     if (is.dev) installDevMenu(() => timer.stats())
     const win = createWindow()
     main = win
@@ -224,7 +226,8 @@ function startApp(): void {
     const dispose = await registerIpc(win, ipcMain, {
       vault,
       version: app.getVersion(),
-      dialogs: vaultDialogs(win)
+      dialogs: vaultDialogs(win),
+      log: (line) => log('error', line)
     })
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])
