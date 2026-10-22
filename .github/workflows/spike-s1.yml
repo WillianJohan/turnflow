@@ -1,6 +1,11 @@
 # Spike S1 (descartável): SQLCipher (better-sqlite3-multiple-ciphers) + node-pty no Electron 44.
 name: spike-s1
-on: workflow_dispatch
+# workflow_dispatch só funciona com o arquivo na branch padrão; o push com filtro de path
+# deixa rodar a matriz a partir de uma branch quando o próprio spike muda.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/spike-s1.yml']
 
 jobs:
   s1:
