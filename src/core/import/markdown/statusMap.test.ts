@@ -186,6 +186,12 @@ describe('resolveStatus', () => {
     })
   })
 
+  it('chaves que colapsam na normalizacao contam como descartadas', () => {
+    const r = normalizeEntries({ Bloqueado: { role: 'blocked' }, bloqueado: { role: 'first' } })
+    expect(r.entries).toEqual({ bloqueado: { role: 'blocked' } })
+    expect(r.dropped).toBe(1)
+  })
+
   it('resolveRole sem etapas e erro de dominio', () => {
     expect(() => resolveRole('first', [])).toThrow(DomainError)
     expect(() => resolveStatus({ status: 'x', dir: 'current', blocked: null }, empty, [])).toThrow(

@@ -166,7 +166,9 @@ export function normalizeEntries(raw: Record<string, unknown>): {
   for (const [k, v] of Object.entries(raw)) {
     const key = statusKey(k)
     const t = StatusTargetZ.safeParse(v)
-    if (!key || !t.success) dropped++
+    // chave que colapsa em outra já vista (ex.: "Bloqueado" e "bloqueado") conta como descartada:
+    // assim o write guarda o arquivo original em .bak em vez de perder uma delas calado
+    if (!key || !t.success || Object.hasOwn(entries, key)) dropped++
     else entries[key] = t.data
   }
   return { entries, dropped }
