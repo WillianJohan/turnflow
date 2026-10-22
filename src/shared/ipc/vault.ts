@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { defineChannel } from './define'
 import { NoInput } from './common'
-import { VAULT_COPY } from '../copy/vault'
+import { VAULT_COPY, WIPE_WORD } from '../copy/vault'
 
 const PASSWORD_MAX = 1024
 // code points depois do NFC: é assim que o vault conta o mínimo (Global Constraints)
@@ -68,6 +68,11 @@ export const firstRunRestore = defineChannel(
 export const vaultUnlock = defineChannel(
   'vault.unlock',
   z.object({ password: Password.refine((s) => s.length > 0, VAULT_COPY.passwordEmpty) }).strict(),
+  BootZ
+)
+export const vaultWipe = defineChannel(
+  'vault.wipe',
+  z.object({ confirm: z.literal(WIPE_WORD, { message: VAULT_COPY.wipeConfirm }) }).strict(),
   BootZ
 )
 export const vaultRecover = defineChannel(

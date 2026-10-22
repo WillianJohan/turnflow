@@ -328,6 +328,45 @@ describe('canais do vault', () => {
     vault.close()
   })
 
+  it('vault.wipe com confirmação errada → VALIDATION e nada apagado', async () => {
+    const dir = tmpDir()
+    await committed(dir)
+    const { vault, invoke } = setup({ dir })
+    await vault.boot()
+    const spy = vi.spyOn(vault, 'wipeAll')
+    for (const confirm of ['apagar', 'APAGAR ', ''])
+      expect(await invoke(ch.vaultWipe.name, { confirm })).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION' }
+      })
+    expect(await invoke(ch.vaultWipe.name, {})).toMatchObject({ ok: false })
+    expect(spy).not.toHaveBeenCalled()
+    expect(existsSync(join(dir, 'key.enc'))).toBe(true)
+    expect(existsSync(join(dir, BRAND.db))).toBe(true)
+    vault.close()
+  }, 20_000)
+
+  it('vault.wipe com APAGAR → first_run e o evento leva o Boot de first_run', async () => {
+    const dir = tmpDir()
+    await committed(dir)
+    const emitted: Boot[] = []
+    const onChange = wireVaultEvents({
+      vault: () => vault,
+      version: VERSION,
+      broadcast: (b) => emitted.push(b)
+    })
+    const s = setup({ dir, extra: { onChange } })
+    const vault = s.vault
+    await vault.boot()
+    expect(vault.state()).toBe('locked')
+    emitted.length = 0
+    expect(await s.invoke(ch.vaultWipe.name, { confirm: 'APAGAR' })).toEqual(bootOk('first_run'))
+    expect(emitted).toEqual([(bootOk('first_run') as { data: Boot }).data])
+    expect(existsSync(join(dir, 'key.enc'))).toBe(false)
+    expect(existsSync(join(dir, BRAND.db))).toBe(false)
+    vault.close()
+  }, 20_000)
+
   it('wireVaultEvents: cada transição emite o Boot igual ao boot.get do momento', async () => {
     const emitted: Boot[] = []
     const atEmit: Promise<unknown>[] = []

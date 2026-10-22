@@ -109,3 +109,44 @@
   font-family: ui-monospace, monospace;
   user-select: text;
 }
+/* Apagar tudo: regras próprias porque também aparece dentro dos Ajustes, fora do .vault-card. */
+.vault-wipe {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vault-wipe p {
+  margin: 0;
+  line-height: 1.45;
+}
+.vault-wipe label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-dim);
+}
+.vault-wipe input[type='text'] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.vault-wipe input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.vault-danger {
+  align-self: flex-start;
+  padding: 8px 12px;
+  background: var(--err-bg) !important;
+  color: var(--err-fg) !important;
+  border: 1px solid var(--red) !important;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.vault-wipe button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

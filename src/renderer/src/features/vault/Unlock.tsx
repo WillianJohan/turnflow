@@ -5,10 +5,12 @@ import { useSubmit } from './form'
 /** Banco bloqueado por senha mestra. */
 export function Unlock({
   onUnlock,
-  onRecover
+  onRecover,
+  onForgot
 }: {
   onUnlock: (password: string) => Promise<unknown>
   onRecover: () => void
+  onForgot: () => void
 }): React.JSX.Element {
   const [password, setPassword] = useState('')
   const { busy, error, submit } = useSubmit(onUnlock)
@@ -51,6 +53,9 @@ export function Unlock({
         onClick={onRecover}
       >
         {COPY.recoverLink}
+      </button>
+      <button type="button" data-testid="forgot-link" className="vault-link" onClick={onForgot}>
+        {COPY.forgotLink}
       </button>
     </form>
   )

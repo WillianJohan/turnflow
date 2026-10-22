@@ -55,5 +55,12 @@ export const COPY = {
   restoreBack: 'Voltar',
 
   failedTitle: 'O banco não pôde ser aberto',
-  retry: 'Tentar de novo'
+  retry: 'Tentar de novo',
+
+  forgotLink: 'Esqueci a senha e não tenho as palavras',
+  wipeTitle: 'Apagar tudo',
+  wipeWarning: 'Isto apaga a chave, o banco, todos os backups e os logs. Não tem volta.',
+  wipeConfirm: VAULT_COPY.wipeConfirm,
+  wipeSubmit: 'Apagar tudo',
+  wipeBack: 'Voltar'
 }

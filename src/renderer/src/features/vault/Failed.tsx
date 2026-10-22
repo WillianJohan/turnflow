@@ -3,10 +3,13 @@ import { COPY } from './copy'
 /** O banco não abriu (migration, esquema mais novo, arquivo). */
 export function Failed({
   message,
-  onRetry
+  onRetry,
+  onWipe
 }: {
   message: string
   onRetry: () => void
+  /** O texto da falha pode mandar usar Apagar tudo (banco sumiu); sem `onWipe`, o link não aparece. */
+  onWipe?: () => void
 }): React.JSX.Element {
   return (
     <div className="vault-card">
@@ -17,6 +20,16 @@ export function Failed({
       <button className="vault-primary" onClick={onRetry}>
         {COPY.retry}
       </button>
+      {onWipe && (
+        <button
+          type="button"
+          data-testid="failed-wipe-link"
+          className="vault-link"
+          onClick={onWipe}
+        >
+          {COPY.wipeTitle}
+        </button>
+      )}
     </div>
   )
 }

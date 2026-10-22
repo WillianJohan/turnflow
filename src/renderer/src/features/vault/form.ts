@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { WIPE_WORD } from '../../../../shared/copy/vault'
 import type { Boot } from '../../../../shared/ipc/vault'
 import { COPY } from './copy'
 
-export type Screen = 'new_password' | 'words' | 'restore' | 'unlock' | 'recover' | 'failed' | 'app'
-export type Mode = 'default' | 'recover' | 'restore'
+export type Screen =
+  'new_password' | 'words' | 'restore' | 'unlock' | 'recover' | 'wipe' | 'failed' | 'app'
+export type Mode = 'default' | 'recover' | 'restore' | 'wipe'
 
 // O vault conta o mínimo em code points depois do NFC; a tela conta igual.
 const length = (s: string): number => [...s.normalize('NFC')].length
@@ -12,6 +14,11 @@ export function passwordProblem(a: string, b: string): string | null {
   if (length(a) < 12) return COPY.passwordShort
   if (a !== b) return COPY.passwordMismatch
   return null
+}
+
+/** O botão Apagar tudo só habilita com a palavra exata (sem trim, sem caixa). */
+export function canWipe(text: string): text is typeof WIPE_WORD {
+  return text === WIPE_WORD
 }
 
 export function canContinue(saved: boolean, words: string[] | null): boolean {
@@ -24,13 +31,15 @@ export function screenFor(b: Boot, mode: Mode, words: string[] | null): Screen {
     case 'ready':
       return 'app'
     case 'failed':
-      return 'failed'
+      return mode === 'wipe' ? 'wipe' : 'failed'
     case 'first_run':
       // Decisão 11: restaurar só existe no primeiro uso
       if (mode === 'restore') return 'restore'
       // chaveiro de verdade dispensa senha: o portão chama firstRunBegin({}) e mostra as palavras
       return words || b.backend === 'real' ? 'words' : 'new_password'
     case 'locked':
+      // "esqueci a senha e não tenho as palavras": Apagar tudo sem senha, com a confirmação forte
+      if (mode === 'wipe') return 'wipe'
       return mode === 'recover' || b.lock !== 'password' ? 'recover' : 'unlock'
   }
 }

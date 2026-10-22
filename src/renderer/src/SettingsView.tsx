@@ -4,6 +4,8 @@ import { ThemeEditor } from './ThemeEditor'
 import { IconPicker } from './IconPicker'
 import { StatusIcon } from './StatusIcon'
 import { orThrow, unwrap } from './ipc'
+import { WipeAll } from './features/vault/WipeAll'
+import { COPY as VAULT_SCREENS } from './features/vault/copy'
 
 // Número que aceita digitação: "12" passa por "1", então só valida ao confirmar.
 function SizeField({
@@ -193,6 +195,12 @@ export function SettingsView({
             <code>themes/*.json</code>. Editou e salvou, o app aplica na hora.
           </p>
           <button onClick={() => window.turnflow.openConfigDir()}>Abrir pasta de config</button>
+        </section>
+
+        <section className="sp-card" data-testid="settings-wipe">
+          <h3>{VAULT_SCREENS.wipeTitle}</h3>
+          {/* sucesso: o vault.changed (first_run) desmonta o app e o portão mostra o primeiro uso */}
+          <WipeAll embedded onWipe={(confirm) => orThrow(window.turnflow.vaultWipe({ confirm }))} />
         </section>
       </div>
     </div>

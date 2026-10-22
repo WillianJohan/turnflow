@@ -1,5 +1,8 @@
 import { BRAND } from '../brand'
 
+/** Palavra que o usuário digita para confirmar o Apagar tudo (o contrato `vault.wipe` exige esta). */
+export const WIPE_WORD = 'APAGAR'
+
 // Mensagens do cofre/banco mostradas ao usuário. Sem segredo, chave ou caminho pessoal aqui.
 export const VAULT_COPY = {
   migrationFailed: (version: number, name: string, detail: string): string =>
@@ -10,6 +13,13 @@ export const VAULT_COPY = {
   /** `failure` do vault quando existe `key.enc` mas o banco sumiu. */
   dbNotFound:
     'Banco não encontrado. Recoloque o arquivo do banco na pasta de configuração ou use Apagar tudo.',
+  /** `failure` quando o Apagar tudo não terminou; o próximo boot (Tentar de novo) continua de onde parou. */
+  wipeFailed:
+    'Apagar tudo não terminou. Feche o que estiver usando a pasta de configuração e tente de novo.',
+  /** Validação do `vault.wipe` quando a palavra de confirmação não confere. */
+  wipeConfirm: `Digite ${WIPE_WORD} para confirmar`,
+  /** Aviso da tela de apagar task de vez (E3/E6). */
+  purgeNotice: 'Ela continua nos backups diários por até 7 dias.',
   /** Texto de cada `VaultErrorCode`. Nunca interpolar senha, palavra ou DEK. */
   errors: {
     PASSWORD_REQUIRED: 'Defina uma senha mestra',

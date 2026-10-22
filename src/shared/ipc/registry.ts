@@ -47,6 +47,7 @@ export const CHANNELS = {
   firstRunRestore: vault.firstRunRestore,
   vaultUnlock: vault.vaultUnlock,
   vaultRecover: vault.vaultRecover,
+  vaultWipe: vault.vaultWipe,
   searchQuery: search.searchQuery
 } as const
 export type Channels = typeof CHANNELS

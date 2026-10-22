@@ -3,6 +3,7 @@ import type { Boot } from '../../../../shared/ipc/vault'
 import { COPY } from './copy'
 import {
   canContinue,
+  canWipe,
   clearClipboardIf,
   gateReducer,
   initialGate,
@@ -83,6 +84,29 @@ describe('screenFor', () => {
       'restore'
     ],
     [
+      'locked por senha em modo wipe',
+      boot({ state: 'locked', lock: 'password' }),
+      'wipe',
+      null,
+      'wipe'
+    ],
+    [
+      'locked por chaveiro em modo wipe',
+      boot({ state: 'locked', backend: 'real', lock: 'keyring_unavailable' }),
+      'wipe',
+      null,
+      'wipe'
+    ],
+    [
+      'failed em modo wipe',
+      boot({ state: 'failed', failure: { code: 'OPEN_FAILED', message: 'x' } }),
+      'wipe',
+      null,
+      'wipe'
+    ],
+    ['wipe não vale no first_run', boot({}), 'wipe', null, 'new_password'],
+    ['wipe não tira do app', boot({ state: 'ready' }), 'wipe', null, 'app'],
+    [
       'restore só existe no first_run',
       boot({ state: 'locked', lock: 'password' }),
       'restore',
@@ -91,6 +115,14 @@ describe('screenFor', () => {
     ]
   ] as const)('%s', (_name, b, mode, words, want) => {
     expect(screenFor(b, mode, words === null ? null : [...words])).toBe(want)
+  })
+})
+
+describe('canWipe', () => {
+  it('só com APAGAR exato', () => {
+    expect(canWipe('APAGAR')).toBe(true)
+    for (const t of ['', 'apagar', 'APAGAR ', ' APAGAR', 'APAGA', 'Apagar'])
+      expect(canWipe(t), JSON.stringify(t)).toBe(false)
   })
 })
 

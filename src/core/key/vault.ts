@@ -1,5 +1,15 @@
 import { randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  renameSync,
+  rmSync
+} from 'node:fs'
 import { basename, join } from 'node:path'
 import { VAULT_COPY } from '../../shared/copy/vault'
 import { ensureDailyBackup, preMigrationName, scheduleDailyBackup, writeBackup } from '../db/backup'
@@ -56,7 +66,14 @@ export interface Vault {
    * (no `basic_text`, `PASSWORD_REQUIRED`).
    */
   restore(backupPath: string, words: string, password?: string): Promise<void>
+  /**
+   * Apagar tudo (Decisão 12), de qualquer estado: fecha o banco sem encerrar o vault, grava o
+   * `wipe.pending`, apaga o `key.enc` primeiro (crypto-shredding) e depois banco, backups, anexos e
+   * logs. Termina em `first_run` no mesmo processo. Interrompido, o próximo `boot()` termina.
+   */
+  wipeAll(): Promise<void>
   db(): Db
+  /** Terminal: depois dele toda operação (inclusive `boot` e `wipeAll`) lança `LOCKED`. */
   close(): void
 }
 
@@ -87,6 +104,23 @@ function toVaultError(e: unknown): VaultError {
 function errorLabel(e: unknown): string {
   const code = (e as { code?: unknown } | null)?.code
   return typeof code === 'string' ? code : 'erro desconhecido'
+}
+
+/** fsync do diretório: a criação/remoção de uma entrada só é durável depois dele. */
+function syncDir(dir: string): void {
+  let fd: number
+  try {
+    fd = openSync(dir, 'r')
+  } catch {
+    return // diretório não abre para leitura (ex.: Windows): o rename/rm já foi feito
+  }
+  try {
+    fsyncSync(fd)
+  } catch {
+    // alguns sistemas de arquivos não aceitam fsync em diretório
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /** Renomeia o banco e os irmãos; o arquivo principal por último (é ele que marca o passo). */
@@ -261,6 +295,44 @@ export function createVault(deps: VaultDeps): Vault {
     moveDbFiles(paths.db, join(target, basename(paths.db)))
   }
 
+  /** Marcador durável antes do primeiro `rm`: sem ele, um crash no meio deixaria só metade apagada. */
+  function writeWipeMarker(): void {
+    ensureDir()
+    const fd = openSync(paths.wipeMarker, 'w', 0o600)
+    try {
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+    syncDir(paths.dir)
+  }
+
+  /**
+   * Apaga o que é do vault, a chave primeiro. Mantém o resto do diretório (`config.json`, `ui.json`,
+   * `themes/`, `bin/`, `run/`, `electron/`). O marcador sai por último.
+   */
+  function finishWipe(): void {
+    rmSync(paths.keyFile, { force: true })
+    syncDir(paths.dir) // a chave sumiu do disco antes de qualquer outra coisa
+    rmSync(paths.keyTmp, { force: true })
+    for (const s of DB_SIBLINGS) rmSync(paths.db + s, { force: true }) // -wal antes do banco
+    rmSync(paths.db, { force: true })
+    removeInit()
+    for (const d of [paths.backups, paths.attachments, paths.restoreTmp, paths.logs])
+      rmSync(d, { recursive: true, force: true })
+    rmSync(paths.wipeMarker, { force: true })
+    syncDir(paths.dir)
+  }
+
+  /** Erro no meio do wipe (permissão, arquivo preso): `failed`; o marcador fica e o próximo boot tenta de novo. */
+  function wipeOrFail(steps: () => void): void {
+    try {
+      steps()
+    } catch {
+      throw fail(new VaultError('OPEN_FAILED', { message: VAULT_COPY.wipeFailed }))
+    }
+  }
+
   function ensureDir(): void {
     if (existsSync(paths.dir)) return
     mkdirSync(paths.dir, { recursive: true, mode: 0o700 })
@@ -292,7 +364,12 @@ export function createVault(deps: VaultDeps): Vault {
     state = 'locked'
     lock = null
     failure = null
-    if (existsSync(paths.wipeMarker)) return settle('first_run') // o Task 11 termina o wipe aqui
+    // Wipe interrompido: termina antes de tudo. O marcador vence a regra do órfão (nada vai para
+    // backups/), e um -wal velho não sobra para o banco do próximo primeiro uso.
+    if (existsSync(paths.wipeMarker)) {
+      wipeOrFail(finishWipe)
+      return settle('first_run')
+    }
     let kf: KeyFile | null
     try {
       kf = readKeyFile(paths.keyFile)
@@ -477,6 +554,19 @@ export function createVault(deps: VaultDeps): Vault {
         } finally {
           dek.fill(0)
         }
+      }),
+
+    // closeDb() e não close(): o vault segue vivo e o primeiro uso roda no mesmo processo.
+    wipeAll: () =>
+      exclusive(async () => {
+        closeDb()
+        dropPending()
+        keyFile = null
+        wipeOrFail(() => {
+          writeWipeMarker()
+          finishWipe()
+        })
+        settle('first_run')
       }),
 
     db: () => {

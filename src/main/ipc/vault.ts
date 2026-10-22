@@ -113,4 +113,6 @@ export function registerVaultIpc(
   h(V.vaultRecover, ({ words, newPassword }) =>
     guarded(() => vault.recover(words, newPassword)).then(boot)
   )
+  // `confirm: 'APAGAR'` é exigido pelo contrato: o zod barra qualquer outra coisa antes daqui
+  h(V.vaultWipe, () => guarded(() => vault.wipeAll()).then(boot))
 }

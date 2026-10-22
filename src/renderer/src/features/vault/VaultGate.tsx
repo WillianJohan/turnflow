@@ -9,6 +9,7 @@ import { Recover } from './Recover'
 import { Restore } from './Restore'
 import { RecoveryWords } from './RecoveryWords'
 import { Unlock } from './Unlock'
+import { WipeAll } from './WipeAll'
 import './vault.css'
 
 const message = (e: unknown): string => withoutChannel(e instanceof Error ? e.message : String(e))
@@ -54,6 +55,8 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
     )
   }, [api])
   useEffect(() => {
+    // saiu do primeiro uso: um Apagar tudo depois (no mesmo processo) precisa de um begin novo
+    if (boot && boot.state !== 'first_run') begun.current = false
     if (boot?.state === 'first_run' && boot.backend === 'real' && !begun.current) beginKeyring()
   }, [boot, beginKeyring])
 
@@ -82,6 +85,8 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
   const screen = screenFor(boot, mode, words)
   if (screen === 'app') return <>{children}</>
   const toRestore = (): void => dispatch({ t: 'mode', mode: 'restore' })
+  const toWipe = (): void => dispatch({ t: 'mode', mode: 'wipe' })
+  const toDefault = (): void => dispatch({ t: 'mode', mode: 'default' })
 
   return (
     <div className="vault">
@@ -117,6 +122,7 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
         <Unlock
           onUnlock={(password) => orThrow(api.vaultUnlock({ password })).then(applyResult)}
           onRecover={() => dispatch({ t: 'mode', mode: 'recover' })}
+          onForgot={toWipe}
         />
       )}
       {screen === 'recover' && (
@@ -125,7 +131,8 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
           onRecover={(w, newPassword) =>
             orThrow(api.vaultRecover({ words: w, newPassword })).then(applyResult)
           }
-          onBack={() => dispatch({ t: 'mode', mode: 'default' })}
+          onBack={toDefault}
+          onForgot={toWipe}
         />
       )}
       {screen === 'restore' && (
@@ -141,7 +148,15 @@ export function VaultGate({ children }: { children: ReactNode }): React.JSX.Elem
           onBack={() => dispatch({ t: 'mode', mode: 'default' })}
         />
       )}
-      {screen === 'failed' && <Failed message={boot.failure?.message ?? ''} onRetry={retryBoot} />}
+      {screen === 'wipe' && (
+        <WipeAll
+          onWipe={(confirm) => orThrow(api.vaultWipe({ confirm })).then(applyResult)}
+          onBack={toDefault}
+        />
+      )}
+      {screen === 'failed' && (
+        <Failed message={boot.failure?.message ?? ''} onRetry={retryBoot} onWipe={toWipe} />
+      )}
     </div>
   )
 }

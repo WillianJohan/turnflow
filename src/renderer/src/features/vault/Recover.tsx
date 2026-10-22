@@ -10,11 +10,13 @@ import { passwordProblem, useSubmit } from './form'
 export function Recover({
   boot,
   onRecover,
-  onBack
+  onBack,
+  onForgot
 }: {
   boot: Boot
   onRecover: (words: string, newPassword?: string) => Promise<unknown>
   onBack: () => void
+  onForgot: () => void
 }): React.JSX.Element {
   const [words, setWords] = useState('')
   const [a, setA] = useState('')
@@ -96,6 +98,9 @@ export function Recover({
           {COPY.recoverBack}
         </button>
       )}
+      <button type="button" data-testid="forgot-link" className="vault-link" onClick={onForgot}>
+        {COPY.forgotLink}
+      </button>
     </form>
   )
 }
