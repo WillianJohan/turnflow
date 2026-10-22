@@ -9,3 +9,5 @@ out
 out/
 out-test/
 .superpowers/
+test-results/
+playwright-report/

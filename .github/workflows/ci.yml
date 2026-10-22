@@ -92,5 +92,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # entra com o primeiro teste e2e (precisará de xvfb-run no Linux)
-      - run: echo "sem e2e"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build:test
+      # ubuntu 24.04 barra user namespaces sem privilégio e o sandbox do Chromium não sobe
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: xvfb-run -a npm run test:e2e

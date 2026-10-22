@@ -121,9 +121,11 @@ async function startLocalSurface(): Promise<void> {
       if (closing) return
       closing = true
       e.preventDefault()
-      // teto de 2 s: um close() que não volta não pode prender o app aberto
+      // teto de 2 s: um close() que não volta não pode prender o app aberto.
+      // exit, não quit: depois de um will-quit com preventDefault o Electron ignora o app.quit()
+      // seguinte e o processo ficava vivo sem janela. Os outros will-quit já rodaram nesse emit.
       const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000))
-      Promise.race([server.close(), timeout]).finally(() => app.quit())
+      Promise.race([server.close(), timeout]).finally(() => app.exit(0))
     })
   } catch (e) {
     // ALREADY_RUNNING com o lock na mão = outra instância com outro userData (ex.: teste)

@@ -268,7 +268,7 @@ function App(): React.JSX.Element {
   }, [activeId, layout, act, focusActive, toggleDraft, sb.folded])
 
   return (
-    <div className="app">
+    <div className="app" data-testid="app-shell">
       <Sidebar
         tasks={tasks}
         openIds={openIds}
