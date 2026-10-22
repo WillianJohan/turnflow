@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND } from './brand'
-import { binDir, configDir, runDir, socketPath } from './paths'
+import { binDir, cliUserDataDir, configDir, runDir, socketPath } from './paths'
 
 const home = '/home/u'
 
@@ -91,5 +91,13 @@ describe('paths', () => {
       for (const dev of [false, true])
         for (const fn of [configDir, socketPath, binDir, runDir])
           expect(fn({}, platform, home, dev).toLowerCase()).not.toContain('dkdesk')
+  })
+  it('cliUserDataDir: subpasta cli da config (segue dev e TURNFLOW_CONFIG_DIR)', () => {
+    expect(cliUserDataDir({}, 'linux', home)).toBe('/home/u/.config/turnflow/cli')
+    expect(cliUserDataDir({}, 'linux', home, true)).toBe('/home/u/.config/turnflow-dev/cli')
+    expect(cliUserDataDir({ TURNFLOW_CONFIG_DIR: '/iso' }, 'linux', home)).toBe('/iso/cli')
+    expect(cliUserDataDir({}, 'win32', 'C:\\Users\\u')).toBe(
+      'C:\\Users\\u\\AppData\\Roaming\\Turnflow\\cli'
+    )
   })
 })

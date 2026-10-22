@@ -28,6 +28,17 @@ export function configDir(
   return p.join(env.XDG_CONFIG_HOME || p.join(home, '.config'), name)
 }
 
+// userData do processo em modo CLI (`turnflow mcp`): subpasta própria, pra o Electron (Local State,
+// Crashpad) não criar `~/.config/Turnflow/` nem brigar com o lock/profile da instância com janela.
+export function cliUserDataDir(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
+  dev = false
+): string {
+  return pathFor(platform).join(configDir(env, platform, home, dev), 'cli')
+}
+
 export function binDir(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
