@@ -40,6 +40,19 @@ describe('fronteiras de módulo', () => {
     expect(r.file).toContain('bad-feature.ts')
     expect(r.messages[0]).toContain('no-restricted-imports')
   })
+  it('renderer não importa core', async () => {
+    const r = await lint('src/renderer/src/bad-core-import.ts')
+    expect(r.errors).toBe(1)
+    expect(r.file).toContain('bad-core-import.ts')
+    expect(r.messages[0]).toContain('no-restricted-imports')
+    expect(r.messages[0]).toContain('renderer não importa core')
+  })
+  it('arquivo de feature também não importa core (bloco de feature redefine a regra)', async () => {
+    const r = await lint('src/renderer/src/features/c/bad-feature-core.ts')
+    expect(r.errors).toBe(1)
+    expect(r.file).toContain('bad-feature-core.ts')
+    expect(r.messages[0]).toContain('renderer não importa core')
+  })
   it('a feature vizinha, sozinha, passa limpa', async () => {
     expect((await lint('src/renderer/src/features/b/index.ts')).errors).toBe(0)
   })

@@ -47,13 +47,15 @@ export function claudeArgv(task: Task, settingsPath: string, how: How): string[]
 }
 
 // Env do PTY: herda o do app menos os marcadores de uma sessão claude pai
-// (com eles o claude filho desliga o transcript e a conversa não é salva).
+// (com eles o claude filho desliga o transcript e a conversa não é salva) e o
+// ELECTRON_RUN_AS_NODE (herdado, faria o `turnflow mcp` do shim rodar como node puro).
 export function ptyEnv(
   base: Record<string, string | undefined>,
   extra: Record<string, string>
 ): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(base))
-    if (v !== undefined && !/^CLAUDE(CODE$|_CODE_)/.test(k)) env[k] = v
+    if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && !/^CLAUDE(CODE$|_CODE_)/.test(k))
+      env[k] = v
   return { ...env, TERM: 'xterm-256color', ...extra }
 }

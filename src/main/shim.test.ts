@@ -6,7 +6,7 @@ describe('shimContent', () => {
     expect(shimContent({ kind: 'appimage', appimage: '/home/j/Apps/T.AppImage' }, 'linux')).toEqual(
       {
         file: 'turnflow',
-        body: '#!/bin/sh\nexec "/home/j/Apps/T.AppImage" "$@"\n',
+        body: '#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec "/home/j/Apps/T.AppImage" "$@"\n',
         mode: 0o755
       }
     )
@@ -14,11 +14,15 @@ describe('shimContent', () => {
   it('exec (deb/mac): path com espaço entre aspas', () => {
     const c = shimContent({ kind: 'exec', exec: '/Applications/My App/t' }, 'darwin')
     expect(c.file).toBe('turnflow')
-    expect(c.body).toBe('#!/bin/sh\nexec "/Applications/My App/t" "$@"\n')
+    expect(c.body).toBe(
+      '#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec "/Applications/My App/t" "$@"\n'
+    )
   })
   it('escapa os caracteres especiais das aspas duplas do sh', () => {
     const c = shimContent({ kind: 'exec', exec: '/x/a"b$c`d\\e' }, 'linux')
-    expect(c.body).toBe('#!/bin/sh\nexec "/x/a\\"b\\$c\\`d\\\\e" "$@"\n')
+    expect(c.body).toBe(
+      '#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec "/x/a\\"b\\$c\\`d\\\\e" "$@"\n'
+    )
   })
   it('dev: electron + appDir, nome turnflow-dev', () => {
     expect(
@@ -28,23 +32,23 @@ describe('shimContent', () => {
       )
     ).toEqual({
       file: 'turnflow-dev',
-      body: '#!/bin/sh\nexec "/r/node_modules/electron/dist/electron" "/r" "$@"\n',
+      body: '#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec "/r/node_modules/electron/dist/electron" "/r" "$@"\n',
       mode: 0o755
     })
   })
   it('win32: .cmd com @"<exe>" %*', () => {
     const c = shimContent({ kind: 'exec', exec: 'C:\\Program Files\\T\\t.exe' }, 'win32')
     expect(c.file).toBe('turnflow.cmd')
-    expect(c.body).toBe('@"C:\\Program Files\\T\\t.exe" %*\r\n')
+    expect(c.body).toBe('@set ELECTRON_RUN_AS_NODE=\r\n@"C:\\Program Files\\T\\t.exe" %*\r\n')
   })
   it('win32 dev: turnflow-dev.cmd', () => {
     const c = shimContent({ kind: 'dev', electron: 'C:\\r\\e.exe', appDir: 'C:\\r' }, 'win32')
     expect(c.file).toBe('turnflow-dev.cmd')
-    expect(c.body).toBe('@"C:\\r\\e.exe" "C:\\r" %*\r\n')
+    expect(c.body).toBe('@set ELECTRON_RUN_AS_NODE=\r\n@"C:\\r\\e.exe" "C:\\r" %*\r\n')
   })
   it('win32: % no path vira %% (senão o cmd expande)', () => {
     expect(shimContent({ kind: 'exec', exec: 'C:\\a%b\\t.exe' }, 'win32').body).toBe(
-      '@"C:\\a%%b\\t.exe" %*\r\n'
+      '@set ELECTRON_RUN_AS_NODE=\r\n@"C:\\a%%b\\t.exe" %*\r\n'
     )
   })
 })

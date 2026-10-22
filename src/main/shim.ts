@@ -42,10 +42,15 @@ export function shimContent(target: ShimTarget, platform: NodeJS.Platform): Shim
   const name = target.kind === 'dev' ? `${BRAND.id}-dev` : BRAND.id
   const cmd = command(target)
   if (platform === 'win32')
-    return { file: `${name}.cmd`, body: `@${cmd.map(cmdQuote).join(' ')} %*\r\n`, mode: 0o755 }
+    return {
+      file: `${name}.cmd`,
+      body: `@set ELECTRON_RUN_AS_NODE=\r\n@${cmd.map(cmdQuote).join(' ')} %*\r\n`,
+      mode: 0o755
+    }
   return {
     file: name,
-    body: `#!/bin/sh\nexec ${cmd.map(shQuote).join(' ')} "$@"\n`,
+    // ELECTRON_RUN_AS_NODE herdado faria o Electron rodar como node puro e ignorar o app
+    body: `#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec ${cmd.map(shQuote).join(' ')} "$@"\n`,
     mode: 0o755
   }
 }

@@ -125,6 +125,11 @@ describe('inUseBy', () => {
 })
 
 describe('ptyEnv', () => {
+  it('remove ELECTRON_RUN_AS_NODE herdado (senão o shim do turnflow rodaria como node puro)', () => {
+    const env = ptyEnv({ PATH: '/x', ELECTRON_RUN_AS_NODE: '1' }, {})
+    expect(env).not.toHaveProperty('ELECTRON_RUN_AS_NODE')
+    expect(env.PATH).toBe('/x')
+  })
   it('remove marcadores de sessão do claude pai (senão o transcript não é salvo)', () => {
     const env = ptyEnv(
       {

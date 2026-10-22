@@ -10,6 +10,12 @@ const crossFeature = (depth) => ({
   regex: `^(\\.\\./){${depth}}[^./]`,
   message: 'Feature não importa outra feature: suba o código compartilhado para fora de features/.'
 })
+// renderer ↛ core: o core roda no main; o renderer só enxerga o que passa por IPC/shared.
+// Todo bloco que redefine no-restricted-imports para o renderer precisa repetir este padrão.
+const noCoreFromRenderer = {
+  group: ['**/core/**', '@core/**'],
+  message: 'renderer não importa core: use IPC (src/shared) em vez de acessar o core direto.'
+}
 const featureFiles = (depth) => `**/src/renderer/src/features/*/*${'/*'.repeat(depth)}.{ts,tsx}`
 
 const boundaries = [
@@ -28,6 +34,12 @@ const boundaries = [
           ]
         }
       ]
+    }
+  },
+  {
+    files: ['**/src/renderer/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [noCoreFromRenderer] }]
     }
   },
   {
@@ -56,6 +68,7 @@ const boundaries = [
         'error',
         {
           patterns: [
+            noCoreFromRenderer,
             crossFeature(d + 1),
             {
               group: ['@renderer/features/*'],
