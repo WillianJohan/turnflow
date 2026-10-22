@@ -76,11 +76,6 @@ export function registerVaultIpc(
     version: string
     dialogs: VaultDialogs
     now?: () => Date
-    /**
-     * Apaga o storage do Chromium (`localStorage` com rascunhos, cache) no fim do Apagar tudo.
-     * Fica fora do vault porque é do Electron; falha aqui faz o `vault.wipe` falhar (dá pra repetir).
-     */
-    clearBrowserData?: () => Promise<void>
   }
 ): void {
   const { vault, version, dialogs } = deps
@@ -123,20 +118,7 @@ export function registerVaultIpc(
     guarded(() => vault.recover(words, newPassword)).then(boot)
   )
   // `confirm: 'APAGAR'` é exigido pelo contrato: o zod barra qualquer outra coisa antes daqui
-  h(V.vaultWipe, () =>
-    guarded(async () => {
-      await vault.wipeAll()
-      await deps.clearBrowserData?.()
-    }).then(boot)
-  )
+  h(V.vaultWipe, () => guarded(() => vault.wipeAll()).then(boot))
   // O "Tentar de novo" da tela de falha: o boot termina um wipe interrompido ou reabre o banco.
-  h(V.vaultRetry, () =>
-    guarded(async () => {
-      if (vault.state() !== 'failed') throw new VaultError('BAD_STATE')
-      const resumingWipe = vault.failure()?.message === VAULT_COPY.wipeFailed
-      await vault.boot()
-      // o wipe interrompido parou antes de limpar o storage do Chromium
-      if (resumingWipe && vault.state() === 'first_run') await deps.clearBrowserData?.()
-    }).then(boot)
-  )
+  h(V.vaultRetry, () => guarded(() => vault.retry()).then(boot))
 }

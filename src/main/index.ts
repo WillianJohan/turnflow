@@ -1,6 +1,6 @@
 import { app, dialog, ipcMain, session, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
@@ -194,13 +194,12 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: Vau
     backend,
     instrument: (db) => instrumentDb(db, timer),
     onChange,
-    log
+    log,
+    // dentro do wipe, antes de o marcador sair: falha vira failed e o retry/próximo boot refazem
+    clearExternal: clearBrowserData
   })
   app.on('will-quit', () => vault.close())
-  // wipe interrompido (crash): o boot termina o vault, e o storage do Chromium fica para cá
-  const resumingWipe = existsSync(paths.wipeMarker)
   await vault.boot()
-  if (resumingWipe && vault.state() === 'first_run') await clearBrowserData()
   return { vault, timer, log }
 }
 
@@ -236,7 +235,6 @@ function startApp(): void {
       vault,
       version: app.getVersion(),
       dialogs: vaultDialogs(win),
-      clearBrowserData,
       log: (line) => log('error', line)
     })
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])

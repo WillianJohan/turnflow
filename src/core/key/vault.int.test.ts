@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync
@@ -179,6 +180,23 @@ describe('vault', () => {
     expect(vault.failure()).toEqual({ code: 'OPEN_FAILED', message: VAULT_COPY.errors.OPEN_FAILED })
     expect(JSON.stringify(vault.failure())).not.toContain(dir)
   })
+
+  it('dois retries simultâneos depois de falha transitória: um boot só', async () => {
+    const dir = tmpDir()
+    const backend = fakeKeyBackend('real')
+    const { paths } = await committed(dir, backend)
+    renameSync(paths.db, `${paths.db}.fora`)
+    const instrument = vi.fn()
+    const { vault } = vaultAt(dir, backend, { instrument })
+    expect(await vault.boot()).toBe('failed')
+    renameSync(`${paths.db}.fora`, paths.db)
+    const [a, b] = await Promise.allSettled([vault.retry(), vault.retry()])
+    expect(a).toEqual({ status: 'fulfilled', value: 'ready' })
+    expect((b as PromiseRejectedResult).reason).toMatchObject({ code: 'BAD_STATE' })
+    expect(vault.state()).toBe('ready')
+    expect(instrument).toHaveBeenCalledTimes(1)
+    vault.close()
+  }, 20_000)
 
   it('key.enc ilegível loga o errno, sem o caminho', async () => {
     const dir = tmpDir()
@@ -416,6 +434,18 @@ describe('vault', () => {
       expect(a.status).toBe('fulfilled')
       expect(b.status).toBe('rejected')
       expect((b as PromiseRejectedResult).reason).toMatchObject({ code: 'BAD_STATE' })
+      expect(vault.state()).toBe('ready')
+      expect(instrument).toHaveBeenCalledTimes(1)
+      vault.close()
+    }, 20_000)
+
+    it('retry fora de failed → BAD_STATE; concorrente com unlock não derruba o ready', async () => {
+      const instrument = vi.fn()
+      const { vault } = vaultAt(dir, backend, { instrument })
+      await vault.boot()
+      const [u, r] = await Promise.allSettled([vault.unlockWithPassword(PASSWORD), vault.retry()])
+      expect(u.status).toBe('fulfilled')
+      expect((r as PromiseRejectedResult).reason).toMatchObject({ code: 'BAD_STATE' })
       expect(vault.state()).toBe('ready')
       expect(instrument).toHaveBeenCalledTimes(1)
       vault.close()

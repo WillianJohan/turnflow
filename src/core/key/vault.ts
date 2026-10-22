@@ -46,6 +46,11 @@ export type VaultDeps = {
   onReady?: (db: Db) => void
   onChange?: () => void
   migrations?: Migration[]
+  /**
+   * Limpeza fora do vault no Apagar tudo (o storage do Chromium, no app). Roda antes de o marcador
+   * sair: se falhar, o vault vai a `failed` (`wipeFailed`) e o retry ou o próximo boot refazem.
+   */
+  clearExternal?: () => Promise<void>
   /** Falha de backup e erro inesperado que vira `OPEN_FAILED`. A linha leva o código do erro, nunca o caminho. */
   log?: (level: 'warn' | 'error', line: string) => void
 }
@@ -55,6 +60,8 @@ export interface Vault {
   lockReason(): LockReason | null
   failure(): VaultFailure | null
   boot(): Promise<VaultState>
+  /** Só em `failed` (o "Tentar de novo"): refaz o boot na fila. Outro estado: `BAD_STATE`. */
+  retry(): Promise<VaultState>
   beginFirstRun(password?: string): Promise<{ words: string[] }>
   pendingWords(): string[] | null
   commitFirstRun(): Promise<void>
@@ -315,7 +322,7 @@ export function createVault(deps: VaultDeps): Vault {
    * Apaga o que é do vault, a chave primeiro. Mantém o resto do diretório (`config.json`, `ui.json`,
    * `themes/`, `bin/`, `run/`, `electron/`). O marcador sai por último.
    */
-  function finishWipe(): void {
+  async function finishWipe(): Promise<void> {
     rmSync(paths.keyFile, { force: true })
     syncDir(paths.dir) // a chave sumiu do disco antes de qualquer outra coisa
     rmSync(paths.keyTmp, { force: true })
@@ -324,14 +331,15 @@ export function createVault(deps: VaultDeps): Vault {
     removeInit()
     for (const d of [paths.backups, paths.attachments, paths.restoreTmp, paths.logs])
       rmSync(d, { recursive: true, force: true })
+    await deps.clearExternal?.()
     rmSync(paths.wipeMarker, { force: true })
     syncDir(paths.dir)
   }
 
   /** Erro no meio do wipe (permissão, arquivo preso): `failed`; o marcador fica e o próximo boot tenta de novo. */
-  function wipeOrFail(steps: () => void): void {
+  async function wipeOrFail(steps: () => Promise<void>): Promise<void> {
     try {
-      steps()
+      await steps()
     } catch (e) {
       logError(`apagar tudo falhou: ${errorLabel(e)}`)
       throw fail(new VaultError('OPEN_FAILED', { message: VAULT_COPY.wipeFailed }))
@@ -372,7 +380,7 @@ export function createVault(deps: VaultDeps): Vault {
     // Wipe interrompido: termina antes de tudo. O marcador vence a regra do órfão (nada vai para
     // backups/), e um -wal velho não sobra para o banco do próximo primeiro uso.
     if (existsSync(paths.wipeMarker)) {
-      wipeOrFail(finishWipe)
+      await wipeOrFail(finishWipe)
       return settle('first_run')
     }
     let kf: KeyFile | null
@@ -415,6 +423,18 @@ export function createVault(deps: VaultDeps): Vault {
     return state
   }
 
+  async function runBoot(): Promise<VaultState> {
+    try {
+      return await bootSteps()
+    } catch (e) {
+      if (closed) throw e // close() no meio do boot: LOCKED, sem virar failed
+      if (state === 'failed') return state
+      logError(`boot falhou: ${errorLabel(e)}`)
+      fail(new VaultError('OPEN_FAILED'))
+      return state
+    }
+  }
+
   return {
     state: () => state,
     backend: () => backend.kind(),
@@ -422,17 +442,13 @@ export function createVault(deps: VaultDeps): Vault {
     failure: () => (failure ? { ...failure } : null),
     pendingWords: () => (pending ? [...pending.words] : null),
 
-    boot: () =>
+    boot: () => exclusive(runBoot),
+
+    // o check dentro da fila: um unlock/retry na frente já pode ter saído de `failed`
+    retry: () =>
       exclusive(async () => {
-        try {
-          return await bootSteps()
-        } catch (e) {
-          if (closed) throw e // close() no meio do boot: LOCKED, sem virar failed
-          if (state === 'failed') return state
-          logError(`boot falhou: ${errorLabel(e)}`)
-          fail(new VaultError('OPEN_FAILED'))
-          return state
-        }
+        if (state !== 'failed') throw new VaultError('BAD_STATE')
+        return runBoot()
       }),
 
     beginFirstRun: (password) =>
@@ -569,9 +585,9 @@ export function createVault(deps: VaultDeps): Vault {
         closeDb()
         dropPending()
         keyFile = null
-        wipeOrFail(() => {
+        await wipeOrFail(async () => {
           writeWipeMarker()
-          finishWipe()
+          await finishWipe()
         })
         settle('first_run')
       }),

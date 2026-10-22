@@ -54,8 +54,6 @@ export type IpcDeps = {
   vault: Vault
   version: string
   dialogs: VaultDialogs
-  /** Storage do Chromium que o Apagar tudo limpa depois do vault. */
-  clearBrowserData?: () => Promise<void>
   /** Log local (o mesmo do vault): recebe a mensagem crua dos erros `INTERNAL`. */
   log?: (line: string) => void
 }

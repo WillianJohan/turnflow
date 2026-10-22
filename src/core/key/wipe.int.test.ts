@@ -205,6 +205,49 @@ describe('apagar tudo', () => {
     }
   )
 
+  it('clearExternal roda antes de o marcador sair; falha → failed e o retry refaz', async () => {
+    const dir = tmpDir()
+    const p = vaultPaths(dir)
+    seedKept(dir)
+    const markerAtClear: boolean[] = []
+    let calls = 0
+    const clearExternal = vi.fn(async () => {
+      markerAtClear.push(existsSync(p.wipeMarker))
+      if (++calls === 1) throw Object.assign(new Error('storage preso'), { code: 'EBUSY' })
+    })
+    const vault = vaultAt(dir, fakeKeyBackend('real'), { clearExternal })
+    await firstRun(vault)
+    await expect(vault.wipeAll()).rejects.toMatchObject({ code: 'OPEN_FAILED' })
+    expect(vault.state()).toBe('failed')
+    expect(vault.failure()?.message).toBe(VAULT_COPY.wipeFailed)
+    expect(existsSync(p.keyFile)).toBe(false)
+    expect(existsSync(p.wipeMarker)).toBe(true)
+    expect(await vault.retry()).toBe('first_run')
+    expect(clearExternal).toHaveBeenCalledTimes(2)
+    expect(markerAtClear).toEqual([true, true])
+    expectWiped(dir, p)
+    vault.close()
+  }, 20_000)
+
+  it('marcador pendente: o próximo boot refaz a limpeza externa', async () => {
+    const dir = tmpDir()
+    const p = vaultPaths(dir)
+    const first = vaultAt(dir, fakeKeyBackend('real'), {
+      clearExternal: async () => {
+        throw new Error('falhou')
+      }
+    })
+    await firstRun(first)
+    await expect(first.wipeAll()).rejects.toMatchObject({ code: 'OPEN_FAILED' })
+    first.close()
+    const clearExternal = vi.fn(async () => undefined)
+    const vault = vaultAt(dir, fakeKeyBackend('real'), { clearExternal })
+    expect(await vault.boot()).toBe('first_run')
+    expect(clearExternal).toHaveBeenCalledOnce()
+    expect(existsSync(p.wipeMarker)).toBe(false)
+    vault.close()
+  }, 20_000)
+
   it('depois do close() o wipe não roda (close é terminal)', async () => {
     const dir = tmpDir()
     const vault = vaultAt(dir, fakeKeyBackend('real'))
