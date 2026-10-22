@@ -4,6 +4,7 @@ import * as config from './config'
 import * as fonts from './fonts'
 import * as header from './header'
 import * as pty from './pty'
+import * as search from './search'
 import * as session from './session'
 import * as settings from './settings'
 import * as tasks from './tasks'
@@ -43,6 +44,7 @@ export const CHANNELS = {
   firstRunSaveWords: vault.firstRunSaveWords,
   firstRunCommit: vault.firstRunCommit,
   vaultUnlock: vault.vaultUnlock,
-  vaultRecover: vault.vaultRecover
+  vaultRecover: vault.vaultRecover,
+  searchQuery: search.searchQuery
 } as const
 export type Channels = typeof CHANNELS

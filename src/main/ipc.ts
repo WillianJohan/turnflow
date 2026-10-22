@@ -44,6 +44,7 @@ import { getHeader, readCache } from './header'
 import { handle as handleOn, IpcError, type Handler, type IpcLike } from './ipc/handle'
 import { registerPtyIo } from './ipc/ptyIo'
 import { onPtyExit } from './ipc/ptyExit'
+import { registerSearchIpc } from './ipc/search'
 import { registerVaultIpc, type VaultDialogs } from './ipc/vault'
 import type { Vault } from '../core/key/vault'
 
@@ -273,6 +274,7 @@ export async function registerIpc(
   handle(C.CHANNELS.headerCached, ({ id }) => readCache(task(id)))
   handle(C.CHANNELS.header, ({ id, force }) => getHeader(task(id), force))
   registerVaultIpc(handle, deps)
+  registerSearchIpc(handle, deps)
 
   return () => {
     unwatchCfg()
