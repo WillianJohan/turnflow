@@ -236,3 +236,20 @@ describe('attention: sort_key', () => {
     expect(key(task({ done_at: iso(-H) }))).toBe(`${String(9999999999999 - e)}|T1`)
   })
 })
+
+describe('attention: campos de data ausentes', () => {
+  it('turn_reason com turn_at null usa touched_at, sem NaN', () => {
+    const a = attention(task({ turn_reason: 'atribuida', turn_at: null }), stage, [], NOW)
+    expect(a.reason).toEqual({ kind: 'atribuida', since: iso(-H) })
+    expect(a.sort_key).not.toContain('NaN')
+  })
+  it('blocked_reason com blocked_at null usa touched_at, sem NaN', () => {
+    const a = attention(task({ blocked_reason: 'x', blocked_at: null }), stage, [], NOW)
+    expect(a.reason).toEqual({ kind: 'bloqueada', since: iso(-H) })
+    expect(a.sort_key).not.toContain('NaN')
+  })
+  it('blocked_reason e waits_other juntos dão bloqueada', () => {
+    const a = attention(task({ blocked_reason: 'x', blocked_at: iso(-H) }), waitsOther, [], NOW)
+    expect(a.reason?.kind).toBe('bloqueada')
+  })
+})
