@@ -40,10 +40,20 @@ describe('paths', () => {
       `/Users/u/Library/Application Support/${BRAND.name}/run/turnflow.sock`
     )
   })
-  it('win32 usa named pipe', () => {
-    expect(
-      socketPath({ USERNAME: 'u' }, 'win32', 'C:\\Users\\u').startsWith('\\\\.\\pipe\\turnflow-')
-    ).toBe(true)
+  it('win32 usa named pipe com hash da identidade', () => {
+    const home = 'C:\\Users\\alice'
+    expect(socketPath({}, 'win32', home, false, 'alice@CORP')).toBe(
+      '\\\\.\\pipe\\turnflow-d0ecd4b6'
+    )
+    expect(socketPath({}, 'win32', home, true, 'alice@CORP')).toBe(
+      '\\\\.\\pipe\\turnflow-dev-d0ecd4b6'
+    )
+  })
+  it('win32: usuários diferentes têm pipes diferentes e o nome não vaza o usuário', () => {
+    const a = socketPath({}, 'win32', home, false, 'alice@CORP')
+    const b = socketPath({}, 'win32', home, false, 'bob@CORP')
+    expect(a).not.toBe(b)
+    expect(a.toLowerCase()).not.toContain('alice')
   })
   it('nenhum resultado contém dkdesk', () => {
     for (const platform of ['linux', 'darwin', 'win32'] as const)

@@ -1,5 +1,6 @@
 import { posix, win32 } from 'path'
-import { homedir } from 'os'
+import { createHash } from 'crypto'
+import { homedir, userInfo } from 'os'
 import { BRAND } from './brand'
 
 // Funções puras (sem electron): o CLI e o app resolvem os mesmos caminhos.
@@ -52,13 +53,15 @@ export function socketPath(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   home: string = homedir(),
-  dev = false
+  dev = false,
+  // identidade do usuário (injetável p/ manter a função pura); entra só como hash no nome do pipe
+  identity: string = `${userInfo().username}@${env.USERDOMAIN ?? ''}`
 ): string {
   const override = env[`${ENV}SOCKET`]
   if (override) return override
   if (platform === 'win32') {
-    const user = (env.USERNAME ?? 'user').replace(/[^\w.-]/g, '_')
-    return `\\\\.\\pipe\\${BRAND.id}${dev ? '-dev' : ''}-${user}`
+    const hash = createHash('sha256').update(identity).digest('hex').slice(0, 8)
+    return `\\\\.\\pipe\\${BRAND.id}${dev ? '-dev' : ''}-${hash}`
   }
   return pathFor(platform).join(runDir(env, platform, home, dev), `${BRAND.id}.sock`)
 }

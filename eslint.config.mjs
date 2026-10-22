@@ -1,4 +1,3 @@
-import { builtinModules } from 'node:module'
 import { defineConfig } from 'eslint/config'
 import tseslint from '@electron-toolkit/eslint-config-ts'
 import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
@@ -7,7 +6,6 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 // Fronteiras de módulo (testadas em scripts/boundaries.test.ts com scripts/lint-fixtures)
-const nodeBuiltins = builtinModules.filter((m) => !m.startsWith('_'))
 const crossFeature = (depth) => ({
   regex: `^(\\.\\./){${depth}}[^./]`,
   message: 'Feature não importa outra feature: suba o código compartilhado para fora de features/.'
@@ -39,11 +37,13 @@ const boundaries = [
       'no-restricted-imports': [
         'error',
         {
-          paths: nodeBuiltins.map((name) => ({
-            name,
-            message: 'preload não usa módulos Node: passe por IPC.'
-          })),
-          patterns: [{ group: ['node:*'], message: 'preload não usa módulos Node: passe por IPC.' }]
+          patterns: [
+            {
+              // só `electron` e relativos (./api, ../shared/types); nada de Node nem npm
+              regex: '^(?!electron$|\\.{1,2}/).+',
+              message: 'preload importa apenas electron (e tipos locais): o resto passa por IPC.'
+            }
+          ]
         }
       ]
     }

@@ -28,6 +28,12 @@ describe('fronteiras de módulo', () => {
     expect(r.file).toContain('bad-preload.ts')
     expect(r.messages[0]).toContain('no-restricted-imports')
   })
+  it('preload não importa pacote npm', async () => {
+    const r = await lint('src/preload/bad-preload-npm.ts')
+    expect(r.errors).toBe(1)
+    expect(r.file).toContain('bad-preload-npm.ts')
+    expect(r.messages[0]).toContain('no-restricted-imports')
+  })
   it('feature não importa outra feature', async () => {
     const r = await lint('src/renderer/src/features/a/bad-feature.ts')
     expect(r.errors).toBe(1)
