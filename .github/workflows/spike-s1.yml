@@ -55,6 +55,7 @@ jobs:
               const p = pty.spawn(shell, args, { name: 'xterm', cols: 80, rows: 24 });
               let out = '';
               const to = setTimeout(() => { console.log('pty-timeout'); ok = false; res(); }, 10000);
+              p.onExit((e) => console.log('pty-exit', e.exitCode));
               p.onData((d) => { out += d; if (out.includes('pty-42')) { clearTimeout(to); console.log('pty-ok'); res(); } });
             });
             // sem chave: o arquivo tem que ser ilegível (reabre com o mesmo módulo, sem pragma key)
@@ -62,7 +63,10 @@ jobs:
             try { const d2 = new Database(file); d2.prepare('select count(*) from sqlite_master').get(); d2.close(); }
             catch (e) { unreadable = /not a database/i.test(String(e && e.message)); console.log('erro sem chave:', e && e.code, e && e.message); }
             console.log('plain=' + (unreadable ? 'unreadable' : 'READABLE'));
-            app.exit(ok && hits === 1 && unreadable ? 0 : 1);
+            const code = ok && hits === 1 && unreadable ? 0 : 1;
+            console.log('veredito exit=' + code);
+            // dá tempo do conpty (Windows) fechar antes de derrubar o processo
+            setTimeout(() => app.exit(code), 1500);
           });
           JS
           sed -i.bak 's/"main": "[^"]*"/"main": "main.js"/' package.json
