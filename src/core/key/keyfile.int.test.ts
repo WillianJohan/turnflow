@@ -1,7 +1,9 @@
-import { randomBytes } from 'node:crypto'
+import { createCipheriv, randomBytes } from 'node:crypto'
+import { argon2idAsync } from '@noble/hashes/argon2.js'
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { VAULT_COPY } from '../../shared/copy/vault'
 import { VaultError, type VaultErrorCode } from './errors'
 import {
   KDF_DEFAULT,
@@ -56,6 +58,53 @@ describe('key.enc', () => {
     await rejectsWith(unlockDek(readKeyFile(file)!, { password: PASSWORD }), 'WRONG_PASSWORD')
   })
 
+  it('AAD: mesma KEK com AAD diferente ou vazio → WRONG_PASSWORD', async () => {
+    const dek = randomBytes(32)
+    const kf = await wrapWithPassword(dek, PASSWORD, FAST)
+    if (kf.mode !== 'password') throw new Error('modo errado')
+    const kek = await argon2idAsync(Buffer.from(PASSWORD), Buffer.from(kf.kdf.salt, 'base64'), {
+      m: kf.kdf.m,
+      t: kf.kdf.t,
+      p: kf.kdf.p,
+      dkLen: 32
+    })
+    const reseal = (aad: Buffer | null): typeof kf => {
+      const nonce = randomBytes(12)
+      const c = createCipheriv('aes-256-gcm', kek, nonce)
+      if (aad) c.setAAD(aad)
+      const ct = Buffer.concat([c.update(dek), c.final()])
+      return {
+        ...kf,
+        nonce: nonce.toString('base64'),
+        ct: ct.toString('base64'),
+        tag: c.getAuthTag().toString('base64')
+      }
+    }
+    const { m, t, p } = kf.kdf
+    // Controle: com o AAD certo a KEK montada aqui abre, então a falha abaixo é só do AAD.
+    const right = Buffer.from(`turnflow-key-v1|argon2id|${m}|${t}|${p}`)
+    expect((await unlockDek(reseal(right), { password: PASSWORD })).equals(dek)).toBe(true)
+    await rejectsWith(unlockDek(reseal(null), { password: PASSWORD }), 'WRONG_PASSWORD')
+    const other = Buffer.from(`turnflow-key-v1|argon2id|${m}|${t + 1}|${p}`)
+    await rejectsWith(unlockDek(reseal(other), { password: PASSWORD }), 'WRONG_PASSWORD')
+  })
+
+  it('parâmetros fora do teto: wrap recusa e o arquivo é KEYFILE_CORRUPT', async () => {
+    const dek = randomBytes(32)
+    await expect(wrapWithPassword(dek, PASSWORD, { m: 262_145 })).rejects.toThrow()
+    await expect(wrapWithPassword(dek, PASSWORD, { t: 11 })).rejects.toThrow()
+    await expect(wrapWithPassword(dek, PASSWORD, { m: 1024, p: 200 })).rejects.toThrow()
+    const file = join(tmpDir(), 'key.enc')
+    const kf = await wrapWithPassword(dek, PASSWORD, FAST)
+    for (const kdf of [{ m: 262_145 }, { t: 11 }]) {
+      writeFileSync(
+        file,
+        JSON.stringify({ ...kf, kdf: { ...(kf as { kdf: object }).kdf, ...kdf } })
+      )
+      expect(codeOf(() => readKeyFile(file))).toBe('KEYFILE_CORRUPT')
+    }
+  })
+
   it('NFC: senha composta abre o arquivo criado com a decomposta', async () => {
     const dek = randomBytes(32)
     const decomposed = 'café-café-café'
@@ -90,6 +139,18 @@ describe('key.enc', () => {
     )
     const short = { ...fakeKeyBackend('real'), decrypt: () => Buffer.alloc(16) }
     await rejectsWith(unlockDek(kf, { keyring: short }), 'KEYRING_UNAVAILABLE')
+  })
+
+  it('keyring basic_text é recusado com BAD_STATE (texto do VAULT_COPY)', () => {
+    let err: unknown
+    try {
+      wrapWithKeyring(randomBytes(32), fakeKeyBackend('basic_text'))
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(VaultError)
+    expect((err as VaultError).code).toBe('BAD_STATE')
+    expect((err as VaultError).message).toBe(VAULT_COPY.badState.keyringNotReal)
   })
 
   it('palavras destravam qualquer modo', async () => {

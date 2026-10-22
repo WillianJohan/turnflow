@@ -10,6 +10,8 @@ export const WORDS_COUNT = 24
 const WORDSET: ReadonlySet<string> = new Set(wordlist)
 // Linha do arquivo salvo: "01 palavra" (aceita "1." e "1)" de quem redigitou à mão).
 const NUMBERED_LINE = /^\s*\d{1,2}[.)]?\s+(\S+)/
+// Número solto ("01", "1.", "1)") de uma lista numerada colada numa linha só.
+const NUMBER_TOKEN = /^\d{1,2}[.)]?$/
 
 /** DEK (32 bytes) → 24 palavras BIP39 em inglês (256 bits + 8 de checksum). */
 export function dekToWords(dek: Buffer): string[] {
@@ -18,8 +20,9 @@ export function dekToWords(dek: Buffer): string[] {
 }
 
 /**
- * Normaliza o que o usuário colou ou abriu. Se houver linhas numeradas (o arquivo salvo),
- * usa só a palavra dessas linhas e ignora título e aviso; senão divide em espaço/vírgula.
+ * Normaliza o que o usuário colou ou abriu. Se as linhas numeradas derem 24 palavras (o arquivo
+ * salvo), usa só elas e ignora título e aviso; senão divide em espaço/vírgula/quebra de linha e
+ * descarta números soltos.
  */
 export function parseWords(input: string): string[] {
   const text = fold(input)
@@ -27,8 +30,8 @@ export function parseWords(input: string): string[] {
     .split(/\r?\n/)
     .map((l) => NUMBERED_LINE.exec(l)?.[1])
     .filter((w): w is string => w !== undefined)
-  if (numbered.length > 0) return numbered
-  return text.split(/[\s,]+/).filter((w) => w.length > 0)
+  if (numbered.length === WORDS_COUNT) return numbered
+  return text.split(/[\s,]+/).filter((w) => w.length > 0 && !NUMBER_TOKEN.test(w))
 }
 
 /** Palavras → DEK. Lança `WORDS_COUNT`, `WORDS_UNKNOWN` (com `index`) ou `WORDS_CHECKSUM`. */

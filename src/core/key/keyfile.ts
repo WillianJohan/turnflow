@@ -7,13 +7,14 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  writeSync
+  writeFileSync
 } from 'node:fs'
 import { dirname } from 'node:path'
 import { argon2idAsync } from '@noble/hashes/argon2.js'
 import { z } from 'zod'
 import type { KeyBackend } from './backend'
 import { DEK_BYTES } from './dek'
+import { VAULT_COPY } from '../../shared/copy/vault'
 import { VaultError } from './errors'
 import { wordsToDek } from './recovery'
 
@@ -34,12 +35,13 @@ const b64Of = (n: number): z.ZodType<string> =>
     .regex(/^[A-Za-z0-9+/]*={0,2}$/)
     .refine((s) => Buffer.from(s, 'base64').length === n && s.length === Math.ceil(n / 3) * 4)
 
-// Limites só para um arquivo adulterado não travar o app com um KDF impossível.
+// Teto (256 MiB, t=10, p=8) para um arquivo adulterado não travar o app com um KDF impossível.
+// O `wrapWithPassword` valida com o mesmo schema: quem grava não produz o que quem lê recusa.
 const KdfParamsZ = z
   .object({
     alg: z.literal('argon2id'),
-    m: z.number().int().min(8).max(1_048_576),
-    t: z.number().int().min(1).max(32),
+    m: z.number().int().min(8).max(262_144),
+    t: z.number().int().min(1).max(10),
     p: z.number().int().min(1).max(8),
     salt: b64Of(SALT_BYTES)
   })
@@ -102,7 +104,7 @@ export function writeKeyFile(path: string, kf: KeyFile): void {
   const fd = openSync(tmp, 'wx', 0o600)
   try {
     fchmodSync(fd, 0o600) // o mode do open passa pelo umask
-    writeSync(fd, JSON.stringify(kf))
+    writeFileSync(fd, JSON.stringify(kf))
     fsyncSync(fd)
   } finally {
     closeSync(fd)
@@ -153,12 +155,13 @@ export async function wrapWithPassword(
   assertDek(dek)
   if ([...password.normalize('NFC')].length < MIN_PASSWORD_CODE_POINTS)
     throw new VaultError('PASSWORD_TOO_SHORT')
-  const kdf: KdfParams = {
+  // Lança (ZodError) se os parâmetros pedidos saírem do que o `readKeyFile` aceita.
+  const kdf: KdfParams = KdfParamsZ.parse({
     alg: 'argon2id',
     ...KDF_DEFAULT,
     ...params,
     salt: randomBytes(SALT_BYTES).toString('base64')
-  }
+  })
   const kek = await deriveKek(password, kdf)
   try {
     const nonce = randomBytes(NONCE_BYTES)
@@ -182,7 +185,7 @@ export async function wrapWithPassword(
 export function wrapWithKeyring(dek: Buffer, backend: KeyBackend): KeyFile {
   assertDek(dek)
   if (backend.kind() !== 'real')
-    throw new VaultError('BAD_STATE', { message: 'Chaveiro sem proteção real' })
+    throw new VaultError('BAD_STATE', { message: VAULT_COPY.badState.keyringNotReal })
   return { v: 1, mode: 'keyring', blob: backend.encrypt(dek).toString('base64') }
 }
 
@@ -191,11 +194,11 @@ export async function unlockDek(kf: KeyFile, cred: Credential): Promise<Buffer> 
   if ('words' in cred) return wordsToDek(cred.words)
   if ('password' in cred) {
     if (kf.mode !== 'password')
-      throw new VaultError('BAD_STATE', { message: 'A chave não está protegida por senha' })
+      throw new VaultError('BAD_STATE', { message: VAULT_COPY.badState.notPasswordMode })
     return unwrapPassword(kf, cred.password)
   }
   if (kf.mode !== 'keyring')
-    throw new VaultError('BAD_STATE', { message: 'A chave não está no chaveiro' })
+    throw new VaultError('BAD_STATE', { message: VAULT_COPY.badState.notKeyringMode })
   let dek: Buffer
   try {
     dek = cred.keyring.decrypt(Buffer.from(kf.blob, 'base64'))

@@ -54,6 +54,19 @@ describe('recovery', () => {
     expect(wordsToDek(input).equals(Buffer.alloc(32))).toBe(true)
   })
 
+  it('numerado numa linha só: descarta os números e acha as 24', () => {
+    const d = randomBytes(32)
+    const line = dekToWords(d)
+      .map((w, i) => `${String(i + 1).padStart(2, '0')} ${w}`)
+      .join(' ')
+    expect(parseWords(line)).toEqual(dekToWords(d))
+    expect(wordsToDek(line).equals(d)).toBe(true)
+    const dotted = dekToWords(d)
+      .map((w, i) => `${i + 1}. ${w}`)
+      .join(', ')
+    expect(wordsToDek(dotted).equals(d)).toBe(true)
+  })
+
   it('WORDS_COUNT com 23 palavras', () => {
     const words = dekToWords(randomBytes(32)).slice(0, 23)
     expect(vaultError(() => wordsToDek(words.join(' '))).code).toBe('WORDS_COUNT')

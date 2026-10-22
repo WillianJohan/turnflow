@@ -11,7 +11,7 @@ export const VAULT_COPY = {
   errors: {
     PASSWORD_REQUIRED: 'Defina uma senha mestra',
     PASSWORD_TOO_SHORT: 'A senha precisa de pelo menos 12 caracteres',
-    WRONG_PASSWORD: 'Senha incorreta',
+    WRONG_PASSWORD: 'Senha incorreta. Esqueceu? Use a chave de recuperação.',
     WORDS_COUNT: 'A chave de recuperação tem 24 palavras',
     WORDS_UNKNOWN: 'Uma das palavras não existe na lista',
     WORDS_CHECKSUM: 'Alguma palavra está errada ou fora de ordem',
@@ -26,6 +26,12 @@ export const VAULT_COPY = {
     OPEN_FAILED: 'Não consegui abrir o banco',
     LOCKED: `${BRAND.name} está bloqueado`,
     BAD_STATE: 'Operação inválida neste estado'
+  },
+  /** `details.message` dos `BAD_STATE` do módulo de chave. */
+  badState: {
+    keyringNotReal: 'O chaveiro do sistema não protege a chave; use uma senha mestra',
+    notPasswordMode: 'A chave não está protegida por senha',
+    notKeyringMode: 'A chave não está no chaveiro do sistema'
   },
   /** `WORDS_UNKNOWN` com a posição (1-based) da primeira palavra desconhecida. */
   wordUnknown: (position: number): string => `A palavra ${position} não existe na lista`,
