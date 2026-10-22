@@ -1,15 +1,17 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { BRAND } from '../shared/brand'
 
 type Exec = () => Promise<string>
 
 // Aberto pelo .desktop, o Electron não herda o PATH do shell. O brew (onde mora o asdf) só entra
 // no shell interativo, então pergunta a um `bash -ic` com ambiente limpo (igual ao do .desktop).
 // Sem TTY: MOTD e consultas de cor saem no stdout e são ignorados pelos marcadores.
+const MARK = `__${BRAND.envPrefix.replace(/_$/, '')}_`
 const shell: Exec = () =>
   promisify(execFile)(
     'bash',
-    ['-ic', 'printf "\\n__DK_PATH=%s\\n__DK_CLAUDE=%s\\n" "$PATH" "$(command -v claude)"'],
+    ['-ic', `printf "\\n${MARK}PATH=%s\\n${MARK}CLAUDE=%s\\n" "$PATH" "$(command -v claude)"`],
     {
       timeout: 15000,
       env: {
@@ -24,7 +26,7 @@ const shell: Exec = () =>
 let cached: Promise<{ PATH: string; claude: string }> | null = null
 
 const marker = (out: string, k: string): string =>
-  out.match(new RegExp(`^__DK_${k}=(.*)$`, 'm'))?.[1]?.trim() ?? ''
+  out.match(new RegExp(`^${MARK}${k}=(.*)$`, 'm'))?.[1]?.trim() ?? ''
 
 export function loginEnv(exec: Exec = shell): Promise<{ PATH: string; claude: string }> {
   cached ??= exec()
