@@ -50,3 +50,18 @@ export type Emit = (c: DomainChanged) => void
 
 /** `now` injetado em ISO-8601 UTC. */
 export const nowIso = (d: DomainDeps): string => d.now().toISOString()
+
+/** `touched_at` só anda com escrita do usuário ou da IA; o pull do sync não conta (spec §4). */
+export const touchExpr = (actor: Actor, now: string): string =>
+  actor.kind === 'sync' ? 'touched_at' : now
+
+/** Contadores derivados: a task mudou de situação, então o projeto e o fluxo dela releem. */
+export function emitCounters(
+  emit: Emit,
+  t: { project_id: string | null; flow_id: string },
+  ...more: { flow_id: string }[]
+): void {
+  if (t.project_id) emit({ entity: 'project', ids: [t.project_id], op: 'upsert' })
+  const flows = new Set([t.flow_id, ...more.map((m) => m.flow_id)])
+  emit({ entity: 'flow', ids: [...flows], op: 'upsert' })
+}

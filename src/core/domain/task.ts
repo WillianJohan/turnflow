@@ -2,7 +2,7 @@ import { Limits, type CreateTaskInput, type TaskPatch, type TaskRow } from '../.
 import { isAbsolutePath } from '../../shared/pathSyntax'
 import type { Db } from '../db/open'
 import { readFields, recordActivity, type Inverse, type TaskField } from './activity'
-import { nowIso, type Actor, type DomainDeps, type Emit } from './context'
+import { emitCounters, nowIso, touchExpr, type Actor, type DomainDeps, type Emit } from './context'
 import { checkMax, domainError, notFound } from './errors'
 import { rankAfter } from './rank'
 import { raiseTurn } from './turn'
@@ -218,9 +218,10 @@ export function setStageIn(
   const expect = Object.fromEntries(keys.map((k) => [k, next[k] ?? null]))
   const set = keys.map((k) => `${k} = @${k}`).join(', ')
   d.db
-    .prepare(`update task set ${set}, touched_at = @now where id = @id`)
+    .prepare(`update task set ${set}, touched_at = ${touchExpr(actor, '@now')} where id = @id`)
     .run({ ...expect, now, id: rec.id })
   emit({ entity: 'task', ids: [rec.id], op: 'upsert' })
+  emitCounters(emit, rec)
 
   const activity_id = d.newId()
   const outbox_id = enqueueTransition(d, rec, to.id, activity_id, now)
@@ -301,6 +302,7 @@ export function deleteTaskIn(
   const now = nowIso(d)
   d.db.prepare('update task set deleted_at = ? where id = ?').run(now, rec.id)
   emit({ entity: 'task', ids: [rec.id], op: 'delete' })
+  emitCounters(emit, rec)
   const activity_id = recordActivity(d, emit, actor, {
     op: 'task_delete',
     task_id: rec.id,

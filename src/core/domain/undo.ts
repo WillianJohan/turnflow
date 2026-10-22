@@ -12,7 +12,7 @@ import {
   TASK_FIELDS
 } from './activity'
 import { DAY_MS } from './attention'
-import { nowIso, type Actor, type DomainDeps, type Emit } from './context'
+import { emitCounters, nowIso, type Actor, type DomainDeps, type Emit } from './context'
 import { domainError, notFound } from './errors'
 import { taskRow } from './rows'
 import type { TaskCommandResult, TaskWrite } from './task'
@@ -197,6 +197,10 @@ function undoIn(d: DomainDeps, emit: Emit, actor: Actor, activityId: string): Ta
   const keys = taskKeys(inv.restore)
   const applied: Values = Object.fromEntries(keys.map((k) => [k, inv.restore[k] ?? null]))
   const before: Inverse['restore'] = readFields(db, id, keys)
+  const prev = db.prepare('select project_id, flow_id from task where id = ?').get(id) as {
+    project_id: string | null
+    flow_id: string
+  }
   const isMove = inv.op === 'move_project'
   if (isMove) before.item = currentItem(db, id)
 
@@ -209,6 +213,12 @@ function undoIn(d: DomainDeps, emit: Emit, actor: Actor, activityId: string): Ta
     }
   ).deleted_at
   emit({ entity: 'task', ids: [id], op: deleted === null ? 'upsert' : 'delete' })
+  if (keys.some((k) => k === 'stage_id' || k === 'deleted_at' || k === 'flow_id')) {
+    const cur = db
+      .prepare('select project_id, flow_id from task where id = ?')
+      .get(id) as typeof prev
+    emitCounters(emit, prev, cur)
+  }
 
   const outbox_id = inv.op === 'set_stage' && inv.outbox_id ? revertOutbox(d, a.id, inv, now) : null
   const undoId = recordActivity(d, emit, actor, {

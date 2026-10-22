@@ -1,6 +1,6 @@
 import { Limits } from '../../shared/contracts'
 import { recordActivity, type Inverse, type TaskField } from './activity'
-import { nowIso, type Actor, type DomainDeps } from './context'
+import { nowIso, touchExpr, type Actor, type DomainDeps } from './context'
 import { checkMax, domainError } from './errors'
 import { liveTask, taskRow } from './rows'
 import type { TaskCommandResult } from './task'
@@ -25,8 +25,11 @@ export function blockTask(
     if (rec.blocked_reason === reason) return { task_id: rec.id, activity_id: null }
     const now = nowIso(d)
     d.db
-      .prepare('update task set blocked_reason = ?, blocked_at = ?, touched_at = ? where id = ?')
-      .run(reason, now, now, rec.id)
+      .prepare(
+        `update task set blocked_reason = @reason, blocked_at = @now,
+         touched_at = ${touchExpr(actor, '@now')} where id = @id`
+      )
+      .run({ reason, now, id: rec.id })
     emit({ entity: 'task', ids: [rec.id], op: 'upsert' })
     const inverse: Inverse = {
       op: 'unblock',
@@ -67,7 +70,7 @@ export function unblockTask(d: DomainDeps, actor: Actor, i: { id: string }): Tas
     const keys = Object.keys(next) as TaskField[]
     d.db
       .prepare(
-        `update task set ${keys.map((k) => `${k} = @${k}`).join(', ')}, touched_at = @now where id = @id`
+        `update task set ${keys.map((k) => `${k} = @${k}`).join(', ')}, touched_at = ${touchExpr(actor, '@now')} where id = @id`
       )
       .run({ ...next, now, id: rec.id })
     emit({ entity: 'task', ids: [rec.id], op: 'upsert' })

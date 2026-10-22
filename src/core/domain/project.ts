@@ -52,7 +52,10 @@ export function getProject(d: DomainDeps, id: string): ProjectDetail {
   const row = projectRow(d.db, id)
   const items = d.db
     .prepare(
-      'select id, kind, task_id, label, rank from project_item where project_id = ? order by rank, id'
+      `select id, kind, task_id, label, rank from project_item
+       where project_id = ? and (task_id is null
+         or exists (select 1 from task t where t.id = task_id and t.deleted_at is null))
+       order by rank, id`
     )
     .all(id) as ProjectItem[]
   return { ...row, items }

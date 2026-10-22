@@ -14,7 +14,9 @@ import {
   updateProject
 } from './project'
 import { listTasks, type TaskRecord } from './rows'
+import { blockTask, unblockTask } from './block'
 import { createTask, deleteTask, setStage } from './task'
+import { undoActivity } from './undo'
 
 const T0 = Date.parse('2026-10-22T12:00:00.000Z')
 const MIN = 60_000
@@ -322,8 +324,8 @@ describe('projetos', () => {
     expect(row).toMatchObject({ name: 'P', goal: 'g', color: '#fff', flow_id: null, done_at: null })
     expect([row.task_count, row.done_count]).toEqual([2, 1])
     const det = getProject(h.d, p.id)
-    expect(det.items.map((i) => i.task_id)).toEqual([b, a, c])
-    expect(det.items.map((i) => i.rank)).toEqual(['a0', 'a1', 'a2'])
+    expect(det.items.map((i) => i.task_id)).toEqual([b, a])
+    expect(det.items.map((i) => i.rank)).toEqual(['a0', 'a1'])
     expect(det.items[0]).toMatchObject({ kind: 'task', label: null })
     expect(errOf(() => getProject(h.d, 'x')).code).toBe('NOT_FOUND')
   })
@@ -363,5 +365,75 @@ describe('projetos', () => {
     expect(dumpTables(h.db, ['task'])).toEqual(before)
     const e = errOf(() => moveTask(h.d, USER, { id: feature(h), project_id: p.id }))
     expect(e.details?.reason).toBe('choose_keep_adopt')
+  })
+})
+
+describe('task apagada e contadores derivados', () => {
+  it('getProject não lista item de task apagada; o undelete traz de volta', () => {
+    const h = setup()
+    const p = createProject(h.d, USER, { name: 'P' })
+    const a = feature(h)
+    moveTask(h.d, USER, { id: a, project_id: p.id })
+    const del = deleteTask(h.d, USER, { id: a })
+    expect(getProject(h.d, p.id).items).toEqual([])
+    expect(items(h.db, p.id)).toHaveLength(1)
+    undoActivity(h.d, USER, { activity_id: del.activity_id! })
+    expect(getProject(h.d, p.id).items.map((i) => i.task_id)).toEqual([a])
+  })
+
+  it('apagar, mudar etapa e desfazer emitem project/upsert e flow/upsert', () => {
+    const h = setup()
+    const p = createProject(h.d, USER, { name: 'P' })
+    const a = feature(h)
+    moveTask(h.d, USER, { id: a, project_id: p.id })
+    const flowId = h.ids.flows.Feature
+    const has = (e: string, id: string): boolean =>
+      h.events.some((c) => c.entity === e && c.op === 'upsert' && c.ids.includes(id))
+
+    h.events.length = 0
+    const st = setStage(h.d, USER, { id: a, stage_id: h.ids.stages.Feature[1] })
+    expect([has('project', p.id), has('flow', flowId)]).toEqual([true, true])
+
+    h.events.length = 0
+    undoActivity(h.d, USER, { activity_id: st.activity_id! })
+    expect([has('project', p.id), has('flow', flowId)]).toEqual([true, true])
+
+    h.events.length = 0
+    const del = deleteTask(h.d, USER, { id: a })
+    expect([has('project', p.id), has('flow', flowId)]).toEqual([true, true])
+
+    h.events.length = 0
+    undoActivity(h.d, USER, { activity_id: del.activity_id! })
+    expect([has('project', p.id), has('flow', flowId)]).toEqual([true, true])
+  })
+})
+
+describe('ator sync não toca touched_at', () => {
+  const SYNC: Actor = { kind: 'sync' }
+  const touched = (h: Harness, id: string): string | null => raw(h.db, id).touched_at
+
+  it('setStage, block e unblock com sync mantêm; user e mcp tocam', () => {
+    for (const [actor, toca] of [
+      [SYNC, false],
+      [USER, true],
+      [{ kind: 'mcp' } as Actor, true]
+    ] as const) {
+      const h = setup()
+      const id = feature(h)
+      const t0 = touched(h, id)
+      const check = (): void => {
+        expect(touched(h, id) === t0).toBe(!toca)
+        h.db.prepare('update task set touched_at = ? where id = ?').run(t0, id)
+      }
+      h.tick(MIN)
+      setStage(h.d, actor, { id, stage_id: h.ids.stages.Feature[1] })
+      check()
+      h.tick(MIN)
+      blockTask(h.d, actor, { id, reason: 'x' })
+      check()
+      h.tick(MIN)
+      unblockTask(h.d, actor, { id })
+      check()
+    }
   })
 })
