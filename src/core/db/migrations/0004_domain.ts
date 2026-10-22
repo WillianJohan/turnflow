@@ -145,6 +145,7 @@ export const domain: Migration = {
         cancelled_at text,
         created_at text not null
       );
+      -- Só INSERT (Decisão 13): UPDATE de task_id/type_id não é barrado.
       create trigger sync_outbox_no_personal before insert on sync_outbox
       when exists (
         select 1 from task t join task_type y on y.id = t.type_id

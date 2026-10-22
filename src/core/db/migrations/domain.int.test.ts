@@ -196,6 +196,77 @@ describe('migration 0004 domain', () => {
     db.close()
   })
 
+  it('NOT NULL e FKs das tabelas novas', () => {
+    const db = openTestDb()
+    const notnull = (t: string): string[] =>
+      (
+        db.prepare(`pragma table_info(${t})`).all() as {
+          name: string
+          notnull: number
+          pk: number
+        }[]
+      )
+        .filter((c) => c.notnull === 1 && c.pk === 0)
+        .map((c) => c.name)
+        .sort()
+    const fks = (t: string): string[] =>
+      (
+        db.prepare(`pragma foreign_key_list(${t})`).all() as {
+          from: string
+          table: string
+          on_delete: string
+        }[]
+      )
+        .map((f) => `${f.from}>${f.table}:${f.on_delete}`)
+        .sort()
+    expect(notnull('project_item')).toEqual(['kind', 'project_id', 'rank'])
+    expect(notnull('ai_session')).toEqual(['started_at', 'state', 'state_at', 'tool'])
+    expect(notnull('mcp_client')).toEqual(['kind'])
+    expect(notnull('activity')).toEqual(['actor', 'at', 'op', 'task_id'])
+    expect(notnull('sync_outbox')).toEqual(['attempts', 'created_at', 'idem_key', 'op', 'task_id'])
+    expect(notnull('key_seq')).toEqual(['last'])
+    expect(fks('project_item')).toEqual(['project_id>project:CASCADE', 'task_id>task:CASCADE'])
+    expect(fks('ai_session')).toEqual(['task_id>task:SET NULL'])
+    expect(fks('mcp_client')).toEqual(['ai_session_id>ai_session:NO ACTION'])
+    expect(fks('activity')).toEqual([
+      'client_id>mcp_client:NO ACTION',
+      'task_id>task:CASCADE',
+      'undone_by_activity_id>activity:NO ACTION'
+    ])
+    expect(fks('sync_outbox')).toEqual(['task_id>task:CASCADE'])
+    db.close()
+  })
+
+  it('enums e idem_key únicos', () => {
+    const db = openTestDb()
+    const t = insertTask(db, { key: 'T-1' })
+    const at = '2026-10-22T00:00:00Z'
+    const session = (state: string): unknown =>
+      db
+        .prepare(
+          "insert into ai_session(id, tool, state, state_at, started_at) values (?, 'claude', ?, ?, ?)"
+        )
+        .run(state, state, at, at)
+    const activity = (actor: string): unknown =>
+      db
+        .prepare("insert into activity(id, at, actor, op, task_id) values (?, ?, ?, 'x', ?)")
+        .run(actor, at, actor, t)
+    const outbox = (id: string, op: string, idem: string): unknown =>
+      db
+        .prepare(
+          'insert into sync_outbox(id, task_id, op, idem_key, created_at) values (?, ?, ?, ?, ?)'
+        )
+        .run(id, t, op, idem, at)
+    expect(code(() => session('dormindo'))).toBe('SQLITE_CONSTRAINT_CHECK')
+    expect(code(() => session('idle'))).toBe('não lançou')
+    expect(code(() => activity('robo'))).toBe('SQLITE_CONSTRAINT_CHECK')
+    expect(code(() => activity('user'))).toBe('não lançou')
+    expect(code(() => outbox('o1', 'delete', 'k1'))).toBe('SQLITE_CONSTRAINT_CHECK')
+    expect(code(() => outbox('o2', 'comment', 'k2'))).toBe('não lançou')
+    expect(code(() => outbox('o3', 'comment', 'k2'))).toBe('SQLITE_CONSTRAINT_UNIQUE')
+    db.close()
+  })
+
   it('project_item: task única e kind validado', () => {
     const db = openTestDb()
     db.prepare("insert into project(id, name) values ('p', 'P')").run()
@@ -227,6 +298,12 @@ describe('migration 0004 domain', () => {
       ids.stages.Pessoal[0]
     ])
     expect(r.touched_at).toBe(r.created_at)
+    db.close()
+  })
+
+  it('insertTask com só parte do tipo lança', () => {
+    const db = openTestDb()
+    expect(() => insertTask(db, { key: 'T-1', type_id: 'x' })).toThrow(/juntos/)
     db.close()
   })
 

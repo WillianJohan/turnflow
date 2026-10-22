@@ -38,7 +38,9 @@ export function insertTask(
   }
 ): string {
   const id = p.id ?? randomUUID()
-  const custom = p.type_id !== undefined || p.flow_id !== undefined || p.stage_id !== undefined
+  const given = [p.type_id, p.flow_id, p.stage_id].filter((v) => v !== undefined).length
+  if (given !== 0 && given !== 3) throw new Error('passe type_id, flow_id e stage_id juntos')
+  const custom = given === 3
   if (!custom) {
     db.prepare(
       "insert or ignore into flow(id, name, is_default) values ('test-flow', 'Teste', 0)"
