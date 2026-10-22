@@ -12,7 +12,9 @@ import { appendProjectItem } from './task'
 // que o Desfazer acha o ator do "mudou depois".
 
 const ACTOR: Actor = { kind: 'import' }
-const TOOL = 'claude-code'
+/** Ferramenta das sessões importadas (o plano consulta o `ai_session` com ela). */
+export const IMPORT_SESSION_TOOL = 'claude-code'
+const TOOL = IMPORT_SESSION_TOOL
 
 export type ImportCheckpoint = { at: string; text: string }
 export type ImportSession = { external_id: string; at: string; label: string | null }

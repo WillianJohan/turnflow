@@ -182,6 +182,128 @@ export const StatusTargetZ = z.union([
   z.object({ stage: z.string().min(1).max(100) }).strict()
 ])
 
+/** O que o import fará com cada task do brain (prévia, E4). */
+export const ImportTaskAction = z.enum([
+  'create',
+  'update',
+  'link',
+  'unchanged',
+  'deleted_in_app',
+  'invalid'
+])
+export type ImportTaskAction = z.infer<typeof ImportTaskAction>
+
+export const ImportField = z.enum(['title', 'description', 'project', 'stage'])
+
+/** Campo mudado nos dois lados: `app` e `markdown` são os valores legíveis de cada um. */
+export const ImportConflict = z.object({
+  key: z.string(),
+  field: ImportField,
+  app: z.string(),
+  markdown: z.string()
+})
+export type ImportConflict = z.infer<typeof ImportConflict>
+
+export const ImportIgnoredReason = z.enum([
+  'credentials',
+  'symlink',
+  'too_large',
+  'not_a_key',
+  'no_readme',
+  'duplicate',
+  'unreadable',
+  'loose_file',
+  'skipped_dir',
+  'truncated'
+])
+
+/** `count` só em `truncated`: quantos itens foram agregados. */
+export const ImportIgnored = z.object({
+  path: z.string(),
+  reason: ImportIgnoredReason,
+  count: z.number().int().optional()
+})
+
+export const ImportPreviewTask = z.object({
+  key: z.string(),
+  title: z.string(),
+  dir: z.enum(['current', 'backlog', 'done']),
+  action: ImportTaskAction,
+  fields: z.array(z.string()),
+  conflicts: z.array(ImportConflict),
+  new_checkpoints: z.number().int(),
+  new_sessions: z.number().int(),
+  new_links: z.number().int(),
+  project: z.string().nullable(),
+  workdir_hint: z.string().nullable(),
+  reason: z.string().nullable()
+})
+export type ImportPreviewTask = z.infer<typeof ImportPreviewTask>
+
+export const ImportPreview = z.object({
+  root: z.string(),
+  token: z.string(),
+  type_id: z.string(),
+  flow_id: z.string(),
+  stages: z.array(z.object({ id: z.string(), name: z.string() })),
+  /** Saúde do mapa salvo: o usuário vê que o arquivo dele foi ignorado (todo ou em parte). */
+  status_map: z.object({
+    problem: z.enum(['unreadable', 'invalid', 'newer_version']).nullable(),
+    dropped: z.number().int()
+  }),
+  statuses: z.array(
+    z.object({
+      status: z.string(),
+      key: z.string(),
+      count: z.number().int(),
+      target: StatusTargetZ.nullable(),
+      source: z.enum(['saved', 'stage_name', 'seed', 'none'])
+    })
+  ),
+  tasks: z.array(ImportPreviewTask),
+  projects: z.array(
+    z.object({
+      source_key: z.string(),
+      name: z.string(),
+      action: z.enum(['create', 'existing', 'deleted_in_app'])
+    })
+  ),
+  attachments: z.array(
+    z.object({ key: z.string(), name: z.string(), path: z.string(), size: z.number() })
+  ),
+  ignored: z.array(ImportIgnored),
+  counts: z.object({
+    create: z.number().int(),
+    update: z.number().int(),
+    link: z.number().int(),
+    unchanged: z.number().int(),
+    deleted_in_app: z.number().int(),
+    invalid: z.number().int(),
+    conflicts: z.number().int()
+  })
+})
+export type ImportPreview = z.infer<typeof ImportPreview>
+
+const KeyField = z.object({ key: z.string(), field: ImportField })
+
+export const ImportReport = z.object({
+  created: z.number().int(),
+  updated: z.number().int(),
+  linked: z.number().int(),
+  unchanged: z.number().int(),
+  deleted_in_app: z.array(z.string()),
+  invalid: z.array(z.object({ key: z.string(), reason: z.string() })),
+  conflicts_kept: z.array(KeyField),
+  taken_markdown: z.array(KeyField),
+  checkpoints_added: z.number().int(),
+  sessions_added: z.number().int(),
+  sessions_taken: z.array(z.object({ external_id: z.string(), task_key: z.string() })),
+  links_added: z.number().int(),
+  projects_created: z.number().int(),
+  ignored: z.array(ImportIgnored)
+})
+export type ImportReport = z.infer<typeof ImportReport>
+
 /** Etapa do fluxo de origem → etapa escolhida no fluxo de destino. */
 export const StageMapping = z.record(Id, Id)
 export type StageMapping = z.infer<typeof StageMapping>
