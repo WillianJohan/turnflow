@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { draftPayload } from './draft'
-import { unwrap } from './ipc'
+import { sendOutcome } from './sendOutcome'
 
 const key = (id: string): string => `turnflow.draft.${id}`
 const load = (id: string): string => {
@@ -43,9 +43,12 @@ export function Composer({
     const p = draftPayload(text)
     if (!p) return
     // sessão morreu entre o render e o clique: mantém o texto
-    unwrap(window.turnflow.send({ id, data: p })).then((ok) => {
-      setLost(!ok)
-      if (!ok) return
+    // só um false confirmado é sessão perdida; erro de IPC mantém o texto e vai pro console
+    window.turnflow.send({ id, data: p }).then((r) => {
+      const out = sendOutcome(r)
+      setLost(out === 'lost')
+      if (!r.ok) console.error(`[ipc] ${r.error.code}: ${r.error.message}`)
+      if (out !== 'sent') return
       save('')
       onSent()
     })

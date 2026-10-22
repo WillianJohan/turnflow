@@ -1,6 +1,7 @@
-import type { DomainChanged } from '../shared/ipc/events'
+import type { DomainChanged, Entity } from '../shared/ipc/events'
 
 export type Change = DomainChanged
+type Op = Change['op']
 
 type Opts = {
   windowMs?: number
@@ -10,6 +11,7 @@ type Opts = {
 }
 
 // Junta os domain.changed numa janela (50 ms): uma rajada de commits vira um evento por entity+op.
+// Mesmo id na janela: a última op vence (upsert→delete→upsert sai só como upsert).
 // afterCommit é o único ponto de entrada; quem chama é o banco, depois do commit (rollback não chama).
 export function createChangeBus(opts: Opts): {
   afterCommit(change: Change): void
@@ -21,34 +23,37 @@ export function createChangeBus(opts: Opts): {
     setTimer = setTimeout,
     clearTimer = (t) => clearTimeout(t as ReturnType<typeof setTimeout>)
   } = opts
-  const pending = new Map<
-    string,
-    { entity: Change['entity']; op: Change['op']; ids: Set<string> }
-  >()
+  const pending = new Map<Entity, Map<string, Op>>()
   let timer: unknown = null
+  let disposed = false
 
   const flush = (): void => {
     timer = null
-    const batch = [...pending.values()]
+    const batch = [...pending]
     pending.clear()
-    for (const { entity, op, ids } of batch) {
-      try {
-        emit({ entity, ids: [...ids], op })
-      } catch (e) {
-        console.error('[changeBus] emit falhou', e)
+    for (const [entity, ops] of batch) {
+      const byOp = new Map<Op, string[]>()
+      for (const [id, op] of ops) byOp.set(op, [...(byOp.get(op) ?? []), id])
+      for (const [op, ids] of byOp) {
+        try {
+          emit({ entity, ids, op })
+        } catch (e) {
+          console.error('[changeBus] emit falhou', e)
+        }
       }
     }
   }
 
   return {
     afterCommit({ entity, ids, op }) {
-      const key = `${entity}:${op}`
-      const slot = pending.get(key) ?? { entity, op, ids: new Set<string>() }
-      ids.forEach((id) => slot.ids.add(id))
-      pending.set(key, slot)
+      if (disposed) return
+      const ops = pending.get(entity) ?? new Map<string, Op>()
+      ids.forEach((id) => ops.set(id, op))
+      pending.set(entity, ops)
       timer ??= setTimer(flush, windowMs)
     },
     dispose() {
+      disposed = true
       if (timer !== null) clearTimer(timer)
       timer = null
       pending.clear()

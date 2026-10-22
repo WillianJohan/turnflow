@@ -100,4 +100,35 @@ describe('createChangeBus', () => {
     vi.advanceTimersByTime(50)
     expect(emit).toHaveBeenCalledTimes(3)
   })
+  it('mesmo id na janela: a última op vence', () => {
+    const emit = vi.fn()
+    const bus = createChangeBus({ emit })
+    bus.afterCommit({ entity: 'task', ids: ['a', 'b'], op: 'upsert' })
+    bus.afterCommit({ entity: 'task', ids: ['a'], op: 'delete' })
+    bus.afterCommit({ entity: 'task', ids: ['b'], op: 'delete' })
+    bus.afterCommit({ entity: 'task', ids: ['a'], op: 'upsert' })
+    vi.advanceTimersByTime(50)
+    expect(emit.mock.calls.map((c) => c[0])).toEqual([
+      { entity: 'task', ids: ['a'], op: 'upsert' },
+      { entity: 'task', ids: ['b'], op: 'delete' }
+    ])
+  })
+  it('mesmo id em entity diferente não colapsa', () => {
+    const emit = vi.fn()
+    const bus = createChangeBus({ emit })
+    bus.afterCommit({ entity: 'task', ids: ['x'], op: 'upsert' })
+    bus.afterCommit({ entity: 'session', ids: ['x'], op: 'delete' })
+    vi.advanceTimersByTime(50)
+    expect(emit).toHaveBeenCalledTimes(2)
+  })
+  it('afterCommit depois do dispose não faz nada', () => {
+    const emit = vi.fn()
+    const setTimer = vi.fn(setTimeout)
+    const bus = createChangeBus({ emit, setTimer })
+    bus.dispose()
+    bus.afterCommit({ entity: 'task', ids: ['a'], op: 'upsert' })
+    vi.advanceTimersByTime(100)
+    expect(emit).not.toHaveBeenCalled()
+    expect(setTimer).not.toHaveBeenCalled()
+  })
 })

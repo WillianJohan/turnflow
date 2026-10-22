@@ -6,6 +6,7 @@ import { appCommand, termKey } from './shortcuts'
 import { oscRgb } from '../../shared/color'
 import { zoomFont } from './zoom'
 import { unwrap } from './ipc'
+import { chunks } from './chunk'
 
 // Zoom por aba (Ctrl+scroll): diferença em px sobre a fonte das Configurações, salva por id.
 const zoomKey = (id: string): string => `turnflow.zoom.${id}`
@@ -133,7 +134,8 @@ export function getTerm(id: string): Entry {
     } else window.turnflow.write({ id: ref.id, data: '\x1b\r' }) // Shift+Enter: Alt+Enter é quebra de linha no claude
     return false
   })
-  term.onData((data) => window.turnflow.write({ id: ref.id, data }))
+  // paste grande chega inteiro: o main recusa mensagem acima de MAX_PTY_DATA
+  term.onData((d) => chunks(d).forEach((data) => window.turnflow.write({ id: ref.id, data })))
   // O claude consulta as cores (OSC 10/11) no boot e espera resposta; o xterm.js não responde sozinho.
   // Responde com as cores do tema atual: o claude escolhe paleta clara/escura por elas.
   const reply = (code: number, key: 'foreground' | 'background') => (data: string) => {
