@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { DOMAIN_COPY } from './copy/domain'
 import { Id } from './ipc/common'
-import { isAbsolutePath } from './paths'
+import { isAbsolutePath } from './pathSyntax'
 
 export const Group = z.enum(['sua_vez', 'pendente', 'encaminhado', 'fila_projeto', 'concluida'])
 export type Group = z.infer<typeof Group>

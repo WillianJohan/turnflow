@@ -222,7 +222,7 @@ describe('migration 0004 domain', () => {
     expect(notnull('project_item')).toEqual(['kind', 'project_id', 'rank'])
     expect(notnull('ai_session')).toEqual(['started_at', 'state', 'state_at', 'tool'])
     expect(notnull('mcp_client')).toEqual(['kind'])
-    expect(notnull('activity')).toEqual(['actor', 'at', 'op', 'task_id'])
+    expect(notnull('activity')).toEqual(['actor', 'at', 'op'])
     expect(notnull('sync_outbox')).toEqual(['attempts', 'created_at', 'idem_key', 'op', 'task_id'])
     expect(notnull('key_seq')).toEqual(['last'])
     expect(fks('project_item')).toEqual(['project_id>project:CASCADE', 'task_id>task:CASCADE'])
@@ -261,6 +261,16 @@ describe('migration 0004 domain', () => {
     expect(code(() => session('idle'))).toBe('não lançou')
     expect(code(() => activity('robo'))).toBe('SQLITE_CONSTRAINT_CHECK')
     expect(code(() => activity('user'))).toBe('não lançou')
+    // Atividade sem task (ex.: apagar projeto)
+    expect(
+      code(() =>
+        db
+          .prepare(
+            "insert into activity(id, at, actor, op, task_id) values ('sem-task', ?, 'user', 'project_delete', null)"
+          )
+          .run(at)
+      )
+    ).toBe('não lançou')
     expect(code(() => outbox('o1', 'delete', 'k1'))).toBe('SQLITE_CONSTRAINT_CHECK')
     expect(code(() => outbox('o2', 'comment', 'k2'))).toBe('não lançou')
     expect(code(() => outbox('o3', 'comment', 'k2'))).toBe('SQLITE_CONSTRAINT_UNIQUE')

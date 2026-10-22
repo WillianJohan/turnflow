@@ -123,7 +123,8 @@ export const domain: Migration = {
         actor text not null check(actor in ('user', 'mcp', 'sync', 'assistant', 'import')),
         client_id text references mcp_client(id),
         op text not null,
-        task_id text not null references task(id) on delete cascade,
+        -- NULL quando a operação não é de uma task (ex.: apagar projeto)
+        task_id text references task(id) on delete cascade,
         inverse text,
         data text,
         undone_at text,

@@ -14,6 +14,8 @@ export function createTx(
   onListenerError: (e: unknown) => void = (e) => console.error('domain.changed listener falhou', e)
 ): Tx {
   return (fn) => {
+    // aninhar viraria savepoint e soltaria o afterCommit antes do commit de fora (Decisão 27)
+    if (db.inTransaction) throw new Error('tx não aninha: já existe uma transação aberta')
     const pending: DomainChanged[] = []
     const result = db.transaction(() => {
       const r = fn((c) => pending.push(c))

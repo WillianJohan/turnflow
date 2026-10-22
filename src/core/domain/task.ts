@@ -1,5 +1,5 @@
 import { Limits, type CreateTaskInput, type TaskPatch, type TaskRow } from '../../shared/contracts'
-import { isAbsolutePath } from '../../shared/paths'
+import { isAbsolutePath } from '../../shared/pathSyntax'
 import type { Db } from '../db/open'
 import { recordActivity } from './activity'
 import { nowIso, type Actor, type DomainDeps, type Emit } from './context'
@@ -45,7 +45,7 @@ export function createTaskIn(
 ): TaskWrite {
   const { db } = d
   const title = cleanTitle(i.title)
-  const description = checkMax('description', i.description ?? null, Limits.description)
+  const description = cleanDescription(i.description)
   const workdir = cleanWorkdir(i.workdir)
 
   const project = i.project_id
@@ -64,7 +64,7 @@ export function createTaskIn(
           )
           .get()
   ) as { id: string; flow_id: string } | undefined
-  if (!type) throw notFound('type', i.type_id ?? 'default')
+  if (!type) throw notFound('type', i.type_id ?? null)
 
   const flowId = project?.flow_id ?? type.flow_id
   const stage = db
@@ -169,8 +169,7 @@ function finish(d: DomainDeps, w: TaskWrite): TaskCommandResult {
 function normalizePatch(p: TaskPatch): Partial<Pick<TaskRecord, EditField>> {
   const out: Partial<Pick<TaskRecord, EditField>> = {}
   if (p.title !== undefined) out.title = cleanTitle(p.title)
-  if (p.description !== undefined)
-    out.description = checkMax('description', p.description, Limits.description)
+  if (p.description !== undefined) out.description = cleanDescription(p.description)
   for (const f of ['sum_what', 'sum_where', 'sum_next'] as const)
     if (p[f] !== undefined) out[f] = checkMax(f, p[f], Limits.sum)
   if (p.workdir !== undefined) out.workdir = cleanWorkdir(p.workdir)
@@ -181,6 +180,12 @@ function cleanTitle(v: string | null | undefined): string {
   const t = typeof v === 'string' ? v.trim() : ''
   if (t === '') throw domainError('VALIDATION', 'title_required', { field: 'title' })
   return checkMax('title', t, Limits.title)
+}
+
+/** `''` é gravado como NULL: a leitura devolve `''` para NULL e o no-op compara com o cru. */
+function cleanDescription(v: string | null | undefined): string | null {
+  if (v === undefined || v === null || v === '') return null
+  return checkMax('description', v, Limits.description)
 }
 
 /** `''`/`null` = sem pasta própria (vale a padrão); senão absoluta (Decisão 20). */
@@ -199,6 +204,7 @@ function sumSource(actor: Actor): 'user' | 'ai' {
 /**
  * Próxima key `T-n` (Decisão 7): maior entre `key_seq` e a maior `T-<dígitos>` existente, + 1,
  * gravada em `key_seq` na mesma transação. Purge da maior não faz reaproveitar; `T-7` de import é pulada.
+ * Só até 15 dígitos (inteiro exato em JS): uma `T-<gigante>` importada não satura a sequência.
  */
 function nextKey(db: Db): string {
   const seq = db.prepare("select last from key_seq where prefix = 'T'").get() as
@@ -206,7 +212,8 @@ function nextKey(db: Db): string {
   const { n } = db
     .prepare(
       `select max(cast(substr(key, 3) as integer)) as n from task
-       where key glob 'T-[0-9]*' and substr(key, 3) not glob '*[^0-9]*'`
+       where key glob 'T-[0-9]*' and substr(key, 3) not glob '*[^0-9]*'
+         and length(substr(key, 3)) <= 15`
     )
     .get() as { n: number | null }
   const next = Math.max(seq?.last ?? 0, n ?? 0) + 1

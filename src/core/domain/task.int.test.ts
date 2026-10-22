@@ -175,6 +175,57 @@ describe('createTask', () => {
   })
 })
 
+describe('createTask (casos de borda)', () => {
+  it('projeto precede o tipo: projeto Pessoal + tipo Bugfix fica em Pessoal/A fazer', () => {
+    const h = setup()
+    const ids = seedIds(h.db)
+    h.db
+      .prepare("insert into project(id, name, flow_id) values ('p1', 'P', ?)")
+      .run(ids.flows.Pessoal)
+    const r = createTask(h.d, USER, { title: 'a', type_id: ids.types.Bugfix, project_id: 'p1' })
+    expect(raw(h.db, r.row!.id).flow_id).toBe(ids.flows.Pessoal)
+    expect(r.row!).toMatchObject({ type_id: ids.types.Bugfix, project_id: 'p1' })
+    expect(r.row!.stage).toMatchObject({ name: 'A fazer', position: 1, count: 3 })
+  })
+
+  it('etapa inicial final grava done_at', () => {
+    const h = setup()
+    h.db.exec(`
+      insert into flow(id, name) values ('f1', 'Um');
+      insert into flow_stage(id, flow_id, position, name, short_name, is_final)
+        values ('s1', 'f1', 1, 'Fim', 'Fim', 1);
+      insert into task_type(id, name, flow_id) values ('y1', 'Um', 'f1')`)
+    const id = createTask(h.d, USER, { title: 'a', type_id: 'y1' }).row!.id
+    expect(raw(h.db, id).done_at).toBe(h.nowIso())
+    expect(getTask(h.d, id).group).toBe('concluida')
+  })
+
+  it('description vazia grava NULL', () => {
+    const h = setup()
+    const id = createTask(h.d, USER, { title: 'a', description: '' }).row!.id
+    expect(raw(h.db, id).description).toBeNull()
+  })
+
+  it('T-n gigante (mais de 15 dígitos) não satura a sequência', () => {
+    const h = setup()
+    insertTask(h.db, { key: 'T-99999999999999999999', title: 't' })
+    insertTask(h.db, { key: 'T-999999999999999', title: 't' })
+    expect(createTask(h.d, USER, { title: 'a' }).row!.key).toBe('T-1000000000000000')
+  })
+
+  it('sem fluxo padrão: NOT_FOUND type com id null', () => {
+    const h = setup()
+    h.db.prepare('update flow set is_default = 0').run()
+    try {
+      createTask(h.d, USER, { title: 'a' })
+      throw new Error('não lançou')
+    } catch (e) {
+      expect(e).toBeInstanceOf(DomainError)
+      expect((e as DomainError).details).toEqual({ reason: 'not_found', entity: 'type', id: null })
+    }
+  })
+})
+
 describe('pasta de trabalho', () => {
   it('vazia vale a padrão; preenchida vale a da task', () => {
     const h = setup({ defaultWorkdir: () => '/padrao' })
@@ -251,6 +302,27 @@ describe('updateTask', () => {
     const id = createTask(h.d, USER, { title: 'a' }).row!.id
     const r = updateTask(h.d, USER, id, { title: 'a', sum_next: 'depois', description: null })
     expect(readActivity(h.db, r.activity_id!)!.data.fields).toEqual(['sum_next'])
+  })
+
+  it("description NULL e patch '' é no-op", () => {
+    const h = setup()
+    const id = createTask(h.d, USER, { title: 'a' }).row!.id
+    expect(raw(h.db, id).description).toBeNull()
+    const touched = raw(h.db, id).touched_at
+    h.events.length = 0
+    h.tick(MIN)
+    const r = updateTask(h.d, USER, id, { description: '' })
+    expect(r.activity_id).toBeNull()
+    expect(raw(h.db, id)).toMatchObject({ description: null, touched_at: touched })
+    expect(h.events).toHaveLength(0)
+  })
+
+  it("description '' apaga o texto (grava NULL)", () => {
+    const h = setup()
+    const id = createTask(h.d, USER, { title: 'a', description: 'x' }).row!.id
+    updateTask(h.d, USER, id, { description: '' })
+    expect(raw(h.db, id).description).toBeNull()
+    expect(getTask(h.d, id).description).toBe('')
   })
 
   it('patch igual é no-op: sem activity, sem toque e sem evento', () => {

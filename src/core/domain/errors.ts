@@ -26,7 +26,7 @@ export function domainError(
   return new DomainError(code, DOMAIN_COPY.errors[reason], { reason, ...details })
 }
 
-export function notFound(entity: NotFoundEntity, id: string): DomainError {
+export function notFound(entity: NotFoundEntity, id: string | null): DomainError {
   return new DomainError('NOT_FOUND', DOMAIN_COPY.notFound(entity), {
     reason: 'not_found',
     entity,

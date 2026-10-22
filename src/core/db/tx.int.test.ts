@@ -77,6 +77,27 @@ describe('createTx', () => {
     db.close()
   })
 
+  it('não aninha: tx dentro de tx lança e nada é gravado nem emitido', () => {
+    const db = openTestDb()
+    const vistos: DomainChanged[] = []
+    const tx = createTx(db, (c) => vistos.push(c))
+    expect(() =>
+      tx((emit) => {
+        db.prepare('insert into secret(name, service, value, created_at) values (?,?,?,?)').run(
+          'n',
+          's',
+          'v',
+          't'
+        )
+        emit({ entity: 'task', ids: ['a'], op: 'upsert' })
+        tx(() => 1)
+      })
+    ).toThrow(/não aninha/)
+    expect(vistos).toHaveLength(0)
+    expect(db.prepare("select count(*) as n from secret where name = 'n'").get()).toEqual({ n: 0 })
+    db.close()
+  })
+
   it('recusa fn assíncrona', () => {
     const db = openTestDb()
     const tx = createTx(db, () => {})
