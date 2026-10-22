@@ -37,6 +37,10 @@ computador.
 - A configuração do app (`config.json`, `ui.json`, `themes/`).
 - Os logs do app (`logs/`), em texto plano: podem ter trecho de um comando SQL ou o título de uma
   task. O Apagar tudo os remove.
+- O storage do renderer (`electron/`), em texto plano: o rascunho de cada task no campo de
+  mensagem e o layout das abas e da lista. O Apagar tudo o limpa.
+- O arquivo das 24 palavras que você salvou: fica onde você o salvou, fora da pasta de
+  configuração e do alcance do Apagar tudo.
 
 ## Apagar uma task de vez
 
@@ -55,7 +59,7 @@ até você apagá-la ou usar Apagar tudo.
 "Apagar tudo" (em Ajustes, ou na tela de desbloqueio para quem esqueceu a senha e perdeu as
 palavras) exige digitar `APAGAR` e faz crypto-shredding: apaga primeiro o `key.enc`, o único lugar
 onde a DEK embrulhada existe, e depois o banco (com `-wal` e `-shm`), os backups, os anexos e os
-logs. Um marcador gravado antes do primeiro arquivo apagado faz o app terminar o trabalho na
+logs. Por fim limpa o storage do renderer em `electron/` (rascunhos e layout) e o cache. Um marcador gravado antes do primeiro arquivo apagado faz o app terminar o trabalho na
 próxima abertura se ele for interrompido. A configuração e os temas ficam.
 
 O app não consegue apagar a chave mestra que o chaveiro do sistema guarda para ele (a "Safe
@@ -64,7 +68,8 @@ reabre nada: sem o `key.enc` não existe DEK embrulhada para essa chave abrir. S
 entrada manualmente no gerenciador de chaves do sistema.
 
 Uma cópia de backup que você tenha levado para fora da pasta de configuração não é alcançada pelo
-Apagar tudo; ela continua legível por quem tiver as 24 palavras.
+Apagar tudo; ela continua legível por quem tiver as 24 palavras. O mesmo vale para o arquivo das
+24 palavras que você salvou: apague-o você mesmo se quiser que ele suma.
 
 ## Fora de escopo
 

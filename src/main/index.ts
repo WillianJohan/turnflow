@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell, BrowserWindow, Menu } from 'electron'
+import { app, dialog, ipcMain, session, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
 import { mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
@@ -227,6 +227,11 @@ function startApp(): void {
       vault,
       version: app.getVersion(),
       dialogs: vaultDialogs(win),
+      // rascunhos do Composer e layout ficam no localStorage, em texto plano (configDir/electron/)
+      clearBrowserData: async () => {
+        await session.defaultSession.clearStorageData()
+        await session.defaultSession.clearCache()
+      },
       log: (line) => log('error', line)
     })
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])

@@ -35,7 +35,14 @@ function fakeIpc(): IpcLike & { invoke: Invoke } {
   } as never
 }
 
-function setup(o: { dir?: string; extra?: Partial<VaultDeps>; dialogs?: VaultDialogs } = {}): {
+function setup(
+  o: {
+    dir?: string
+    extra?: Partial<VaultDeps>
+    dialogs?: VaultDialogs
+    clearBrowserData?: () => Promise<void>
+  } = {}
+): {
   vault: Vault
   invoke: Invoke
   dialogs: VaultDialogs
@@ -54,7 +61,13 @@ function setup(o: { dir?: string; extra?: Partial<VaultDeps>; dialogs?: VaultDia
   }
   const h = <C extends Channel>(ch: C, fn: Handler<C>): void =>
     handle(ipc, ch, fn, { validateOutput: true })
-  registerVaultIpc(h, { vault, version: VERSION, dialogs, now: () => NOW })
+  registerVaultIpc(h, {
+    vault,
+    version: VERSION,
+    dialogs,
+    now: () => NOW,
+    clearBrowserData: o.clearBrowserData
+  })
   return { vault, invoke: ipc.invoke, dialogs, dir }
 }
 
@@ -397,6 +410,33 @@ describe('canais do vault', () => {
     expect(existsSync(join(dir, BRAND.db))).toBe(false)
     vault.close()
   }, 20_000)
+
+  it('vault.wipe limpa o storage do Chromium depois do wipeAll; antes dele, não', async () => {
+    const dir = tmpDir()
+    await committed(dir)
+    const order: string[] = []
+    const clearBrowserData = vi.fn(async () => void order.push('clear'))
+    const { vault, invoke } = setup({ dir, clearBrowserData })
+    await vault.boot()
+    const wipe = vault.wipeAll.bind(vault)
+    vi.spyOn(vault, 'wipeAll').mockImplementation(async () => {
+      await wipe()
+      order.push('wipe')
+    })
+    expect(await invoke(ch.vaultWipe.name, { confirm: 'APAGAR' })).toEqual(bootOk('first_run'))
+    expect(order).toEqual(['wipe', 'clear'])
+    vault.close()
+  }, 20_000)
+
+  it('vault.wipe que falha não limpa o storage', async () => {
+    const clearBrowserData = vi.fn(async () => undefined)
+    const { vault, invoke } = setup({ clearBrowserData })
+    await vault.boot()
+    vi.spyOn(vault, 'wipeAll').mockRejectedValue(new Error('disco'))
+    expect(await invoke(ch.vaultWipe.name, { confirm: 'APAGAR' })).toMatchObject({ ok: false })
+    expect(clearBrowserData).not.toHaveBeenCalled()
+    vault.close()
+  })
 
   it('vault.retry fora de failed → CONFLICT/BAD_STATE e não refaz o boot', async () => {
     const { vault, invoke } = setup()
