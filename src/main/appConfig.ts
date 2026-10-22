@@ -2,6 +2,8 @@ import { watch } from 'fs'
 import { mkdir, readdir, readFile, writeFile, access, unlink } from 'fs/promises'
 import { basename, join } from 'path'
 import type { AppConfig, Theme } from '../shared/types'
+import { CONFIG_COPY } from '../shared/copy/config'
+import { IpcError } from './ipc/handle'
 
 // Pasta de config do app (~/.config/turnflow): config.json + themes/*.json.
 // Tudo editável à mão; o app nunca sobrescreve o que já existe.
@@ -609,7 +611,7 @@ export function writeConfig(dir: string, patch: Partial<AppConfig>): Promise<App
     try {
       raw = await readRaw(dir)
     } catch (e) {
-      throw new Error(`config.json inválido, corrija antes: ${(e as Error).message}`, { cause: e })
+      throw new IpcError('VALIDATION', CONFIG_COPY.configInvalid((e as Error).message))
     }
     const next = { ...raw, ...patch }
     await writeFile(join(dir, 'config.json'), pretty(next))
@@ -672,7 +674,8 @@ export async function readTheme(
 }
 
 export async function cloneTheme(dir: string, from: string): Promise<string> {
-  if (!/^[\w.-]+$/.test(from) || from.startsWith('.')) throw new Error(`tema "${from}" inválido`)
+  if (!/^[\w.-]+$/.test(from) || from.startsWith('.'))
+    throw new IpcError('VALIDATION', CONFIG_COPY.themeInvalid(from))
   const { theme } = await readTheme(dir, from)
   let id = `${from}-personalizado`
   for (let n = 2; await exists(join(themesDir(dir), `${id}.json`)); n++)
@@ -689,10 +692,10 @@ const validId = (id: string): boolean => /^[\w.-]+$/.test(id) && !id.startsWith(
 
 // Editor de tema: grava themes/<id>.json. Padrão é só leitura (salvar como novo).
 export async function saveTheme(dir: string, id: string, theme: Theme): Promise<void> {
-  if (!validId(id)) throw new Error(`nome de tema inválido: "${id}"`)
-  if (id in BUILTIN_THEMES) throw new Error(`"${id}" é tema padrão — salve como tema novo`)
+  if (!validId(id)) throw new IpcError('VALIDATION', CONFIG_COPY.themeNameInvalid(id))
+  if (id in BUILTIN_THEMES) throw new IpcError('VALIDATION', CONFIG_COPY.themeBuiltin(id))
   for (const [k, v] of [...Object.entries(theme.ui ?? {}), ...Object.entries(theme.terminal ?? {})])
-    if (!HEX.test(v)) throw new Error(`cor inválida em ${k}: ${v}`)
+    if (!HEX.test(v)) throw new IpcError('VALIDATION', CONFIG_COPY.colorInvalid(k, v))
   await writeFile(
     join(themesDir(dir), `${id}.json`),
     pretty({ name: theme.name || id, ui: theme.ui, terminal: theme.terminal })
@@ -700,6 +703,7 @@ export async function saveTheme(dir: string, id: string, theme: Theme): Promise<
 }
 
 export async function deleteTheme(dir: string, id: string): Promise<void> {
-  if (!validId(id) || id in BUILTIN_THEMES) throw new Error(`"${id}" não pode ser excluído`)
+  if (!validId(id) || id in BUILTIN_THEMES)
+    throw new IpcError('VALIDATION', CONFIG_COPY.themeNotDeletable(id))
   await unlink(join(themesDir(dir), `${id}.json`))
 }

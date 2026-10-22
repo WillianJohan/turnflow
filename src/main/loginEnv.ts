@@ -1,6 +1,8 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { BRAND } from '../shared/brand'
+import { CONFIG_COPY } from '../shared/copy/config'
+import { IpcError } from './ipc/handle'
 
 type Exec = () => Promise<string>
 
@@ -33,7 +35,7 @@ export function loginEnv(exec: Exec = shell): Promise<{ PATH: string; claude: st
     .then((out) => {
       const PATH = marker(out, 'PATH')
       const claude = marker(out, 'CLAUDE')
-      if (!claude) throw new Error('claude não encontrado no PATH do shell')
+      if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
       return { PATH, claude }
     })
     .catch((e) => {
