@@ -1,0 +1,189 @@
+/* Tela de import: HTML/CSS simples com as variáveis de :root, sem o DS (E6). */
+.import {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.import p {
+  margin: 0;
+  line-height: 1.45;
+}
+.import h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.import input[type='text'],
+.import select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+.import input:focus-visible,
+.import select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.import button {
+  padding: 6px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.import button:disabled,
+.import select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.import-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.import-folder,
+.import-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-dim);
+}
+.import-folder {
+  flex: 1;
+  min-width: 0;
+}
+.import-field {
+  align-self: flex-start;
+}
+.import-primary {
+  align-self: flex-start;
+  background: var(--accent) !important;
+  color: var(--primary-fg) !important;
+  font-weight: 600;
+}
+.import-dim {
+  color: var(--fg-dim);
+}
+.import-warn {
+  padding: 8px;
+  background: var(--warn-bg);
+  color: var(--yellow);
+  border-radius: 4px;
+}
+.import-error {
+  padding: 8px;
+  background: var(--err-bg);
+  color: var(--err-fg);
+  border-radius: 4px;
+}
+.import-preview,
+.import-report {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.import-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.import-counts div {
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.import-counts dt {
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.import-counts dd {
+  margin: 0;
+  font-weight: 600;
+}
+.import-table {
+  border-collapse: collapse;
+}
+.import-table th,
+.import-table td {
+  padding: 4px 12px 4px 0;
+  text-align: left;
+}
+.import-table th {
+  color: var(--fg-dim);
+  font-weight: normal;
+}
+.import-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.import-tasks li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.import-task-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.import-key {
+  font-family: ui-monospace, monospace;
+  color: var(--fg-dim);
+}
+.import-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-action {
+  color: var(--accent);
+  font-size: 12px;
+}
+.import-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.import-conflict legend {
+  color: var(--fg-dim);
+  padding: 0 4px;
+}
+.import-conflict label,
+.import-check {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.import-value {
+  max-height: 4.5em;
+  overflow: auto;
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.import details ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+.import summary {
+  cursor: pointer;
+}

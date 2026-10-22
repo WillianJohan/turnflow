@@ -1,3 +1,5 @@
+import { BRAND } from '../brand'
+
 // Textos do import de markdown. Os Tasks 8–10 do E4 acrescentam os textos das telas.
 
 export const IMPORT_COPY = {
@@ -21,6 +23,91 @@ export const IMPORT_COPY = {
       'The tasks were imported, but the status choices could not be saved for the next import.',
     brain_dir_not_saved:
       'The tasks were imported, but the brain folder could not be saved in the settings.'
+  },
+  /** Tela de import do brain (Ajustes → Import). */
+  screen: {
+    title: 'Import',
+    intro:
+      'Import tasks from a brain folder of markdown READMEs. The folder is only read, never changed.',
+    folder: 'Brain folder',
+    browse: 'Browse…',
+    preview: 'Preview',
+    previewing: 'Reading the folder…',
+    apply: 'Apply',
+    applying: 'Importing…',
+    previewRefreshed:
+      'The folder changed since the preview. The preview was refreshed: check it and apply again.',
+    type: 'Task type',
+    counts: {
+      create: 'To create',
+      update: 'To update',
+      link: 'To link',
+      record_only: 'Record only',
+      unchanged: 'Unchanged',
+      deleted_in_app: 'Deleted in the app',
+      invalid: 'Invalid',
+      conflicts: 'Conflicts'
+    },
+    statuses: 'Statuses',
+    statusCol: 'Status',
+    tasksCol: 'Tasks',
+    stageCol: 'Stage',
+    notMapped: 'Not mapped: first stage, with an imported-status checkpoint',
+    missingStage: (name: string): string => `${name} (stage no longer exists)`,
+    roles: {
+      first: 'First stage',
+      working: 'Working stage',
+      review: 'Review stage',
+      final: 'Final stage',
+      blocked: 'Blocked'
+    },
+    mapProblem: {
+      unreadable: 'The saved status choices could not be read and were ignored.',
+      invalid: 'The saved status choices are invalid and were ignored.',
+      newer_version:
+        'The saved status choices come from a newer version of the app and were ignored.'
+    },
+    mapDropped: (n: number): string =>
+      n === 1
+        ? '1 saved status choice was invalid and was ignored.'
+        : `${n} saved status choices were invalid and were ignored.`,
+    tasks: 'Tasks',
+    noTasks: 'No tasks found in this folder.',
+    actions: {
+      create: 'Create',
+      update: 'Update',
+      link: 'Link to the existing task',
+      record_only: 'Record only',
+      unchanged: 'Unchanged',
+      deleted_in_app: 'Deleted in the app, not restored',
+      invalid: 'Invalid'
+    },
+    fields: { title: 'Title', description: 'Description', project: 'Project', stage: 'Stage' },
+    conflict: (field: string): string => `${field} changed on both sides`,
+    keepApp: `Keep ${BRAND.name}`,
+    useMarkdown: 'Use markdown',
+    workdirSuggestion: (dir: string): string => `Use ${dir} as the working folder`,
+    attachments: (n: number): string => `Pending attachments (${n})`,
+    attachmentsHint: 'Attachments are listed only; they are not imported.',
+    ignoredList: (n: number): string => `Ignored (${n})`,
+    reportTitle: 'Import finished',
+    report: {
+      created: 'Created',
+      updated: 'Updated',
+      linked: 'Linked',
+      record_only: 'Record only',
+      unchanged: 'Unchanged',
+      checkpoints_added: 'Checkpoints added',
+      sessions_added: 'Sessions added',
+      links_added: 'Links added',
+      projects_created: 'Projects created'
+    },
+    conflictsKept: (n: number): string => `Conflicts kept with the app value: ${n}`,
+    takenMarkdown: (n: number): string => `Conflicts resolved with markdown: ${n}`,
+    deletedInApp: (keys: string): string => `Deleted in the app, not restored: ${keys}`,
+    invalidTask: (key: string, reason: string): string => `${key} was not imported: ${reason}`,
+    sessionTaken: (id: string, key: string): string =>
+      `Session ${id} already belongs to ${key} and stays there.`
   },
   importedStatus: (status: string): string => `Imported status: ${status}`,
   /** Por que um caminho ficou de fora do import. */

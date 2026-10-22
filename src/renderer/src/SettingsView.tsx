@@ -6,6 +6,8 @@ import { StatusIcon } from './StatusIcon'
 import { orThrow, unwrap } from './ipc'
 import { WipeAll } from './features/vault/WipeAll'
 import { COPY as VAULT_SCREENS } from './features/vault/copy'
+import { ImportBrain } from './features/import/ImportBrain'
+import { IMPORT_COPY } from '../../shared/copy/import'
 
 // Número que aceita digitação: "12" passa por "1", então só valida ao confirmar.
 function SizeField({
@@ -195,6 +197,11 @@ export function SettingsView({
             <code>themes/*.json</code>. Editou e salvou, o app aplica na hora.
           </p>
           <button onClick={() => window.turnflow.openConfigDir()}>Abrir pasta de config</button>
+        </section>
+
+        <section className="sp-card" data-testid="settings-import">
+          <h3>{IMPORT_COPY.screen.title}</h3>
+          <ImportBrain brainDir={c.brainDir} />
         </section>
 
         <section className="sp-card" data-testid="settings-wipe">
