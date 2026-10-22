@@ -43,6 +43,7 @@ import { loadTasks, watchTasks } from './tasks'
 import { getHeader, readCache } from './header'
 import { handle as handleOn, IpcError, type Handler, type IpcLike } from './ipc/handle'
 import { registerPtyIo } from './ipc/ptyIo'
+import { onPtyExit } from './ipc/ptyExit'
 
 export const UPDATE_ID = '__update__'
 
@@ -115,13 +116,7 @@ export async function registerIpc(win: BrowserWindow, ipc: IpcLike = ipcMain): P
   }
   const ptyEvents = {
     data: (id: string, d: string) => send('pty:data', id, d),
-    exit: (id: string, code: number) => {
-      uuidOf.delete(id)
-      guard.release(id)
-      for (const [k, v] of alias) if (v === id) alias.delete(k)
-      send('pty:exit', id, code)
-      send('pty:state', id, 'idle')
-    }
+    exit: (id: string, code: number) => onPtyExit({ uuidOf, alias, guard, send }, id, code)
   }
   const env = async (id: string): Promise<Record<string, string>> => ({
     PATH: (await loginEnv()).PATH,

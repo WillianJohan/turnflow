@@ -60,7 +60,14 @@ export async function startSocketServer(
   if ((await probe(path)) === 'alive')
     throw Object.assign(new Error(`ALREADY_RUNNING: ${path}`), { code: 'ALREADY_RUNNING' })
   if (!pipe) unlinkQuiet(path)
-  const server = createServer(onConn)
+  // rastreia as conexões vivas: server.close() só termina quando todas fecham, e um cliente MCP
+  // pendurado deixaria o will-quit esperando (e o arquivo do socket órfão)
+  const sockets = new Set<Socket>()
+  const server = createServer((s) => {
+    sockets.add(s)
+    s.once('close', () => sockets.delete(s))
+    onConn(s)
+  })
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(path, () => {
@@ -68,6 +75,10 @@ export async function startSocketServer(
       resolve()
     })
   })
+  // Janela da umask: entre o listen e este chmod o arquivo existe com a permissão da umask (ex.:
+  // 0755). Com secureDir (padrão) o dir 0700 fecha a janela. Com secureDir:false (TURNFLOW_SOCKET
+  // em dir alheio) o dir pode ser atravessável por outros, então a janela é real e curta: o
+  // chamador que escolhe esse path aceita o risco.
   if (!pipe) chmodSync(path, 0o600)
   return {
     close: () =>
@@ -76,6 +87,8 @@ export async function startSocketServer(
           if (!pipe) unlinkQuiet(path)
           resolve()
         })
+        // close() para de aceitar, mas espera os clientes: destrói os que restam
+        for (const s of sockets) s.destroy()
       })
   }
 }

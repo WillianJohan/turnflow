@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, Menu } from 'electron'
 import { join } from 'path'
-import { writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
 import { windowPrefs } from './windowPrefs'
@@ -8,6 +9,7 @@ import { isExternalLink } from './links'
 import { binDir, configDir, socketPath } from './config'
 import { BRAND } from '../shared/brand'
 import { changeBus } from './changeBusInstance'
+import { cliUserDataDir } from '../shared/paths'
 import { parseCli, runCli } from '../cli/dispatch'
 import { detectShimTarget, shimContent, writeShim } from './shim'
 import { startSocketServer, stubMcpHandler } from './socketServer'
@@ -16,6 +18,13 @@ import { startSocketServer, stubMcpHandler } from './socketServer'
 // O lock é da instância com janela; a CLI nunca o disputa nem foca a janela aberta.
 const cli = parseCli(process.argv)
 if (cli.mode === 'cli') {
+  // antes de qualquer outra coisa do Electron: sem isso o Chromium cria ~/.config/Turnflow/
+  // (Local State, Crashpad) a cada execução, ignorando TURNFLOW_CONFIG_DIR e o sufixo -dev
+  const cliData = cliUserDataDir(process.env, process.platform, homedir(), !app.isPackaged)
+  mkdirSync(cliData, { recursive: true, mode: 0o700 })
+  app.setPath('userData', cliData)
+  app.setPath('sessionData', cliData)
+  app.setPath('crashDumps', join(cliData, 'crashes'))
   app.dock?.hide()
   // nada de diálogo de erro do Electron nem processo pendurado: CLI sai com código
   process.on('uncaughtException', (e) => {
@@ -97,7 +106,15 @@ async function startLocalSurface(): Promise<void> {
     const server = await startSocketServer(socketPath(), stubMcpHandler, {
       secureDir: !process.env[`${BRAND.envPrefix}SOCKET`]
     })
-    app.on('will-quit', () => void server.close())
+    // fecha o socket antes de sair: will-quit não espera promise, então segura o quit até o
+    // close() terminar (ele destrói os clientes pendurados e apaga o arquivo do socket)
+    let closing = false
+    app.on('will-quit', (e) => {
+      if (closing) return
+      closing = true
+      e.preventDefault()
+      server.close().finally(() => app.quit())
+    })
   } catch (e) {
     // ALREADY_RUNNING com o lock na mão = outra instância com outro userData (ex.: teste)
     console.error('[socket]', e instanceof Error ? e.message : e)

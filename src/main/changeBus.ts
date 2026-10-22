@@ -33,7 +33,11 @@ export function createChangeBus(opts: Opts): {
     pending.clear()
     for (const [entity, ops] of batch) {
       const byOp = new Map<Op, string[]>()
-      for (const [id, op] of ops) byOp.set(op, [...(byOp.get(op) ?? []), id])
+      for (const [id, op] of ops) {
+        const ids = byOp.get(op)
+        if (ids) ids.push(id)
+        else byOp.set(op, [id])
+      }
       for (const [op, ids] of byOp) {
         try {
           emit({ entity, ids, op })

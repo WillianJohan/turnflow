@@ -109,3 +109,15 @@ it('path maior que o sun_path → SOCKET_PATH_TOO_LONG com erro claro', async ()
   const p = join(root, 'x'.repeat(120), 'turnflow.sock')
   await expect(startSocketServer(p, stubMcpHandler)).rejects.toThrow('SOCKET_PATH_TOO_LONG')
 })
+
+it('close com cliente conectado destrói a conexão e remove o arquivo do socket', async () => {
+  const p = join(root, 'turnflow.sock')
+  const s = await startSocketServer(p, stubMcpHandler)
+  const c = createConnection(p)
+  await new Promise<void>((r) => c.once('connect', () => r()))
+  const closed = new Promise<void>((r) => c.once('close', () => r()))
+  c.on('error', () => {})
+  await s.close()
+  await closed
+  expect(() => statSync(p)).toThrow()
+})

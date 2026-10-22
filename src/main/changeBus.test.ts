@@ -22,6 +22,21 @@ describe('createChangeBus', () => {
   beforeEach(() => void vi.useFakeTimers())
   afterEach(() => void vi.useRealTimers())
 
+  it('rajada enorme (50k ids) fecha a janela em tempo linear, sem perder id nem ordem', () => {
+    const emit = vi.fn<(e: DomainChanged) => void>()
+    const bus = createChangeBus({ emit })
+    const N = 50_000
+    for (let i = 0; i < N; i++) bus.afterCommit({ entity: 'task', ids: [`t${i}`], op: 'upsert' })
+    const t0 = performance.now()
+    vi.advanceTimersByTime(50)
+    expect(performance.now() - t0).toBeLessThan(500)
+    expect(emit).toHaveBeenCalledTimes(1)
+    const ids = emit.mock.calls[0][0].ids
+    expect(ids).toHaveLength(N)
+    expect(ids[0]).toBe('t0')
+    expect(ids[N - 1]).toBe(`t${N - 1}`)
+  })
+
   it('30 commits em 50 ms viram 1 emit com os ids únicos', () => {
     const emit = vi.fn<(e: DomainChanged) => void>()
     const bus = createChangeBus({ emit })
