@@ -11,7 +11,7 @@ import {
   socketPath
 } from './paths'
 
-const home = '/home/u'
+const home = '/users/u'
 
 describe('paths', () => {
   it('linux com XDG_RUNTIME_DIR: socket em /run/user', () => {
@@ -20,17 +20,17 @@ describe('paths', () => {
     expect(runDir(env, 'linux', home)).toBe('/run/user/1000/turnflow')
   })
   it('linux sem XDG: socket dentro da config', () => {
-    expect(socketPath({}, 'linux', home)).toBe('/home/u/.config/turnflow/run/turnflow.sock')
-    expect(configDir({}, 'linux', home)).toBe('/home/u/.config/turnflow')
-    expect(binDir({}, 'linux', home)).toBe('/home/u/.config/turnflow/bin')
+    expect(socketPath({}, 'linux', home)).toBe('/users/u/.config/turnflow/run/turnflow.sock')
+    expect(configDir({}, 'linux', home)).toBe('/users/u/.config/turnflow')
+    expect(binDir({}, 'linux', home)).toBe('/users/u/.config/turnflow/bin')
   })
   it('XDG_CONFIG_HOME muda a config', () => {
     expect(configDir({ XDG_CONFIG_HOME: '/c' }, 'linux', home)).toBe('/c/turnflow')
   })
   it('dev usa turnflow-dev', () => {
-    expect(configDir({}, 'linux', home, true)).toBe('/home/u/.config/turnflow-dev')
+    expect(configDir({}, 'linux', home, true)).toBe('/users/u/.config/turnflow-dev')
     expect(socketPath({}, 'linux', home, true)).toBe(
-      '/home/u/.config/turnflow-dev/run/turnflow.sock'
+      '/users/u/.config/turnflow-dev/run/turnflow.sock'
     )
     expect(socketPath({ XDG_RUNTIME_DIR: '/run/user/1000' }, 'linux', home, true)).toBe(
       '/run/user/1000/turnflow-dev/turnflow.sock'
@@ -117,8 +117,8 @@ describe('paths', () => {
     )
   })
   it('cliUserDataDir: subpasta cli da config (segue dev e TURNFLOW_CONFIG_DIR)', () => {
-    expect(cliUserDataDir({}, 'linux', home)).toBe('/home/u/.config/turnflow/cli')
-    expect(cliUserDataDir({}, 'linux', home, true)).toBe('/home/u/.config/turnflow-dev/cli')
+    expect(cliUserDataDir({}, 'linux', home)).toBe('/users/u/.config/turnflow/cli')
+    expect(cliUserDataDir({}, 'linux', home, true)).toBe('/users/u/.config/turnflow-dev/cli')
     expect(cliUserDataDir({ TURNFLOW_CONFIG_DIR: '/iso' }, 'linux', home)).toBe('/iso/cli')
     expect(cliUserDataDir({}, 'win32', 'C:\\Users\\u')).toBe(
       `C:\\Users\\u\\AppData\\Roaming\\${BRAND.name}\\cli`

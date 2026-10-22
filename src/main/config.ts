@@ -7,14 +7,12 @@ import {
 } from '../shared/paths'
 import { join } from 'path'
 
-export const DIGITALK_HOME = join(homedir(), 'Documents/Digitalk')
-// TURNFLOW_BRAIN: aponta pra um brain de teste (dev)
-export const BRAIN_TASKS = process.env.TURNFLOW_BRAIN ?? join(DIGITALK_HOME, 'brain/tasks')
 export const CLAUDE_PROJECTS = join(homedir(), '.claude/projects')
 
-// ~/.config/turnflow: só config.json + themes/ (o que o Johan edita).
+// ~/.config/turnflow: só config.json + themes/ (o que o usuário edita).
 // Cache, Local Storage, hooks.json e resumos ficam em ~/.config/turnflow/electron (setPath no index.ts).
-// TURNFLOW_CONFIG_DIR: pasta isolada pra testes (não mexe no app aberto do Johan)
+// TURNFLOW_CONFIG_DIR: pasta isolada pra testes (não mexe no app aberto do usuário)
+// A pasta do brain da lateral herdada vem de TURNFLOW_BRAIN ?? config.brainDir (brainDir.ts).
 export const configDir = (): string =>
   resolveConfigDir(process.env, process.platform, homedir(), !app.isPackaged)
 export const userDataDir = (): string => app.getPath('userData')

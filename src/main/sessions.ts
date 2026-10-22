@@ -67,7 +67,7 @@ export async function transcriptTail(path: string, maxChars = 8000): Promise<str
             .filter((b) => b.type === 'text')
             .map((b) => b.text)
             .join('\n')
-    if (text.trim()) lines.push(`${o.type === 'user' ? 'Johan' : 'Claude'}: ${text.trim()}`)
+    if (text.trim()) lines.push(`${o.type === 'user' ? 'User' : 'Claude'}: ${text.trim()}`)
   }
   const out: string[] = []
   let size = 0

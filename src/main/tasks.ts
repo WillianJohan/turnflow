@@ -1,12 +1,11 @@
 import { readdir, readFile } from 'fs/promises'
 import { watch } from 'fs'
 import { join } from 'path'
-import { BRAIN_TASKS } from './config'
 
 import type { Bucket, Dir, Task } from '../shared/types'
 export type { Bucket, Dir, Task, SessionRef } from '../shared/types'
 
-// Mesma ordem de casamento do _dk_bucket (.aliases.sh:125-143).
+// Ordem de casamento dos status herdados (o E6 troca a lateral pelo banco e apaga isto).
 const RULES: [RegExp, number, string][] = [
   [/valida.*cs/, 6, 'Validação CS'],
   [/teste produ/, 7, 'Em teste produção'],
@@ -59,7 +58,7 @@ export function parseReadme(text: string, id: string, dir: Dir, readmePath: stri
   return { id, title, status, bucket: bucketOf(status, dir), parent, dir, readmePath, sessions }
 }
 
-export async function loadTasks(root = BRAIN_TASKS): Promise<Task[]> {
+export async function loadTasks(root: string): Promise<Task[]> {
   const out: Task[] = []
   for (const dir of ['current', 'done'] as const) {
     const ids = await readdir(join(root, dir)).catch(() => [] as string[])

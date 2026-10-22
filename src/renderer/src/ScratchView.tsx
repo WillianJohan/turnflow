@@ -11,6 +11,8 @@ type Props = {
   live: Live
   focused: boolean
   draft: boolean
+  /** `config.defaultWorkdir`: onde a aba abre (sem pasta padrão, a home). */
+  workdir: string | null
   onStarted(id: string): void
   onEnd(id: string): void
 }
@@ -21,6 +23,7 @@ export function ScratchView({
   live,
   focused,
   draft,
+  workdir,
   onStarted,
   onEnd
 }: Props): React.JSX.Element {
@@ -65,8 +68,8 @@ export function ScratchView({
         <div className="th">
           <Icon name={kind === 'claude' ? 'pencil' : 'terminal'} size={13} />
           <span className="th-title">
-            <b>{tabLabel(id)}</b> — {kind === 'claude' ? 'Claude sem task' : 'terminal'} em
-            ~/Documents/Digitalk
+            <b>{tabLabel(id)}</b> — {kind === 'claude' ? 'Claude sem task' : 'terminal'} em{' '}
+            {workdir ?? '~'}
           </span>
           <span className="th-actions">
             {alive && (

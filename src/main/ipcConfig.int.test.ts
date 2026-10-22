@@ -162,6 +162,7 @@ describe('config.json × brain da lateral herdada', () => {
 
   it('falha ao ler o brain no start não derruba o registerIpc', async () => {
     dispose()
+    vi.stubEnv('TURNFLOW_BRAIN', tmpDir())
     const { registerIpc } = await import('./ipc')
     legacy.load.mockRejectedValueOnce(new Error('brain ilegível'))
     const win = {

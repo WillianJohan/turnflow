@@ -1,6 +1,6 @@
 # Turnflow
 
-Lista as tasks do brain (`~/Documents/Digitalk/brain/tasks/{current,done}`) e abre cada uma numa aba com o `claude` daquela task rodando num terminal de verdade. Painéis lado a lado, bolinha de estado e um resumo "o que é / parei em / próximo" no topo.
+Lista as tasks do brain (`<pasta do brain>/tasks/{current,done}`, escolhida no import em Ajustes) e abre cada uma numa aba com o `claude` daquela task rodando num terminal de verdade. Painéis lado a lado, bolinha de estado e um resumo "o que é / parei em / próximo" no topo.
 
 
 ## Instalar
@@ -58,8 +58,8 @@ Quando um Claude pede permissão ou termina o turno e você não está vendo aqu
 ## O que ele não faz
 
 - Não escreve no brain nem fala com o Jira. Status desatualizado → botão ⟳ / Ctrl+Shift+U.
-- Não cria task (continua no `wf`).
-- Não abre sessão que já está aberta fora dele (dkm, outra aba): avisa e oferece sessão nova.
+- Não cria task.
+- Não abre sessão que já está aberta fora dele (outro terminal, outra aba): avisa e oferece sessão nova.
 - Abrir uma task mostra o README formatado, com o resumo e os botões **Retomar sessão** / **Nova sessão** em cima; o Claude só sobe no clique. Com sessão aberta, o botão README/Terminal alterna as duas vistas.
 - Ao fechar o app, todas as sessões são encerradas (a conversa fica salva). Ao reabrir, volta o layout mostrando os READMEs.
 

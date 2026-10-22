@@ -3,13 +3,13 @@ import { detectShimTarget, shimContent } from './shim'
 
 describe('shimContent', () => {
   it('AppImage: exec do $APPIMAGE, 0755, nome turnflow', () => {
-    expect(shimContent({ kind: 'appimage', appimage: '/home/j/Apps/T.AppImage' }, 'linux')).toEqual(
-      {
-        file: 'turnflow',
-        body: '#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec "/home/j/Apps/T.AppImage" "$@"\n',
-        mode: 0o755
-      }
-    )
+    expect(
+      shimContent({ kind: 'appimage', appimage: '/users/j/Apps/T.AppImage' }, 'linux')
+    ).toEqual({
+      file: 'turnflow',
+      body: '#!/bin/sh\nunset ELECTRON_RUN_AS_NODE\nexec "/users/j/Apps/T.AppImage" "$@"\n',
+      mode: 0o755
+    })
   })
   it('exec (deb/mac): path com espaço entre aspas', () => {
     const c = shimContent({ kind: 'exec', exec: '/Applications/My App/t' }, 'darwin')

@@ -2,7 +2,8 @@ import { execFile } from 'child_process'
 import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { join } from 'path'
 import type { Header, HeaderCache, Task } from '../shared/types'
-import { DIGITALK_HOME, userDataDir } from './config'
+import { homedir } from 'os'
+import { userDataDir } from './config'
 import { loginEnv } from './loginEnv'
 import { findSessionFile, transcriptTail } from './sessions'
 
@@ -54,7 +55,8 @@ export const isStale = (
   c.readmeMtime !== readmeMtime ||
   (c.jsonlMtime !== jsonlMtime && now - (c.generatedAt ?? 0) > CONVERSA_TTL)
 
-type Opts = { cacheDir?: string; run?: (prompt: string) => Promise<string> }
+/** `cwd`: pasta onde o `claude -p` roda (a pasta padrão ou a home). */
+type Opts = { cacheDir?: string; run?: (prompt: string) => Promise<string>; cwd?: string }
 
 const cachePath = (dir: string, id: string): string => join(dir, `${id}.json`)
 
@@ -88,13 +90,13 @@ export const HEADER_ARGS = [
   '{"disableAllHooks":true}'
 ]
 
-async function runClaude(prompt: string): Promise<string> {
+async function runClaude(prompt: string, cwd: string): Promise<string> {
   const { claude, PATH } = await loginEnv()
   return new Promise((res, rej) => {
     const p = execFile(
       claude,
       HEADER_ARGS,
-      { cwd: DIGITALK_HOME, timeout: 60000, env: { ...process.env, PATH }, maxBuffer: 1 << 20 },
+      { cwd, timeout: 60000, env: { ...process.env, PATH }, maxBuffer: 1 << 20 },
       (err, stdout, stderr) =>
         err ? rej(new Error((stderr || err.message).trim().split('\n')[0])) : res(stdout)
     )
@@ -120,7 +122,11 @@ export function getHeader(
 async function generate(
   task: Task,
   force: boolean,
-  { cacheDir = join(userDataDir(), 'headers'), run = runClaude }: Opts
+  {
+    cacheDir = join(userDataDir(), 'headers'),
+    cwd = homedir(),
+    run = (p) => runClaude(p, cwd)
+  }: Opts
 ): Promise<HeaderCache | null> {
   const old = await readCache(task, cacheDir)
   const readme = await readFile(task.readmePath, 'utf8').catch(() => '')

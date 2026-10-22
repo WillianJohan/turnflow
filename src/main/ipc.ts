@@ -19,12 +19,12 @@ import {
   writeConfig
 } from './appConfig'
 import { legacyConfigDir } from '../shared/paths'
-import { existsSync } from 'fs'
 import { access, readFile } from 'fs/promises'
 import type { Events } from '../shared/ipc/events'
 import type { Channel } from '../shared/ipc/define'
 import * as C from '../shared/ipc/registry'
-import { BRAIN_TASKS, DIGITALK_HOME, configDir, userDataDir } from './config'
+import { configDir, userDataDir } from './config'
+import { brainTasksDir, createLegacyBrain, sessionCwd } from './brainDir'
 import { startHookServer, writeHookSettings } from './hooks'
 import { claudeArgv, inUseBy, resolveLaunch } from './launch'
 import { loginEnv } from './loginEnv'
@@ -81,13 +81,6 @@ export async function registerIpc(
   const handle = <Ch extends Channel>(ch: Ch, fn: Handler<Ch>): void =>
     handleOn(ipc, ch, fn, { validateOutput: is.dev, log: deps.log })
   let tasks = new Map<string, Task>()
-  // pasta que a lateral herdada lista; muda quando o import grava `config.brainDir`
-  let brainRoot = BRAIN_TASKS
-  const reload = async (): Promise<Task[]> => {
-    const list = await loadTasks(brainRoot)
-    tasks = new Map(list.map((t) => [t.id, t]))
-    return list
-  }
 
   // uuid (session_id do claude) de cada PTY vivo, pra recusar a mesma conversa em duas abas
   // e pra descobrir quando uma aba avulsa virou task
@@ -109,31 +102,18 @@ export async function registerIpc(
       send('pty:renamed', from, to)
     }
   }
-  // roda no watcher e na troca de pasta: falha ao ler o brain vai pro log e não derruba quem chamou
-  // (a leitura de config, o apply do import, o próprio registerIpc)
-  const onBrainChange = async (): Promise<void> => {
-    try {
-      send('tasks:changed', await reload())
+  // lateral herdada (Decisão 25): lista `TURNFLOW_BRAIN ?? config.brainDir` e rearma o watcher a
+  // cada troca de pasta (start, leitura de config, apply do import); falha ao ler só vai pro log
+  const legacyBrain = createLegacyBrain({
+    watch: watchTasks,
+    load: loadTasks,
+    onChanged: (list) => {
+      tasks = new Map(list.map((t) => [t.id, t]))
+      send('tasks:changed', list)
       adopt()
-    } catch (e) {
-      deps.log?.(`[tasks] brain not loaded: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-  let unwatch = watchTasks(brainRoot, onBrainChange)
-  /**
-   * Troca a pasta da lateral herdada (Decisão 25): solta o watcher antigo, arma o novo, recarrega e
-   * avisa a tela. Mesma pasta = nada (devolve false). `TURNFLOW_BRAIN` (dev/teste) sempre vence.
-   */
-  const setLegacyBrain = async (brainDir: string | null): Promise<boolean> => {
-    if (process.env.TURNFLOW_BRAIN || !brainDir) return false
-    const dir = existsSync(join(brainDir, 'tasks')) ? join(brainDir, 'tasks') : brainDir
-    if (dir === brainRoot) return false
-    unwatch()
-    brainRoot = dir
-    unwatch = watchTasks(dir, onBrainChange)
-    await onBrainChange()
-    return true
-  }
+    },
+    log: deps.log
+  })
 
   const hooks = await startHookServer((raw, st, sid, info) => {
     const id = alias.get(raw) ?? raw
@@ -190,14 +170,13 @@ export async function registerIpc(
   // última pasta padrão lida do config.json: toda leitura (inclusive a do watch) atualiza
   const startConfig = (await readConfig(cfgDir)).config
   let defaultWorkdir = startConfig.defaultWorkdir
-  // sem pasta nova no config, carrega a padrão; os dois caminhos só logam se a leitura falhar
-  if (!(await setLegacyBrain(startConfig.brainDir))) await onBrainChange()
+  await legacyBrain.setDir(brainTasksDir(process.env, startConfig.brainDir))
   const configState = async (): Promise<ConfigState> => {
     const { config, error } = await readConfig(cfgDir)
     // JSON inválido devolve os padrões: a pasta padrão e o brain em uso ficam os anteriores
     if (!error) {
       defaultWorkdir = config.defaultWorkdir
-      await setLegacyBrain(config.brainDir)
+      await legacyBrain.setDir(brainTasksDir(process.env, config.brainDir))
     }
     const t = await readTheme(cfgDir, config.theme)
     return {
@@ -248,12 +227,12 @@ export async function registerIpc(
     mono: await fc(':spacing=mono')
   }))
 
-  handle(C.CHANNELS.listTasks, () => reload())
+  handle(C.CHANNELS.listTasks, () => legacyBrain.list())
   handle(C.CHANNELS.plan, ({ id, uuid }) => resolveLaunch(task(id), depsFor(id), uuid))
   handle(C.CHANNELS.start, async ({ id, how, cols, rows }) => {
     if (alivePtys().includes(id)) return // start duplicado (duplo clique): o primeiro já subiu
     const t = task(id)
-    let cwd = DIGITALK_HOME
+    let cwd = sessionCwd(defaultWorkdir)
     if ('resume' in how) {
       // revalida logo antes de lançar: a sessão pode ter sido aberta fora nesse meio tempo
       const plan = await resolveLaunch(t, depsFor(id), how.resume)
@@ -267,7 +246,7 @@ export async function registerIpc(
       if (plan.kind === 'gone')
         throw new IpcError('NOT_FOUND', `a pasta dessa sessão não existe mais: ${plan.cwd}`)
       if (plan.kind !== 'resume') throw new IpcError('NOT_FOUND', 'sessão não existe mais')
-      cwd = plan.cwd || DIGITALK_HOME
+      cwd = plan.cwd || sessionCwd(defaultWorkdir)
     }
     const [, ...args] = claudeArgv(t, settingsPath, how)
     const bin = (await loginEnv()).claude
@@ -280,10 +259,18 @@ export async function registerIpc(
   handle(C.CHANNELS.startUpdate, async ({ cols, rows }) => {
     if (alivePtys().includes(UPDATE_ID)) return
     const argv = [(await loginEnv()).claude, '/revisao-demandas', '--settings', settingsPath]
-    startPty(UPDATE_ID, argv, DIGITALK_HOME, await env(UPDATE_ID), cols, rows, ptyEvents)
+    startPty(
+      UPDATE_ID,
+      argv,
+      sessionCwd(defaultWorkdir),
+      await env(UPDATE_ID),
+      cols,
+      rows,
+      ptyEvents
+    )
     guard.register(UPDATE_ID, owner)
   })
-  handle(C.CHANNELS.tasksRoot, () => brainRoot)
+  handle(C.CHANNELS.tasksRoot, () => legacyBrain.root())
   // clique na notificação: traz a janela pra frente
   handle(C.CHANNELS.focusWindow, () => {
     if (win.isMinimized()) win.restore()
@@ -291,7 +278,7 @@ export async function registerIpc(
     win.focus()
   })
   handle(C.CHANNELS.readme, ({ id }) => readFile(task(id).readmePath, 'utf8').catch(() => ''))
-  // abas avulsas: claude sem task ou terminal puro, em ~/Documents/Digitalk
+  // abas avulsas: claude sem task ou terminal puro, na pasta padrão (ou na home)
   handle(C.CHANNELS.startScratch, async ({ id, cols, rows }) => {
     const kind = id.match(/^~(claude|shell)-\d+$/)?.[1]
     if (!kind) throw new IpcError('VALIDATION', `aba inválida: ${id}`)
@@ -300,7 +287,7 @@ export async function registerIpc(
       kind === 'claude'
         ? [(await loginEnv()).claude, '--settings', settingsPath]
         : [process.env.SHELL || '/bin/bash', '-i']
-    startPty(id, argv, DIGITALK_HOME, await env(id), cols, rows, ptyEvents)
+    startPty(id, argv, sessionCwd(defaultWorkdir), await env(id), cols, rows, ptyEvents)
     guard.register(id, owner)
   })
   registerPtyIo(ipc, {
@@ -319,7 +306,9 @@ export async function registerIpc(
   )
   handle(C.CHANNELS.settingsPath, () => settingsPath)
   handle(C.CHANNELS.headerCached, ({ id }) => readCache(task(id)))
-  handle(C.CHANNELS.header, ({ id, force }) => getHeader(task(id), force))
+  handle(C.CHANNELS.header, ({ id, force }) =>
+    getHeader(task(id), force, { cwd: sessionCwd(defaultWorkdir) })
+  )
   registerVaultIpc(handle, deps)
   registerSearchIpc(handle, deps)
   // um DomainDeps por banco, o mesmo para o domínio e o import (Decisão 33)
@@ -337,7 +326,7 @@ export async function registerIpc(
     // o watch do config.json também rearma, mas aqui a lateral já lista quando o apply responde
     setBrainDir: async (dir) => {
       await writeConfig(cfgDir, { brainDir: dir })
-      await setLegacyBrain(dir)
+      await legacyBrain.setDir(brainTasksDir(process.env, dir))
     },
     legacyDir: () => legacyConfigDir(),
     writeConfig: async (patch) => void (await writeConfig(cfgDir, patch)),
@@ -348,7 +337,7 @@ export async function registerIpc(
   return () => {
     unwatchCfg()
     killAll()
-    unwatch()
+    legacyBrain.close()
     hooks.close()
   }
 }

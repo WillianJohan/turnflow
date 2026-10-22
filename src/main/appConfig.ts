@@ -18,7 +18,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   termFont: 'JetBrains Mono',
   appFont: 'system-ui',
   appFontSize: 13,
-  // um por grupo da lista (os mesmos nomes do _dk_bucket); qualquer emoji ou caractere
+  // um por grupo da lista (os mesmos nomes do bucketOf do tasks.ts); qualquer emoji ou caractere
   statusIcons: {
     'Merge request': '🔀',
     GMUD: '🚀',
@@ -223,7 +223,7 @@ const ORANGE_LIGHT: Theme = {
   }
 }
 
-// Temas escolhidos pelo Johan a partir de 10 prévias (19/10/2026)
+// Temas escolhidos a partir de 10 prévias (19/10/2026)
 const DRACULA: Theme = {
   name: 'Dracula',
   ui: {

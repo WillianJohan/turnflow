@@ -333,7 +333,11 @@ export function Sidebar({
       )}
       <div className="sb-scroll">
         {!tasks.length && (
-          <p className="sb-empty">Nenhuma task encontrada em {root || 'brain/tasks'}.</p>
+          <p className="sb-empty">
+            {root
+              ? `Nenhuma task encontrada em ${root}.`
+              : 'No brain folder yet: import one in Settings'}
+          </p>
         )}
         {open.length > 0 && (
           <section className="open-list">

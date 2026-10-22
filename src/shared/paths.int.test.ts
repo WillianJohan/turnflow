@@ -11,7 +11,7 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 it('o diretório do socket derivado de TURNFLOW_CONFIG_DIR pode ser criado no FS real', () => {
-  const sock = socketPath({ TURNFLOW_CONFIG_DIR: root }, 'linux', '/home/x', false)
+  const sock = socketPath({ TURNFLOW_CONFIG_DIR: root }, 'linux', '/users/x', false)
   mkdirSync(dirname(sock), { recursive: true })
   expect(statSync(dirname(sock)).isDirectory()).toBe(true)
   expect(sock.startsWith(root)).toBe(true)

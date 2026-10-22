@@ -55,6 +55,17 @@ jobs:
       - run: npm ci
       - run: npm run check-brand
 
+  check-private:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - name: Sem path pessoal, e-mail real, nome de empresa ou do app legado
+        run: npm run check-private
+
   release:
     name: build + check-release
     runs-on: ubuntu-latest

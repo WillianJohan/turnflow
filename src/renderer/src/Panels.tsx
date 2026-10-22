@@ -281,6 +281,7 @@ export function Panels(props: Props): React.JSX.Element {
                 live={live}
                 focused={focused}
                 draft={draft}
+                workdir={cfg?.config.defaultWorkdir ?? null}
                 onStarted={onStarted}
                 onEnd={onEnd}
               />

@@ -158,9 +158,10 @@ function App(): React.JSX.Element {
     }
   }, [sb])
   const [root, setRoot] = useState('')
+  // a pasta muda sem reiniciar (import grava brainDir): relê a cada lista nova
   useEffect(() => {
-    unwrap(window.turnflow.tasksRoot()).then((r) => r && setRoot(r))
-  }, [])
+    unwrap(window.turnflow.tasksRoot()).then((r) => r !== undefined && setRoot(r))
+  }, [tasks])
   const [cfg, setCfg] = useState<ConfigState | null>(null)
   useEffect(() => {
     now.current = { layout, cfg, tasks }

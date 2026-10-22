@@ -56,16 +56,16 @@ describe('checkAsar', () => {
     put('app/package.json', '{}')
     const archive = await pack()
     expect(packagedAsars(join(dir, 'dist'))).toEqual([archive])
-    expect(checkAsar(archive, '/home/quem-empacotou')).toEqual({ ok: true, offenders: [] })
+    expect(checkAsar(archive, '/users/quem-empacotou')).toEqual({ ok: true, offenders: [] })
   })
 
   it('aponta raiz proibida, gancho de teste e caminho pessoal', async () => {
     put('app/out/main/index.js', 'x("TURNFLOW_TEST_PTY")')
-    put('app/out/main/chunk.js', 'const p = "/home/quem-empacotou/projeto"')
+    put('app/out/main/chunk.js', 'const p = "/users/quem-empacotou/projeto"')
     put('app/out-test/main/index.js', 'teste')
     put('app/.superpowers/plano.md', 'notas')
     put('app/package.json', '{}')
-    const r = checkAsar(await pack(), '/home/quem-empacotou')
+    const r = checkAsar(await pack(), '/users/quem-empacotou')
     expect(r.ok).toBe(false)
     expect(r.offenders).toEqual([
       '.superpowers/ (não deveria estar no pacote)',
