@@ -87,11 +87,11 @@ export function writeRecordIn(db: Db, r: ImportRecord): void {
   ).run({ ...r, field_hashes: JSON.stringify(r.field_hashes) })
 }
 
-/** Chave do projeto do import: `key:<KEY>` (Pai) ou `name:<fold>` (`**Project:**`). */
+/** Chave do projeto do import: `key:<KEY>` (Pai) ou `name:<sha256(fold)>` (`**Project:**`). */
 export function projectSourceKey(p: Pick<ParsedTask, 'parent' | 'project_name'>): string {
   if (p.parent) return `key:${p.parent.toUpperCase()}`
   const name = p.project_name?.trim()
-  return name ? `name:${fold(name)}` : ''
+  return name ? `name:${sha(fold(name))}` : ''
 }
 
 /** Valor de cada campo como o markdown diz (entrada do hash `md`). */

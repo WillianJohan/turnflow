@@ -289,7 +289,7 @@ function projectFor(c: Ctx, p: ParsedTask): ProjectInfo | null {
   } else {
     const name = p.project_name?.trim()
     if (!name) return null
-    ref = { source_key: `name:${fold(name)}`, name }
+    ref = { source_key: `name:${sha(fold(name))}`, name }
   }
   const link = c.q.importProject.get(ref.source_key) as { project_id: string | null } | undefined
   if (!link) return { ref, action: 'create', id: null, flow_id: null, display: ref.name }

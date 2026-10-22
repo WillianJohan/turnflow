@@ -15,6 +15,8 @@ export const IMPORT_COPY = {
       'The settings file of this app is not valid JSON. Fix or remove it before importing.',
     legacy_not_found: 'The legacy source was not found.',
     export_dest_invalid: 'The export destination is not a valid folder.',
+    export_partial_exists:
+      'A previous export left a work folder in this destination. Remove it or pick another folder, then export again.',
     status_map_newer_version:
       'The status map was saved by a newer version of the app and will not be overwritten.',
     flow_has_no_stages: 'This flow has no stages to map statuses to.'

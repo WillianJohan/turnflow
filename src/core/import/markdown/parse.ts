@@ -186,6 +186,12 @@ function parseCheckpoints(lines: Line[], out: ParsedTask['checkpoints'], left: L
 }
 
 /** Lê o README de uma task do brain. Tudo que não vira campo estruturado vai para a descrição. */
+/** Corpo de `## Summary` exatamente como o export escreve: só linhas `- What|Where|Next: …`. */
+function isExportedSummary(body: string[]): boolean {
+  const lines = body.filter((t) => t.trim() !== '')
+  return lines.length > 0 && lines.every((t) => /^- (?:What|Where|Next): /.test(t))
+}
+
 export function parseTaskReadme(text: string, key: string): ParsedTask {
   const raw = text
     .replace(/^\uFEFF/, '')
@@ -279,12 +285,16 @@ export function parseTaskReadme(text: string, key: string): ParsedTask {
     const isSessions = s.title.startsWith('sess')
     const isCheckpoints = s.title.startsWith('checkpoint')
     const isLinks = s.title === 'mrs' || s.title === 'links'
-    // o resumo é derivado (sum_*): o export o escreve, mas não volta como descrição
-    if (s.title === 'summary') continue
+    // o resumo é derivado (sum_*): o export o escreve, mas não volta como descrição. Só o corpo
+    // que casa inteiro com o formato do export some; texto do usuário sob `## Summary` é descrição.
+    if (s.title === 'summary' && isExportedSummary(s.body.map((l) => l.t))) continue
     if (s.title === 'descricao' || s.title === 'description') {
-      // a seção de descrição É a descrição: o conteúdo entra sem o cabeçalho
+      // a seção de descrição É a descrição quando abre a descrição: o conteúdo entra sem o
+      // cabeçalho. Fora do topo é texto do usuário e mantém o cabeçalho.
       const body = trimBlank(s.body.map((l) => l.t)).join('\n')
-      if (body !== '') pieces.push(body)
+      if (pieces.length === 0) {
+        if (body !== '') pieces.push(body)
+      } else pieces.push(trimBlank([s.heading, ...s.body.map((l) => l.t)]).join('\n'))
       continue
     }
     if (!isSessions && !isCheckpoints && !isLinks) {

@@ -37,6 +37,40 @@ describe('parseTaskReadme', () => {
     }
   )
 
+  it('Summary escrito pelo usuário fica na descrição, com o cabeçalho', () => {
+    const md = ['# ABC-1 — T', '', 'Intro.', '', '## Summary', '', 'My own words.'].join('\n')
+    expect(parseTaskReadme(md, 'ABC-1').description).toBe('Intro.\n\n## Summary\n\nMy own words.')
+  })
+
+  it('Summary com uma linha fora do formato do export é do usuário', () => {
+    const md = ['# ABC-1 — T', '', '## Summary', '', '- What: w', '- Other: x'].join('\n')
+    expect(parseTaskReadme(md, 'ABC-1').description).toBe('## Summary\n\n- What: w\n- Other: x')
+  })
+
+  it('Summary no formato que o export escreve é descartado (derivado)', () => {
+    const md = [
+      '# ABC-1 — T',
+      '',
+      'Intro.',
+      '',
+      '## Summary',
+      '',
+      '- What: w',
+      '- Where: x',
+      '- Next: n'
+    ].join('\n')
+    expect(parseTaskReadme(md, 'ABC-1').description).toBe('Intro.')
+  })
+
+  it('## Description fora do topo da descrição mantém o cabeçalho', () => {
+    const md = ['# ABC-1 — T', '', 'Intro.', '', '## Description', '', 'Later.'].join('\n')
+    expect(parseTaskReadme(md, 'ABC-1').description).toBe('Intro.\n\n## Description\n\nLater.')
+    const md2 = ['# ABC-1 — T', '', '## Notes', 'n', '', '## Description', '', 'Later.'].join('\n')
+    expect(parseTaskReadme(md2, 'ABC-1').description).toBe(
+      '## Notes\nn\n\n## Description\n\nLater.'
+    )
+  })
+
   it('formato do brain', () => {
     const p = parseTaskReadme(brainFormat, 'ABC-1')
     expect(p.key).toBe('ABC-1')

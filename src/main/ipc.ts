@@ -227,7 +227,10 @@ export async function registerIpc(
     mono: await fc(':spacing=mono')
   }))
 
-  handle(C.CHANNELS.listTasks, () => legacyBrain.list())
+  handle(C.CHANNELS.listTasks, async () => {
+    await legacyBrain.refresh()
+    return legacyBrain.list()
+  })
   handle(C.CHANNELS.plan, ({ id, uuid }) => resolveLaunch(task(id), depsFor(id), uuid))
   handle(C.CHANNELS.start, async ({ id, how, cols, rows }) => {
     if (alivePtys().includes(id)) return // start duplicado (duplo clique): o primeiro já subiu

@@ -153,4 +153,45 @@ describe('createLegacyBrain', () => {
     expect(lb.root()).toBe('/qualquer')
     expect(log).toHaveBeenCalledWith(expect.stringContaining('EACCES brain'))
   })
+
+  it('refresh relê a pasta e devolve a lista nova (o refresh do UpdateModal)', async () => {
+    const { lb, changed } = setup()
+    const root = brain('ABC-1')
+    await lb.setDir(root)
+    readme(root, 'ABC-7')
+    changed.mockClear()
+    await lb.refresh()
+    expect(ids(lb.list())).toEqual(['ABC-1', 'ABC-7'])
+    expect(changed).toHaveBeenCalledTimes(1)
+  })
+
+  it('refresh sem pasta não faz nada', async () => {
+    const { lb, load } = setup()
+    await lb.setDir(null)
+    await lb.refresh()
+    expect(load).not.toHaveBeenCalled()
+  })
+
+  it('watch que falhou ao armar: setDir com a mesma pasta rearma', async () => {
+    const root = brain('ABC-1')
+    let fail = true
+    const watch = vi.fn((dir: string, cb: () => void) => {
+      if (fail) throw new Error('EMFILE watch')
+      return watchTasks(dir, cb)
+    })
+    const log = vi.fn<(line: string) => void>()
+    const lb = createLegacyBrain({
+      watch,
+      load: (d) => loadTasks(d),
+      onChanged: () => undefined,
+      log
+    })
+    close = () => lb.close()
+    await expect(lb.setDir(root)).resolves.toBeUndefined()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('EMFILE watch'))
+    expect(ids(lb.list())).toEqual(['ABC-1'])
+    fail = false
+    await lb.setDir(root)
+    expect(watch).toHaveBeenCalledTimes(2)
+  })
 })

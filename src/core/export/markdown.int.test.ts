@@ -235,6 +235,15 @@ describe('exportMarkdown', () => {
     expect(getTask(d2, getTask(d1, id).key).description).toBe('body')
   })
 
+  it('Summary escrito pelo usuário na descrição sobrevive à ida e volta', async () => {
+    const d1 = domain()
+    const id = task(d1, 'A', 'body\n\n## Summary\n\nMy own words.')
+    const first = await exportMarkdown(d1, tmpDir())
+    const d2 = domain()
+    await importBrain(d2, first.dir)
+    expect(getTask(d2, getTask(d1, id).key).description).toBe('body\n\n## Summary\n\nMy own words.')
+  })
+
   it('pasta .partial que já existe aborta sem apagar nada', async () => {
     const d = domain()
     task(d, 'A')
@@ -242,7 +251,10 @@ describe('exportMarkdown', () => {
     const partial = join(dest, '.turnflow-export-20261022-123456.partial')
     mkdirSync(partial)
     writeBrain(partial, { 'keep.txt': 'mine' })
-    await expect(exportMarkdown(d, dest)).rejects.toMatchObject({ code: 'EEXIST' })
+    const e = await exportMarkdown(d, dest).catch((x: unknown) => x)
+    expect(e).toBeInstanceOf(DomainError)
+    expect((e as DomainError).code).toBe('CONFLICT')
+    expect((e as DomainError).details).toMatchObject({ reason: 'export_partial_exists' })
     expect(read(partial, 'keep.txt')).toBe('mine')
   })
 

@@ -798,6 +798,38 @@ describe('aplicar', () => {
     expect(task(e, 'ABC-3').stage.id).toBe(e.ids.stages.Feature.at(-1))
   })
 
+  it('**Project:** vira chave com hash do nome (sem texto do markdown) e o reimport casa igual', async () => {
+    const md = (key: string): string =>
+      [
+        '# ' + key + ' — T',
+        '',
+        '**Project:** Secret Épico',
+        '',
+        '## Description',
+        '',
+        'x',
+        ''
+      ].join('\n')
+    const e = setup({
+      'tasks/current/ABC-1/README.md': md('ABC-1'),
+      'tasks/current/ABC-2/README.md': md('ABC-2')
+    })
+    const want = 'name:' + createHash('sha256').update('secret epico', 'utf8').digest('hex')
+    const p = await plan(e)
+    expect(p.projects.map((r) => r.source_key)).toEqual([want])
+    expect(p.preview.projects[0]).toMatchObject({ source_key: want, name: 'Secret Épico' })
+    await run(e)
+    const rows = e.db.prepare('select source_key from import_project').all()
+    expect(rows).toEqual([{ source_key: want }])
+    expect(JSON.stringify(rows)).not.toMatch(/secret/i)
+    // reimport com task nova no mesmo projeto: reconhece o projeto já importado
+    writeBrain(e.root, { 'tasks/current/ABC-3/README.md': md('ABC-3') })
+    const again = await plan(e)
+    expect(again.preview.projects).toEqual([
+      expect.objectContaining({ source_key: want, action: 'existing' })
+    ])
+  })
+
   it('Pai, Sessões, Checkpoints e MRs', async () => {
     const e = setup(three())
     await run(e)

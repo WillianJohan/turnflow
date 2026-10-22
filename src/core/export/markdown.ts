@@ -105,7 +105,13 @@ export async function exportMarkdown(
 
   let created = false
   try {
-    await fs.mkdir(partial)
+    try {
+      await fs.mkdir(partial)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST')
+        throw importError('CONFLICT', 'export_partial_exists')
+      throw e
+    }
     created = true
     for (const [sub, tasks] of [
       ['current', live],

@@ -21,6 +21,8 @@ export function sessionCwd(defaultWorkdir: string | null): string {
 
 export type LegacyBrain = {
   setDir(dir: string | null): Promise<void>
+  /** Relê a pasta atual e avisa; se o watch não armou, rearma. */
+  refresh(): Promise<void>
   list(): Task[]
   root(): string
   close(): void
@@ -40,6 +42,7 @@ export function createLegacyBrain(o: {
   let dir: string | null = null
   let list: Task[] = []
   let unwatch = (): void => undefined
+  let armed = false
 
   const reload = async (at: string): Promise<void> => {
     try {
@@ -52,25 +55,48 @@ export function createLegacyBrain(o: {
     }
   }
 
+  const arm = (at: string): void => {
+    try {
+      unwatch = o.watch(at, () => void reload(at))
+      armed = true
+    } catch (e) {
+      armed = false
+      o.log?.(`[tasks] brain watch not armed: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   return {
     async setDir(next) {
-      if (next === dir) return
+      if (next === dir && (next === null || armed)) return
+      if (next === dir && next !== null) {
+        // mesma pasta com o watch caído: só rearma e relê
+        arm(next)
+        await reload(next)
+        return
+      }
       unwatch()
       unwatch = () => undefined
+      armed = false
       dir = next
       list = []
       if (next === null) {
         o.onChanged([])
         return
       }
-      unwatch = o.watch(next, () => void reload(next))
+      arm(next)
       await reload(next)
+    },
+    async refresh() {
+      if (dir === null) return
+      if (!armed) arm(dir)
+      await reload(dir)
     },
     list: () => list,
     root: () => dir ?? '',
     close() {
       unwatch()
       unwatch = () => undefined
+      armed = false
       dir = null
     }
   }
