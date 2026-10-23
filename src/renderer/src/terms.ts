@@ -115,9 +115,6 @@ export function getTerm(id: string): Entry {
   // atalho do app não chega no PTY; Ctrl+C/V e Shift+Enter tratados aqui
   term.attachCustomKeyEventHandler((e) => {
     if (appCommand(e)) return false
-    // Esc interrompe o claude e nenhum hook avisa: a bolinha sairia do verde só no próximo evento
-    if (e.type === 'keydown' && e.key === 'Escape')
-      window.dispatchEvent(new CustomEvent('dk:esc', { detail: ref.id }))
     const cmd = termKey(e, term.hasSelection())
     if (!cmd) return true
     if (e.type !== 'keydown') return false

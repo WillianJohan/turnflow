@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { SessionRow } from '../../shared/contracts'
+import { SESSION_COPY } from '../../shared/copy/session'
 import type { HeaderCache, Task } from '../../shared/types'
 import { Icon } from './Icon'
 import { unwrap } from './ipc'
@@ -92,7 +93,9 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
                   <li key={s.id}>
                     <button
                       disabled={s.ended_at === null || !s.external_id}
-                      title={s.ended_at === null ? 'sessão aberta agora' : (s.external_id ?? s.id)}
+                      title={
+                        s.ended_at === null ? SESSION_COPY.sessionOpen : (s.external_id ?? s.id)
+                      }
                       onClick={() => {
                         setSessions(null)
                         onSwitch(s.id)

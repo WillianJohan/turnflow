@@ -24,5 +24,12 @@ export const SESSION_COPY = {
     `We're working on task ${key}: ${title}\n\n` +
     `Before anything else, call the guidelines_get and task_get tools from the ${server} MCP server.`,
   descriptionIntro: '\n\nTask description:\n',
-  descriptionCut: '\n\n[Description truncated. Read the rest with task_get.]'
+  descriptionCut: '\n\n[Description truncated. Read the rest with task_get.]',
+  notImported: 'Import this task to open sessions',
+  endWhileWorking: 'The AI is working. End the session anyway?',
+  pickWorkdir: 'Choose the working folder for this task',
+  adopt: 'Adopt into task',
+  resume: 'Resume',
+  newSession: 'New session',
+  sessionOpen: 'session open'
 } as const

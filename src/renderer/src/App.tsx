@@ -81,17 +81,6 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    const onEsc = (e: Event): void => {
-      const id = (e as CustomEvent<string>).detail
-      setLive((l) =>
-        l.states[id] === 'working' ? { ...l, states: { ...l.states, [id]: 'waiting' } } : l
-      )
-    }
-    window.addEventListener('dk:esc', onEsc)
-    return () => window.removeEventListener('dk:esc', onEsc)
-  }, [])
-
-  useEffect(() => {
     try {
       localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
     } catch {

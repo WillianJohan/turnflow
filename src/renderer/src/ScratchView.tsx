@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { SESSION_COPY } from '../../shared/copy/session'
 import type { Live } from './App'
 import { tabLabel, scratchKind } from './layout'
 import { attachTerm, getTerm, hasTerm } from './terms'
@@ -29,6 +30,8 @@ export function ScratchView({
 }: Props): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null)
   const [err, setErr] = useState('')
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [adoptKey, setAdoptKey] = useState('')
   const alive = live.alive.has(id)
   const exited = live.exited[id] !== undefined && !alive
   const kind = scratchKind(id)
@@ -50,7 +53,10 @@ export function ScratchView({
             }
       )
     ).then(
-      () => onStarted(id),
+      (opened) => {
+        setSessionId(opened.session_id)
+        onStarted(id)
+      },
       (x) => setErr(String(x?.message ?? x).replace(/^Error invoking[^:]+: (Error: )?/, ''))
     )
   }
@@ -85,6 +91,28 @@ export function ScratchView({
             {workdir ?? '~'}
           </span>
           <span className="th-actions">
+            {alive && kind === 'claude' && sessionId && (
+              <span className="menu-wrap">
+                <input
+                  value={adoptKey}
+                  onChange={(e) => setAdoptKey(e.target.value)}
+                  aria-label={SESSION_COPY.adopt}
+                  placeholder="T-1"
+                />
+                <button
+                  onClick={() =>
+                    void orThrow(
+                      window.turnflow.sessionAdopt({ session_id: sessionId, task: adoptKey })
+                    ).then(
+                      () => setErr(''),
+                      (x) => setErr(String(x?.message ?? x))
+                    )
+                  }
+                >
+                  {SESSION_COPY.adopt}
+                </button>
+              </span>
+            )}
             {alive && (
               <button onClick={() => onEnd(id)} title="Mata o processo">
                 Encerrar
