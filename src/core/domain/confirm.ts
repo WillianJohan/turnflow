@@ -26,6 +26,7 @@ const CONFIRM: Record<CommandOp, boolean> = {
   project_delete: true,
   flow_save_stage: false,
   flow_delete_stage: false,
+  session_adopt: false,
   comment_remote: true
 }
 

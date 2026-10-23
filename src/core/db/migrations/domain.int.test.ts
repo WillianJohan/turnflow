@@ -333,7 +333,7 @@ describe('migration 0004 domain', () => {
       code(() =>
         db
           .prepare(
-            "insert into ai_session(id, tool, external_id, state_at, started_at) values ('z', 'claude', ?, 'a', 'a')"
+            "insert into ai_session(id, tool, external_id, state_at, started_at) values ('z', 'claude-code', ?, 'a', 'a')"
           )
           .run(s)
       )

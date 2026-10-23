@@ -393,6 +393,26 @@ describe('importUpdateTaskIn', () => {
     expect(db.prepare('select label from ai_session').get()).toEqual({ label: null })
   })
 
+  it('órfã adotada mantém o label que já tinha', () => {
+    const { d, db, ids } = setup()
+    const r = create(d, base(ids))
+    db.prepare(
+      `insert into ai_session(id, task_id, tool, external_id, state, state_at, started_at, label)
+       values ('keep', null, 'claude-code', ?, 'unknown', ?, ?, 'prev X')`
+    ).run(SID(4), NOW, NOW)
+    db.prepare(
+      `insert into ai_session(id, task_id, tool, external_id, state, state_at, started_at)
+       values ('fill', null, 'claude-code', ?, 'unknown', ?, ?)`
+    ).run(SID(5), NOW, NOW)
+    update(d, { task_id: r.task_id, sessions: [sess(4, 'scope'), sess(5, 'scope')] })
+    expect(db.prepare("select label from ai_session where id = 'keep'").get()).toEqual({
+      label: 'prev X'
+    })
+    expect(db.prepare("select label from ai_session where id = 'fill'").get()).toEqual({
+      label: 'scope'
+    })
+  })
+
   it('sessão órfã é adotada no update', () => {
     const { d, db, ids } = setup()
     const r = create(d, base(ids))
