@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { execFile } from 'child_process'
+import { randomBytes } from 'crypto'
 import { appendFileSync } from 'fs'
 import { join } from 'path'
 import type { ConfigState, Task } from '../shared/types'
@@ -25,7 +26,7 @@ import type { Channel } from '../shared/ipc/define'
 import * as C from '../shared/ipc/registry'
 import { configDir, userDataDir } from './config'
 import { brainTasksDir, createLegacyBrain, sessionCwd } from './brainDir'
-import { startHookServer, writeHookSettings } from './hooks'
+import { hookEffect, startHookServer, writeHookSettings } from './hooks'
 import { claudeArgv, inUseBy, resolveLaunch } from './launch'
 import { loginEnv } from './loginEnv'
 import { BRAND } from '../shared/brand'
@@ -90,13 +91,26 @@ export async function registerIpc(
     log: deps.log
   })
 
-  const hooks = await startHookServer((raw, st, sid, info) => {
-    const id = alias.get(raw) ?? raw
-    if (process.env.TURNFLOW_DEBUG) console.log('[hook]', raw, id, st, sid)
-    if (sid && pool.alive().includes(id) && uuidOf.get(id) !== sid) {
-      uuidOf.set(id, sid)
+  const ptyEvents = {
+    data: (id: string, d: string) => send('pty:data', id, d),
+    exit: (id: string, code: number) => onPtyExit({ uuidOf, alias, guard, send }, id, code)
+  }
+  const pool = createPtyPool({ spawner: nodePtySpawner, events: ptyEvents })
+  // Token único herdado até o host (Task 7) trocar pelo token por PTY. O id da aba saiu da URL.
+  const legacyToken = randomBytes(16).toString('hex')
+  const hooks = await startHookServer({
+    accept: (t) => t === legacyToken,
+    onHook: (_token, body) => {
+      const effect = hookEffect(body)
+      const id = body.session_id
+      if (!id || !pool.alive().includes(id)) return
+      if (effect.state !== 'working' && effect.state !== 'waiting' && effect.state !== 'idle')
+        return
+      send('pty:state', alias.get(id) ?? id, effect.state, {
+        event: body.hook_event_name,
+        message: body.message
+      })
     }
-    send('pty:state', alias.get(raw) ?? raw, st, info)
   })
   const settingsPath = await writeHookSettings(userDataDir())
   const depsFor = (self: string): Parameters<typeof resolveLaunch>[1] => ({
@@ -114,15 +128,10 @@ export async function registerIpc(
     if (!t) throw new IpcError('NOT_FOUND', `task ${id} não encontrada`)
     return t
   }
-  const ptyEvents = {
-    data: (id: string, d: string) => send('pty:data', id, d),
-    exit: (id: string, code: number) => onPtyExit({ uuidOf, alias, guard, send }, id, code)
-  }
-  const pool = createPtyPool({ spawner: nodePtySpawner, events: ptyEvents })
   const env = async (id: string): Promise<Record<string, string>> => ({
     PATH: (await loginEnv()).PATH,
     TURNFLOW_PORT: String(hooks.port),
-    TURNFLOW_TOKEN: hooks.token,
+    TURNFLOW_TOKEN: legacyToken,
     TURNFLOW_TASK: id
   })
 
