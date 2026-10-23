@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { DEFAULT_UI, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
 import type { TaskRow } from '../../shared/contracts'
 import type { ConfigState, Task, TaskState } from '../../shared/types'
-import { Action, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
+import { Action, HOME, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
+import { HomeView } from './HomeView'
 import { Sidebar } from './Sidebar'
 import { Panels } from './Panels'
 import { disposeTerm, getTerm, hasTerm, liveTerms } from './terms'
@@ -32,6 +33,8 @@ function App(): React.JSX.Element {
     density: DEFAULT_UI.density
   })
   const [attention, setAttention] = useState<TaskRow[]>([])
+  const [showDone, setShowDone] = useState(false)
+  const [doneRows, setDoneRows] = useState<TaskRow[]>([])
   const [sb, setSb] = useState<{ folded: boolean; width: number }>({
     folded: false,
     width: SIDEBAR_DEFAULT
@@ -100,6 +103,17 @@ function App(): React.JSX.Element {
       off()
     }
   }, [])
+
+  useEffect(() => {
+    if (!showDone) return
+    let cancel = false
+    void unwrap(window.turnflow.taskList({ scope: {} })).then((rows) => {
+      if (!cancel && rows) setDoneRows(rows)
+    })
+    return () => {
+      cancel = true
+    }
+  }, [showDone, attention])
 
   useEffect(() => {
     let cancel = false
@@ -293,6 +307,9 @@ function App(): React.JSX.Element {
             >
               <Icon name="settings" />
             </button>
+            <button data-nav title="Home" onClick={() => act({ t: 'open', taskId: HOME })}>
+              <Icon name="file" />
+            </button>
             <button data-nav title="Buscar task (Ctrl+Shift+K)" onClick={() => setSearching(true)}>
               <Icon name="search" />
             </button>
@@ -312,6 +329,17 @@ function App(): React.JSX.Element {
         onNewTab={newTab}
         cfg={cfg}
         setCfg={setCfg}
+        home={
+          <HomeView
+            rows={attention}
+            doneRows={doneRows}
+            mode={extra.home}
+            showDone={showDone}
+            onMode={(home) => setExtra((x) => ({ ...x, home }))}
+            onToggleDone={() => setShowDone((v) => !v)}
+            onOpen={(id) => act({ t: 'open', taskId: id })}
+          />
+        }
       />
       {searching && (
         <Search

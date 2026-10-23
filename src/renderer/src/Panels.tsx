@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ConfigState, Task } from '../../shared/types'
 import { SettingsView } from './SettingsView'
 import type { Live } from './App'
-import { type Action, type Layout, scratchKind, SETTINGS, tabLabel } from './layout'
+import { type Action, type Layout, scratchKind, HOME, SETTINGS, tabLabel } from './layout'
 import { Dot } from './Dot'
 import { Icon } from './Icon'
 import { ScratchView } from './ScratchView'
@@ -22,6 +22,7 @@ type Props = {
   onNewTab(kind: 'claude' | 'shell' | 'task', panel: number): void
   cfg: ConfigState | null
   setCfg(s: ConfigState): void
+  home: ReactNode
 }
 
 const DRAG = 'text/dk-task'
@@ -90,7 +91,8 @@ export function Panels(props: Props): React.JSX.Element {
     setNewTabPanel,
     onNewTab,
     cfg,
-    setCfg
+    setCfg,
+    home
   } = props
   const [zone, setZone] = useState<Zone | null>(null)
 
@@ -144,8 +146,8 @@ export function Panels(props: Props): React.JSX.Element {
   if (!layout.panels.length)
     return (
       <main className="panels empty-all">
+        {home}
         <div className="empty-start">
-          <p>Nenhuma aba aberta.</p>
           <div className="empty-actions">
             <button onClick={() => onNewTab('task', 0)}>
               <Icon name="search" size={14} /> Escolher task <kbd>Ctrl+Shift+K</kbd>
@@ -272,7 +274,9 @@ export function Panels(props: Props): React.JSX.Element {
                 </button>
               )}
             </div>
-            {activeId === SETTINGS ? (
+            {activeId === HOME ? (
+              home
+            ) : activeId === SETTINGS ? (
               cfg && <SettingsView cfg={cfg} onChange={setCfg} />
             ) : activeId && scratchKind(activeId) ? (
               <ScratchView

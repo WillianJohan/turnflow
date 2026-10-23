@@ -1462,6 +1462,48 @@ body.resizing .settings-page {
   white-space: nowrap;
   min-width: 0;
 }
-.attn-title {
-  flex: 1;
+.home-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
 }
+.home.list .home-cols {
+  grid-template-columns: 1fr;
+}
+.home-cols button,
+.home-done button,
+.home-bar button {
+  min-height: 24px;
+  min-width: 24px;
+}
+.home-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px 0;
+}
+.home-tag {
+  color: var(--red);
+  font-weight: 650;
+}
+.home-stalled {
+  margin: 8px 0 0;
+}
+.home-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-cols button,
+.home-done button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+

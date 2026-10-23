@@ -36,6 +36,11 @@ export function relativeAge(iso: string, now: number): string {
   return `${Math.floor(delta / WEEK)}w`
 }
 
+export function rowMotive(row: TaskRow): string | null {
+  if (row.blocked_reason !== null) return 'Bloq.'
+  return row.reason ? MOTIVE[row.reason.kind] : null
+}
+
 export function attentionFields(row: TaskRow, density: Density, now: number): AttentionFields {
   const since = row.reason?.since ?? row.touched_at
   return {
@@ -43,14 +48,7 @@ export function attentionFields(row: TaskRow, density: Density, now: number): At
     title: row.title,
     state: row.session?.state ?? null,
     stage: density === 'compact' ? null : row.stage.short_name,
-    motive:
-      density === 'compact'
-        ? null
-        : row.blocked_reason !== null
-          ? 'Bloq.'
-          : row.reason
-            ? MOTIVE[row.reason.kind]
-            : null,
+    motive: density === 'compact' ? null : rowMotive(row),
     next: density === 'wide' ? row.sum_next : null,
     age: density === 'wide' ? relativeAge(since, now) : null
   }

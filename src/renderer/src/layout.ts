@@ -169,7 +169,8 @@ export function reduce(l: Layout, a: Action): Layout {
       let out = l
       for (const p of l.panels)
         for (const id of p.tabs)
-          if (!a.ids.has(id) && !scratchKind(id) && id !== SETTINGS) out = removeTab(out, id)
+          if (!a.ids.has(id) && !scratchKind(id) && id !== SETTINGS && id !== HOME)
+            out = removeTab(out, id)
       return out
     }
     case 'restore': {
@@ -216,6 +217,7 @@ export function scratchId(kind: ScratchKind, l: Layout, busy: Set<string> = new 
 // Rótulo curto da aba: id da task, ou "Claude N" / "Terminal N" pras avulsas.
 export function tabLabel(id: string): string {
   if (id === SETTINGS) return 'Configurações'
+  if (id === HOME) return 'Home'
   const k = scratchKind(id)
   return k ? `${k === 'claude' ? 'Claude' : 'Terminal'} ${id.split('-')[1]}` : id
 }
@@ -228,3 +230,4 @@ export function windowTitle(l: Layout): string {
 
 // Aba única de configurações (tema, editor de tema, fontes, ícones...).
 export const SETTINGS = '~settings'
+export const HOME = '~home'
