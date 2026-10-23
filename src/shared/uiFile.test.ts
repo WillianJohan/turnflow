@@ -17,7 +17,8 @@ describe('parseUi', () => {
       sidebar: { folded: false, width: SIDEBAR_DEFAULT },
       home: 'list',
       fab: { edge: 'right', offset: 24 },
-      density: 'normal'
+      density: 'normal',
+      shortcuts: {}
     })
   })
 

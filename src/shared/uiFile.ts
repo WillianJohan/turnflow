@@ -36,7 +36,8 @@ export const UiFileZ = z
     }),
     home: z.enum(['list', 'kanban']),
     fab: FabZ,
-    density: DensityZ
+    density: DensityZ,
+    shortcuts: z.record(z.string().max(32), z.string().max(32))
   })
   .strict()
 
@@ -48,7 +49,8 @@ export const DEFAULT_UI: UiFile = {
   sidebar: { folded: false, width: SIDEBAR_DEFAULT },
   home: 'list',
   fab: { edge: 'right', offset: 24 },
-  density: 'normal'
+  density: 'normal',
+  shortcuts: {}
 }
 
 export function clampSidebar(width: number): number {
@@ -62,7 +64,8 @@ const Loose = z.object({
   sidebar: z.object({ folded: z.boolean(), width: z.number() }).optional(),
   home: z.enum(['list', 'kanban']).optional(),
   fab: FabZ.optional(),
-  density: DensityZ.optional()
+  density: DensityZ.optional(),
+  shortcuts: z.record(z.string().max(32), z.string().max(32)).optional()
 })
 
 /** `null` quando o JSON não é um layout desta versão. Largura fora da faixa é puxada para dentro. */
@@ -92,6 +95,15 @@ export function parseUi(raw: string): UiFile | null {
     },
     home: parsed.data.home ?? 'list',
     fab: parsed.data.fab ?? DEFAULT_UI.fab,
-    density: parsed.data.density ?? 'normal'
+    density: parsed.data.density ?? 'normal',
+    shortcuts: saneShortcuts(parsed.data.shortcuts)
   }
+}
+
+const saneShortcuts = (raw: Record<string, string> | undefined): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const [id, code] of Object.entries(raw ?? {})) {
+    if (/^[A-Za-z0-9]+$/.test(code)) out[id] = code
+  }
+  return out
 }

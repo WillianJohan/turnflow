@@ -16,7 +16,8 @@ const file = {
   sidebar: { folded: false, width: 288 },
   home: 'list' as const,
   fab: { edge: 'right' as const, offset: 24 },
-  density: 'normal' as const
+  density: 'normal' as const,
+  shortcuts: {}
 }
 
 it('arquivo ausente ou quebrado lê null', async () => {

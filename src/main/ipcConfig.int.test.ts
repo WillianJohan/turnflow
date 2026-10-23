@@ -207,7 +207,8 @@ describe('ui.json', () => {
     sidebar: { folded: false, width: 288 },
     home: 'list',
     fab: { edge: 'right', offset: 24 },
-    density: 'normal'
+    density: 'normal',
+    shortcuts: {}
   }
 
   it('ausente lê null; set grava e a leitura seguinte devolve o mesmo', async () => {

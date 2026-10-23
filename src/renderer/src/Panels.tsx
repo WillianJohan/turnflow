@@ -3,6 +3,7 @@ import type { ConfigState, Task } from '../../shared/types'
 import { SettingsView } from './SettingsView'
 import type { Live } from './App'
 import { type Action, type Layout, scratchKind, HOME, SETTINGS, tabLabel } from './layout'
+import { NEW_ACTIONS, type NewAction } from './palette'
 import { Dot } from './Dot'
 import { Icon } from './Icon'
 import { ScratchView } from './ScratchView'
@@ -19,7 +20,7 @@ type Props = {
   draft: boolean
   newTabPanel: number | null // painel com o menu "+" aberto
   setNewTabPanel(p: number | null): void
-  onNewTab(kind: 'claude' | 'shell' | 'task', panel: number): void
+  onNewTab(kind: NewAction, panel: number): void
   cfg: ConfigState | null
   setCfg(s: ConfigState): void
   home: ReactNode
@@ -41,18 +42,15 @@ function NewTabMenu({
   onPick,
   onClose
 }: {
-  onPick(k: 'claude' | 'shell' | 'task'): void
+  onPick(k: NewAction): void
   onClose(): void
 }): React.JSX.Element {
-  const items: [
-    k: 'claude' | 'shell' | 'task',
-    icon: 'pencil' | 'terminal' | 'search',
-    label: string
-  ][] = [
-    ['claude', 'pencil', 'Sessão vazia com Claude'],
-    ['shell', 'terminal', 'Terminal'],
-    ['task', 'search', 'Escolher task…']
-  ]
+  const icon: Record<NewAction, 'pencil' | 'terminal' | 'search' | 'file'> = {
+    task: 'search',
+    project: 'file',
+    claude: 'pencil',
+    terminal: 'terminal'
+  }
   return (
     <ul
       className="menu newtab"
@@ -67,10 +65,10 @@ function NewTabMenu({
         e.preventDefault()
       }}
     >
-      {items.map(([k, icon, label], i) => (
-        <li key={k}>
-          <button role="menuitem" autoFocus={i === 0} onClick={() => onPick(k)}>
-            <Icon name={icon} size={13} /> {label}
+      {NEW_ACTIONS.map((item, i) => (
+        <li key={item.id}>
+          <button role="menuitem" autoFocus={i === 0} onClick={() => onPick(item.id)}>
+            <Icon name={icon[item.id]} size={13} /> {item.label}
           </button>
         </li>
       ))}
@@ -149,15 +147,11 @@ export function Panels(props: Props): React.JSX.Element {
         {home}
         <div className="empty-start">
           <div className="empty-actions">
-            <button onClick={() => onNewTab('task', 0)}>
-              <Icon name="search" size={14} /> Escolher task <kbd>Ctrl+Shift+K</kbd>
-            </button>
-            <button onClick={() => onNewTab('claude', 0)}>
-              <Icon name="pencil" size={14} /> Claude sem task
-            </button>
-            <button onClick={() => onNewTab('shell', 0)}>
-              <Icon name="terminal" size={14} /> Terminal
-            </button>
+            {NEW_ACTIONS.map((item) => (
+              <button key={item.id} onClick={() => onNewTab(item.id, 0)}>
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
       </main>

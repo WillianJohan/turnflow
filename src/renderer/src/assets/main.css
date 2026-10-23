@@ -1606,3 +1606,28 @@ body.resizing .settings-page {
   border: 1px solid var(--line);
   border-radius: 6px;
 }
+.palette-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--fg-dim);
+}
+.app-notice,
+.shortcut-dialog p {
+  margin: 0;
+}
+.app-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.shortcut-dialog button,
+.search button {
+  min-height: 24px;
+  min-width: 24px;
+}

@@ -8,7 +8,8 @@ const file = (id: string): UiFile => ({
   sidebar: { folded: false, width: 288 },
   home: 'list',
   fab: { edge: 'right', offset: 24 },
-  density: 'normal'
+  density: 'normal',
+  shortcuts: {}
 })
 
 afterEach(() => {
