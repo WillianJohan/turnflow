@@ -8,7 +8,6 @@ import * as imp from './import'
 import * as pty from './pty'
 import * as search from './search'
 import * as session from './session'
-import * as settings from './settings'
 import * as tasks from './tasks'
 import * as theme from './theme'
 import * as vault from './vault'
@@ -17,18 +16,16 @@ import * as win from './win'
 export const CHANNELS = {
   listTasks: tasks.tasksList,
   tasksRoot: tasks.tasksRoot,
-  plan: tasks.taskPlan,
   readme: tasks.taskReadme,
-  sessionInfo: session.taskSessions,
-  start: pty.ptyStart,
-  startUpdate: pty.ptyStartUpdate,
-  startScratch: pty.ptyStartScratch,
+  ptySpawn: pty.ptySpawn,
+  sessionList: session.sessionList,
+  sessionAdopt: session.sessionAdopt,
+  sessionPickWorkdir: session.sessionPickWorkdir,
   write: pty.ptyWrite,
   send: pty.ptySend,
   resize: pty.ptyResize,
   kill: pty.ptyKill,
   focusWindow: win.winFocus,
-  settingsPath: settings.settingsPath,
   headerCached: header.headerCached,
   header: header.headerGet,
   config: config.configGet,

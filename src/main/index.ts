@@ -4,6 +4,9 @@ import { mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { is } from '@electron-toolkit/utils'
 import { registerIpc } from './ipc'
+import { runShutdown, shutdownPlan } from './shutdown'
+import type { DomainDeps } from '../core/domain/context'
+import type { SessionHost } from './sessionHost'
 import { windowPrefs } from './windowPrefs'
 import { isExternalLink } from './links'
 import { binDir, configDir, socketPath } from './config'
@@ -99,7 +102,7 @@ function createWindow(): BrowserWindow {
 }
 
 // shim de path estável + socket local: falha aqui não derruba a janela
-async function startLocalSurface(): Promise<void> {
+async function startLocalSurface(): Promise<{ close(): Promise<void> } | null> {
   try {
     const target = detectShimTarget({
       dev: is.dev,
@@ -112,27 +115,13 @@ async function startLocalSurface(): Promise<void> {
     console.error('[shim]', e)
   }
   try {
-    const server = await startSocketServer(socketPath(), stubMcpHandler, {
+    return await startSocketServer(socketPath(), stubMcpHandler, {
       secureDir: !process.env[`${BRAND.envPrefix}SOCKET`]
-    })
-    // fecha o socket antes de sair: will-quit não espera promise, então segura o quit até o
-    // close() terminar (ele destrói os clientes pendurados e apaga o arquivo do socket)
-    let closing = false
-    app.on('will-quit', (e) => {
-      if (closing) return
-      closing = true
-      e.preventDefault()
-      // teto de 2 s: um close() que não volta não pode prender o app aberto.
-      // exit, não quit: depois de um will-quit com preventDefault o Electron ignora o app.quit()
-      // seguinte e o processo ficava vivo sem janela. Os outros will-quit já rodaram nesse emit,
-      // e o exit só é seguro enquanto TODOS forem síncronos (hoje: changeBus.dispose e vault.close);
-      // um listener assíncrono novo seria cortado no meio.
-      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000))
-      Promise.race([server.close(), timeout]).finally(() => app.exit(0))
     })
   } catch (e) {
     // ALREADY_RUNNING com o lock na mão = outra instância com outro userData (ex.: teste)
     console.error('[socket]', e instanceof Error ? e.message : e)
+    return null
   }
 }
 
@@ -177,7 +166,9 @@ type VaultLog = (level: 'warn' | 'error', line: string) => void
  * `PRAGMA key` (o `db.pragma()` nem passa pelo `prepare` instrumentado). O backup diário
  * (na entrada em `ready` e o agendado) é do próprio vault.
  */
-async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: VaultLog }> {
+async function startVault(
+  vaultListeners: ((ready: boolean) => void)[]
+): Promise<{ vault: Vault; timer: QueryTimer; log: VaultLog }> {
   const backend = await selectKeyBackend()
   const paths = vaultPaths(configDir())
   let log: VaultLog
@@ -187,7 +178,7 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: Vau
     log = (level, line) => fileLog(`${level} ${line}`)
   }
   const timer = createQueryTimer({ mode: is.dev ? 'dev' : 'prod', log })
-  const onChange = wireVaultEvents({
+  const broadcast = wireVaultEvents({
     vault: () => vault,
     version: app.getVersion(),
     broadcast: (b) =>
@@ -195,6 +186,11 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: Vau
         (w) => !w.isDestroyed() && w.webContents.send('vault.changed', b)
       )
   })
+  const onChange = (): void => {
+    broadcast()
+    const ready = vault.state() === 'ready'
+    for (const listener of vaultListeners) listener(ready)
+  }
   const vault = createVault({
     paths,
     backend,
@@ -204,7 +200,6 @@ async function startVault(): Promise<{ vault: Vault; timer: QueryTimer; log: Vau
     // dentro do wipe, antes de o marcador sair: falha vira failed e o retry/próximo boot refazem
     clearExternal: clearBrowserData
   })
-  app.on('will-quit', () => vault.close())
   await vault.boot()
   return { vault, timer, log }
 }
@@ -228,7 +223,43 @@ function startApp(): void {
     main.focus()
   })
 
-  app.on('will-quit', changeBus.dispose)
+  const vaultListeners: ((ready: boolean) => void)[] = []
+  const stop: {
+    vault: Vault | null
+    host: SessionHost | null
+    hooks: { close(): Promise<void> } | null
+    domain: (() => DomainDeps | null) | null
+    socket: { close(): Promise<void> } | null
+    log: (line: string) => void
+  } = {
+    vault: null,
+    host: null,
+    hooks: null,
+    domain: null,
+    socket: null,
+    log: (line) => console.error(line)
+  }
+  let quitting = false
+  app.on('will-quit', (e) => {
+    if (quitting) return
+    quitting = true
+    e.preventDefault()
+    const steps =
+      stop.host && stop.hooks && stop.domain && stop.vault
+        ? shutdownPlan({
+            host: stop.host,
+            domain: stop.domain,
+            socket: stop.socket,
+            hooks: stop.hooks,
+            changeBus,
+            vault: stop.vault
+          })
+        : [
+            { name: 'changeBus', run: () => changeBus.dispose() },
+            { name: 'vault', run: () => stop.vault?.close() }
+          ]
+    void runShutdown(steps, { totalMs: 5000, log: stop.log }).finally(() => app.exit(0))
+  })
 
   app.whenReady().then(async () => {
     if (__TURNFLOW_TEST__) (await import('./testing')).installTestHooks()
@@ -236,23 +267,41 @@ function startApp(): void {
     const now = __TURNFLOW_TEST__
       ? ((await import('./testing/clock')).testNow(process.env) ?? (() => new Date()))
       : () => new Date()
-    const { vault, timer, log } = await startVault()
+    const { vault, timer, log } = await startVault(vaultListeners)
+    stop.vault = vault
+    stop.log = (line) => log('error', line)
     if (is.dev) installDevMenu(() => timer.stats())
     const win = createWindow()
     main = win
     // handlers registrados antes de carregar a página: senão o renderer chama antes de existirem
-    const dispose = await registerIpc(win, ipcMain, {
+    const registered = await registerIpc(win, ipcMain, {
       vault,
       version: app.getVersion(),
       dialogs: { ...vaultDialogs(win), folder: () => pickFolder(win) },
       log: (line) => log('error', line),
       domain: { now }
     })
+    stop.host = registered.host
+    stop.hooks = registered.hooks
+    stop.domain = registered.domain
+    let prevReady = vault.state() === 'ready'
+    vaultListeners.push((ready) => {
+      if (ready === prevReady) return
+      prevReady = ready
+      if (ready) {
+        const d = registered.domain()
+        if (d) registered.host.onVaultReady(d)
+      } else registered.host.onVaultLeft()
+    })
+    if (prevReady) {
+      const d = registered.domain()
+      if (d) registered.host.onVaultReady(d)
+    }
     if (is.dev && process.env['ELECTRON_RENDERER_URL'])
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])
     else win.loadFile(join(__dirname, '../renderer/index.html'))
-    win.on('closed', dispose)
-    void startLocalSurface()
+    win.on('closed', () => registered.dispose())
+    stop.socket = await startLocalSurface()
   })
 
   app.on('window-all-closed', () => app.quit())

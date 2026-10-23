@@ -54,7 +54,7 @@ describe('registerIpc', () => {
       dialogs: { save: async () => null, open: async () => null, folder: async () => null },
       domain: { now: () => new Date() }
     }
-    const dispose = await registerIpc(win as never, ipc as never, deps)
+    const { dispose } = await registerIpc(win as never, ipc as never, deps)
     dispose()
     const expected = Object.values(CHANNELS).map((c) => c.name)
     expect(handled.sort()).toEqual(expected.sort())

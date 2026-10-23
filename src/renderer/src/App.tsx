@@ -3,9 +3,8 @@ import type { ConfigState, Task, TaskState } from '../../shared/types'
 import { Action, loadLayout, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
 import { Sidebar } from './Sidebar'
 import { Panels } from './Panels'
-import { disposeTerm, getTerm, hasTerm, liveTerms, renameTerm } from './terms'
+import { disposeTerm, getTerm, hasTerm, liveTerms } from './terms'
 import { Search } from './Search'
-import { UpdateModal } from './UpdateModal'
 import { termsToDispose } from './live'
 import { applyTheme } from './theme'
 import { isTextField } from './focus'
@@ -69,20 +68,6 @@ function App(): React.JSX.Element {
       window.turnflow.onState((id, st, info) => {
         setLive((l) => ({ ...l, states: { ...l.states, [id]: st } }))
         if (info) notifyPending(id, st, info)
-      }),
-      // aba "Claude sem task" que criou/assumiu uma task: vira a aba da task (mesmo processo)
-      window.turnflow.onRenamed((from, to) => {
-        renameTerm(from, to)
-        setLive((l) => {
-          const mv = <T,>(o: Record<string, T>): Record<string, T> => {
-            const { [from]: v, ...rest } = o
-            return v === undefined ? o : { ...rest, [to]: v }
-          }
-          const alive = new Set(l.alive)
-          if (alive.delete(from)) alive.add(to)
-          return { alive, states: mv(l.states), exited: mv(l.exited) }
-        })
-        dispatch({ t: 'rename', from, to })
       }),
       window.turnflow.onExit((id, code) =>
         setLive((l) => {
@@ -192,13 +177,6 @@ function App(): React.JSX.Element {
   useEffect(() => {
     document.title = windowTitle(layout)
   }, [layout])
-  const [updating, setUpdating] = useState(false)
-  useEffect(() => {
-    const h = (): void => setUpdating(true)
-    window.addEventListener('dk:update', h)
-    return () => window.removeEventListener('dk:update', h)
-  }, [])
-
   // restore: abas de tasks que sumiram do brain saem do layout
   useEffect(() => {
     if (tasks.length) dispatch({ t: 'retain', ids: new Set(tasks.map((t) => t.id)) })
@@ -259,8 +237,7 @@ function App(): React.JSX.Element {
         if (sel) window.turnflow.writeClipboard({ text: sel })
       } else if (cmd === 'paste') {
         unwrap(window.turnflow.readClipboard()).then((c) => c?.text && term?.paste(c.text))
-      } else if (cmd === 'update') window.dispatchEvent(new Event('dk:update'))
-      else if ('tab' in cmd) act({ t: 'focusTab', n: cmd.tab })
+      } else if ('tab' in cmd) act({ t: 'focusTab', n: cmd.tab })
       else if ('panel' in cmd) act({ t: 'focusPanel', dir: cmd.panel })
       else act({ t: 'cycleTab', dir: cmd.cycle })
     }
@@ -301,13 +278,6 @@ function App(): React.JSX.Element {
             >
               <Icon name="settings" />
             </button>
-            <button
-              data-nav
-              title="Atualizar: revisão de demandas (Ctrl+Shift+U)"
-              onClick={() => setUpdating(true)}
-            >
-              <Icon name="refresh" />
-            </button>
             <button data-nav title="Buscar task (Ctrl+Shift+K)" onClick={() => setSearching(true)}>
               <Icon name="search" />
             </button>
@@ -328,15 +298,6 @@ function App(): React.JSX.Element {
         cfg={cfg}
         setCfg={setCfg}
       />
-      {updating && (
-        <UpdateModal
-          onClose={() => {
-            setUpdating(false)
-            unwrap(window.turnflow.listTasks()).then((t) => t && setTasks(t))
-            focusActive()
-          }}
-        />
-      )}
       {searching && (
         <Search
           tasks={tasks}

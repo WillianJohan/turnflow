@@ -23,7 +23,7 @@ function invoker<C extends Channel>(ch: C, fn: Handler<C>): (input?: unknown) =>
 describe('erros conhecidos chegam ao renderer com o texto útil', () => {
   it('claude fora do PATH → NOT_FOUND com o texto da copy', async () => {
     resetLoginEnv()
-    const call = invoker(CHANNELS.plan, async () => {
+    const call = invoker(CHANNELS.readme, async () => {
       await loginEnv(async () => '__TURNFLOW_PATH=/usr/bin\n__TURNFLOW_CLAUDE=\n')
       return { kind: 'new' } as never
     })

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { How, Plan, Task } from '../../shared/types'
-import { BRAND } from '../../shared/brand'
+import type { Task } from '../../shared/types'
 import type { Live } from './App'
 import { attachTerm, disposeTerm, getTerm, hasTerm } from './terms'
 import { Header } from './Header'
@@ -38,8 +37,13 @@ export function TaskView({
   const alive = live.alive.has(id)
   const exitCode = live.exited[id]
   const host = useRef<HTMLDivElement>(null)
-  const pending = useRef<How | null>(null)
-  const [plan, setPlan] = useState<Plan | null>(null)
+  const pending = useRef<{ resume?: string } | null>(null)
+  const [offer, setOffer] = useState<{
+    session_id: string
+    external_id: string
+    started_at: string
+    label: string | null
+  } | null>(null)
   const [starting, setStarting] = useState(false)
   const [err, setErr] = useState('')
   // Abrir a task mostra o README; o terminal só entra quando a sessão é retomada/criada.
@@ -51,11 +55,21 @@ export function TaskView({
 
   const launching = useRef(false)
 
-  const launch = (how: How): void => {
+  const launch = (how: { resume?: string }): void => {
     if (launching.current) return // duplo clique: um start por vez
     launching.current = true
     const e = getTerm(id)
-    orThrow(window.turnflow.start({ id, how, cols: e.term.cols, rows: e.term.rows }))
+    orThrow(
+      window.turnflow.ptySpawn({
+        kind: 'agent',
+        pty_id: id,
+        tool: 'claude-code',
+        task: id,
+        cols: e.term.cols,
+        rows: e.term.rows,
+        ...(how.resume ? { resume: how.resume } : {})
+      })
+    )
       .then(
         () => onStarted(id),
         (x) => {
@@ -69,7 +83,7 @@ export function TaskView({
       })
   }
 
-  const start = (how: How): void => {
+  const start = (how: { resume?: string }): void => {
     onPin()
     setErr('')
     setView('term')
@@ -86,7 +100,36 @@ export function TaskView({
   }
 
   useEffect(() => {
-    orThrow(window.turnflow.plan({ id })).then(setPlan, (e) => setErr(cleanErr(e)))
+    let cancel = false
+    void (async () => {
+      const got = await window.turnflow.taskGet({ id })
+      if (cancel) return
+      if (!got.ok) {
+        setOffer(null)
+        setErr(got.error.message)
+        return
+      }
+      const listed = await window.turnflow.sessionList({ task_id: got.data.id })
+      if (cancel) return
+      if (!listed.ok) {
+        setErr(listed.error.message)
+        return
+      }
+      const row = listed.data.find((s) => s.ended_at !== null && s.external_id)
+      setOffer(
+        row?.external_id
+          ? {
+              session_id: row.id,
+              external_id: row.external_id,
+              started_at: row.started_at,
+              label: row.label
+            }
+          : null
+      )
+    })()
+    return () => {
+      cancel = true
+    }
   }, [id])
 
   // README recarrega quando a lista de tasks muda (o objeto task vem novo)
@@ -116,17 +159,11 @@ export function TaskView({
 
   // Reabrir após o processo sair: se não dá pra retomar, larga o xterm velho e mostra o aviso com "Nova sessão".
   const reopen = (): void => {
-    orThrow(window.turnflow.plan({ id })).then(
-      (p) => {
-        setPlan(p)
-        if (p.kind === 'resume') start({ resume: p.uuid })
-        else {
-          disposeTerm(id)
-          setView('readme')
-        }
-      },
-      (e) => setErr(cleanErr(e))
-    )
+    if (offer) start({ resume: offer.session_id })
+    else {
+      disposeTerm(id)
+      setView('readme')
+    }
   }
 
   const hasSession = alive || hasTerm(id)
@@ -150,44 +187,18 @@ export function TaskView({
     </div>
   ) : (
     <div className="readme-actions">
-      {!plan && !err && <span>Procurando sessão…</span>}
-      {plan?.kind === 'resume' && (
+      {offer && (
         <>
           <span>
-            Última sessão: {task.sessions.find((s) => s.uuid === plan.uuid)?.date ?? ''} —{' '}
-            {task.sessions.find((s) => s.uuid === plan.uuid)?.desc || plan.uuid.slice(0, 8)}
+            Última sessão: {offer.started_at} — {offer.label || offer.external_id.slice(0, 8)}
           </span>
-          <button className="primary" onClick={() => start({ resume: plan.uuid })}>
+          <button className="primary" onClick={() => start({ resume: offer.session_id })}>
             <Icon name="terminal" size={13} /> Retomar sessão
           </button>
         </>
       )}
-      {plan?.kind === 'elsewhere' &&
-        (plan.by ? (
-          <span>Essa conversa já está aberta na aba {plan.by}.</span>
-        ) : (
-          <span>
-            Sessão aberta fora do {BRAND.name} (PID {plan.pid}).
-          </span>
-        ))}
-      {plan?.kind === 'gone' && <span>A pasta dessa sessão não existe mais ({plan.cwd}).</span>}
-      {plan?.kind === 'missing' && (
-        <span>As sessões gravadas não existem mais (o Claude Code apaga após 30 dias).</span>
-      )}
-      {plan?.kind === 'none' && <span>Essa task ainda não tem sessão.</span>}
-      {plan?.kind === 'elsewhere' && (
-        <button
-          onClick={() =>
-            orThrow(window.turnflow.plan({ id })).then(setPlan, (e) => setErr(cleanErr(e)))
-          }
-        >
-          Já fechei lá — tentar de novo
-        </button>
-      )}
-      <button
-        className={plan?.kind === 'resume' ? '' : 'primary'}
-        onClick={() => start({ newPrompt: true })}
-      >
+      {!offer && <span>Essa task ainda não tem sessão.</span>}
+      <button className={offer ? '' : 'primary'} onClick={() => start({})}>
         <Icon name="plus" size={13} /> Nova sessão
       </button>
     </div>
@@ -205,7 +216,7 @@ export function TaskView({
       {exitCode !== undefined && !alive && !starting && view === 'term' && (
         <div className="banner">
           Processo saiu (código {exitCode}). <button onClick={reopen}>Reabrir</button>{' '}
-          <button onClick={() => start({ newPrompt: true })}>Nova sessão</button>
+          <button onClick={() => start({})}>Nova sessão</button>
         </div>
       )}
       {err && <div className="banner error">{err}</div>}

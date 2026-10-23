@@ -36,7 +36,20 @@ export function ScratchView({
   const start = (): void => {
     const e = getTerm(id)
     setErr('')
-    orThrow(window.turnflow.startScratch({ id, cols: e.term.cols, rows: e.term.rows })).then(
+    orThrow(
+      window.turnflow.ptySpawn(
+        kind === 'shell'
+          ? { kind: 'shell', pty_id: id, cols: e.term.cols, rows: e.term.rows }
+          : {
+              kind: 'agent',
+              pty_id: id,
+              tool: 'claude-code',
+              task: null,
+              cols: e.term.cols,
+              rows: e.term.rows
+            }
+      )
+    ).then(
       () => onStarted(id),
       (x) => setErr(String(x?.message ?? x).replace(/^Error invoking[^:]+: (Error: )?/, ''))
     )

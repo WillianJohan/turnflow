@@ -436,6 +436,9 @@ kbd {
   background: var(--green);
   animation: pulse 1.2s ease-in-out infinite;
 }
+.dot.unknown {
+  background: var(--gray);
+}
 @keyframes pulse {
   50% {
     opacity: 0.4;

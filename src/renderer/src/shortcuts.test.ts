@@ -21,7 +21,6 @@ describe('appCommand', () => {
     [k('K', 'KeyK'), 'search'],
     [k('|', 'Backslash'), 'split'],
     [k('W', 'KeyW'), 'closeTab'],
-    [k('U', 'KeyU'), 'update'],
     [k('B', 'KeyB'), 'sidebar'],
     [k('C', 'KeyC'), 'copy'],
     [k('V', 'KeyV'), 'paste'],

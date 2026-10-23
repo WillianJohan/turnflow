@@ -2,7 +2,6 @@ export type AppCmd =
   | 'search'
   | 'split'
   | 'closeTab'
-  | 'update'
   | 'sidebar'
   | 'copy'
   | 'paste'
@@ -20,7 +19,6 @@ const BY_CODE: Record<string, AppCmd> = {
   Backslash: 'split',
   IntlBackslash: 'split',
   KeyW: 'closeTab',
-  KeyU: 'update',
   KeyB: 'sidebar',
   KeyC: 'copy',
   KeyV: 'paste',

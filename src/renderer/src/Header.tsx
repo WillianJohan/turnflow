@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { HeaderCache, SessionInfo, Task } from '../../shared/types'
+import type { SessionRow } from '../../shared/contracts'
+import type { HeaderCache, Task } from '../../shared/types'
 import { Icon } from './Icon'
 import { unwrap } from './ipc'
 
@@ -25,7 +26,7 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
   const [h, setH] = useState<HeaderCache | null>(null)
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(() => !isCollapsed(id))
-  const [sessions, setSessions] = useState<SessionInfo[] | null>(null)
+  const [sessions, setSessions] = useState<SessionRow[] | null>(null)
 
   const refresh = (force: boolean): void => {
     setLoading(true)
@@ -71,34 +72,34 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
           {extra}
           <span className="menu-wrap">
             <button
-              onClick={() =>
-                sessions
-                  ? setSessions(null)
-                  : unwrap(window.turnflow.sessionInfo({ id })).then((s) => s && setSessions(s))
-              }
+              onClick={() => {
+                if (sessions) {
+                  setSessions(null)
+                  return
+                }
+                void unwrap(window.turnflow.taskGet({ id })).then(async (row) => {
+                  if (!row) return
+                  const list = await unwrap(window.turnflow.sessionList({ task_id: row.id }))
+                  if (list) setSessions(list)
+                })
+              }}
             >
               Sessões <Icon name="chevron" size={12} />
             </button>
             {sessions && (
               <ul className="menu" onMouseLeave={() => setSessions(null)}>
                 {sessions.map((s) => (
-                  <li key={s.uuid}>
+                  <li key={s.id}>
                     <button
-                      disabled={!s.exists || s.current}
-                      title={
-                        s.current
-                          ? 'sessão aberta agora'
-                          : s.exists
-                            ? s.uuid
-                            : 'não existe mais em disco'
-                      }
+                      disabled={s.ended_at === null || !s.external_id}
+                      title={s.ended_at === null ? 'sessão aberta agora' : (s.external_id ?? s.id)}
                       onClick={() => {
                         setSessions(null)
-                        onSwitch(s.uuid)
+                        onSwitch(s.id)
                       }}
                     >
-                      {s.current ? '● ' : ''}
-                      {s.date} — {s.desc || s.uuid.slice(0, 8)}
+                      {s.ended_at === null ? '● ' : ''}
+                      {s.started_at} — {s.label || s.external_id?.slice(0, 8) || s.id.slice(0, 8)}
                     </button>
                   </li>
                 ))}

@@ -78,13 +78,15 @@ beforeEach(async () => {
     webContents: { id: 1, on: () => undefined, send: () => undefined },
     isDestroyed: () => false
   }
-  dispose = await registerIpc(win as never, ipc as never, {
-    vault: { db: () => db } as never,
-    version: '0.0.0',
-    dialogs: { save: async () => null, open: async () => null, folder: async () => null },
-    domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
-    log
-  })
+  dispose = (
+    await registerIpc(win as never, ipc as never, {
+      vault: { db: () => db } as never,
+      version: '0.0.0',
+      dialogs: { save: async () => null, open: async () => null, folder: async () => null },
+      domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
+      log
+    })
+  ).dispose
   call = async (method, input) =>
     (await invokes.get(CHANNELS[method].name)!(
       { sender: { id: 1 } },
@@ -185,13 +187,15 @@ describe('config.json × brain da lateral herdada', () => {
       isDestroyed: () => false
     }
     const ipc = { handle: () => undefined, on: () => undefined }
-    dispose = await registerIpc(win as never, ipc as never, {
-      vault: { db: () => db } as never,
-      version: '0.0.0',
-      dialogs: { save: async () => null, open: async () => null, folder: async () => null },
-      domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
-      log
-    })
+    dispose = (
+      await registerIpc(win as never, ipc as never, {
+        vault: { db: () => db } as never,
+        version: '0.0.0',
+        dialogs: { save: async () => null, open: async () => null, folder: async () => null },
+        domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
+        log
+      })
+    ).dispose
     expect(log).toHaveBeenCalledWith(expect.stringContaining('brain ilegível'))
   })
 })

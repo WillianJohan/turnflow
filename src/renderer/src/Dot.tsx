@@ -3,7 +3,8 @@ import type { TaskState } from '../../shared/types'
 const LABEL: Record<TaskState, string> = {
   waiting: 'esperando você',
   working: 'trabalhando',
-  idle: 'parado'
+  idle: 'parado',
+  unknown: 'desconhecido'
 }
 
 export const Dot = ({ state }: { state?: TaskState }): React.JSX.Element => (

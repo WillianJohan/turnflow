@@ -119,7 +119,7 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
     socketPath: '/tmp/turnflow.sock',
     hookPort: () => portBox.n,
     defaultWorkdir: () => box.workdir,
-    home: '/home/me',
+    home: '/srv/me',
     platform: 'linux',
     dirExists: async (p) => box.dirExists(p),
     findTranscript: async () => box.transcript,

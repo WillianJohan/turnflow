@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import {
   binDir as resolveBinDir,
   configDir as resolveConfigDir,
+  runDir as resolveRunDir,
   socketPath as resolveSocketPath
 } from '../shared/paths'
 import { join } from 'path'
@@ -21,3 +22,6 @@ export const socketPath = (): string =>
   resolveSocketPath(process.env, process.platform, homedir(), !app.isPackaged)
 export const binDir = (): string =>
   resolveBinDir(process.env, process.platform, homedir(), !app.isPackaged)
+// hooks.json e o socket de teste: dev não escreve na pasta do app empacotado
+export const runDir = (): string =>
+  resolveRunDir(process.env, process.platform, homedir(), !app.isPackaged)
