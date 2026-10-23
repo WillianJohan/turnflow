@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Db } from '../core/db/open'
 import { createDomain, type Actor, type DomainDeps } from '../core/domain/context'
 import { importUpdateTaskIn } from '../core/domain/importTask'
@@ -8,6 +8,7 @@ import { createTask, updateTask } from '../core/domain/task'
 import { runCommand } from '../core/domain/commands'
 import { insertSession, openTestDb } from '../core/testing/db'
 import { startHookServer } from './hooks'
+import { shellArgv } from './launch'
 import { createSessionHost, type SessionHost, type SessionHostDeps } from './sessionHost'
 import type { PtyProc, PtySpawner } from './pty'
 
@@ -67,6 +68,7 @@ type Box = {
   elsewhere: number | null
   elsewhereTool: string | null
   workdir: string | null
+  other: string[] | null
 }
 
 async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
@@ -86,6 +88,7 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
   box.elsewhere = null
   box.elsewhereTool = null
   box.workdir = over.workdir === undefined ? '/d' : over.workdir
+  box.other = null
   const fake = fakeSpawner()
   box.procs = fake.procs
   box.calls = fake.calls
@@ -109,7 +112,7 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
       claude: 'claude',
       codex: ['codex'],
       cursor: ['cursor-agent'],
-      other: null
+      other: box.other
     }),
     path: async () => '/usr/bin',
     settingsPath: '/settings.json',
@@ -563,6 +566,97 @@ describe('session host', () => {
     b.host.onVaultLeft()
     expect(b.procs[0].kills).toBe(1)
     expect(b.procs[1].kills).toBe(1)
+    await b.close()
+    b.db.close()
+  })
+
+  it('Codex: working com saída nos últimos 3 s, senão unknown, e nunca Sua vez', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    const opened = await spawn(b, { tool: 'codex', task: t.id })
+    const sid = opened.session_id!
+    expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
+    vi.useFakeTimers()
+    try {
+      b.procs[0].emitData('out')
+      expect(b.host.stateOf('p1')).toBe('working')
+      expect(getSession(b.d!, sid)?.state).toBe('working')
+      expect(statesOf(b).at(-1)).toEqual(['p1', 'working', { event: 'output' }])
+      expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
+      await vi.advanceTimersByTimeAsync(3001)
+      expect(b.host.stateOf('p1')).toBe('unknown')
+      expect(getSession(b.d!, sid)?.state).toBe('unknown')
+      expect(statesOf(b).at(-1)).toEqual(['p1', 'unknown', { event: 'quiet' }])
+      expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
+    } finally {
+      vi.useRealTimers()
+    }
+    await b.close()
+    b.db.close()
+  })
+
+  it('Cursor e Outra ficam unknown', async () => {
+    const b = await boot()
+    b.other = ['my-ai']
+    const t = task(b, '/w')
+    const cur = await spawn(b, { pty_id: 'c', tool: 'cursor', task: t.id })
+    expect(b.host.stateOf('c')).toBe('unknown')
+    expect(getSession(b.d!, cur.session_id!)?.state).toBe('unknown')
+    expect(
+      await post(b, 'tok-1', {
+        hook_event_name: 'Notification',
+        notification_type: 'permission_prompt',
+        message: 'allow?'
+      })
+    ).toBe(204)
+    expect(b.host.stateOf('c')).toBe('unknown')
+    expect(getSession(b.d!, cur.session_id!)?.state).toBe('unknown')
+    expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
+    const oth = await spawn(b, { pty_id: 'o', tool: 'other', task: t.id })
+    expect(b.host.stateOf('o')).toBe('unknown')
+    expect(await post(b, 'tok-2', { hook_event_name: 'Stop' })).toBe(204)
+    expect(b.host.stateOf('o')).toBe('unknown')
+    expect(getSession(b.d!, oth.session_id!)?.state).toBe('unknown')
+    expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
+    await b.close()
+    b.db.close()
+  })
+
+  it('Outra sem comando → VALIDATION agent_not_configured', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    await expect(spawn(b, { tool: 'other', task: t.id })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { reason: 'agent_not_configured' }
+    })
+    expect(sessions(b.db)).toBe(0)
+    await b.close()
+    b.db.close()
+  })
+
+  it('terminal puro abre o shell sem IA', async () => {
+    const b = await boot()
+    const opened = await b.host.spawn({ pty_id: 'sh', cols: 80, rows: 24, kind: 'shell' })
+    expect(opened).toEqual({ session_id: null })
+    expect(sessions(b.db)).toBe(0)
+    expect([b.calls[0].file, ...b.calls[0].args]).toEqual(shellArgv('linux', process.env))
+    expect(b.calls[0].o.env?.PATH).toBe('/usr/bin')
+    expect(b.calls[0].o.env?.TURNFLOW_SESSION_TOKEN).toBeUndefined()
+    expect(b.calls[0].o.env?.TURNFLOW_HOOK_PORT).toBeUndefined()
+    expect(b.calls[0].o.env?.TURNFLOW_TASK).toBeUndefined()
+    await b.close()
+    b.db.close()
+  })
+
+  it('onVaultLeft não mata o shell', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    await spawn(b, { pty_id: 'a', task: t.id })
+    await b.host.spawn({ pty_id: 'sh', cols: 80, rows: 24, kind: 'shell' })
+    b.host.onVaultLeft()
+    expect(b.procs[0].kills).toBe(1)
+    expect(b.procs[1].kills).toBe(0)
+    expect(b.host.alive()).toEqual(['sh'])
     await b.close()
     b.db.close()
   })

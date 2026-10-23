@@ -32,7 +32,8 @@ import { loginEnv } from './loginEnv'
 import { BRAND } from '../shared/brand'
 import { createPtyPool, nodePtySpawner } from './pty'
 import { createPtyGuard } from './ptyGuard'
-import { findSessionFile, runningElsewhere } from './sessions'
+import { binMatch, findProcessByArg } from './procs'
+import { findSessionFile } from './sessions'
 import { loadTasks, watchTasks } from './tasks'
 import { getHeader, readCache } from './header'
 import { handle as handleOn, IpcError, type Handler, type IpcLike } from './ipc/handle'
@@ -115,7 +116,12 @@ export async function registerIpc(
   const settingsPath = await writeHookSettings(userDataDir())
   const depsFor = (self: string): Parameters<typeof resolveLaunch>[1] => ({
     find: (u: string) => findSessionFile(u),
-    elsewhere: (u: string) => runningElsewhere(u, pool.ownPids()),
+    elsewhere: (u: string) =>
+      findProcessByArg(u, {
+        ownPids: pool.ownPids(),
+        platform: process.platform,
+        match: binMatch('claude-code')
+      }),
     cwdExists: (d: string) =>
       access(d).then(
         () => true,

@@ -20,20 +20,22 @@ import {
 import { noteUserPrompt } from '../core/domain/turn'
 import { IpcError } from './ipc/handle'
 import { hookEffect, type HookBody } from './hooks'
-import { agentArgv, launchDir, sessionEnv, type AgentCommands } from './launch'
+import { agentArgv, launchDir, sessionEnv, shellArgv, type AgentCommands } from './launch'
 import { createPtyPool, type PtySpawner } from './pty'
 
-export type SpawnInput = {
-  pty_id: string
-  cols: number
-  rows: number
-  kind: 'agent'
-  tool: SessionTool
-  /** Id ou key da task. `null` abre scratch. */
-  task: string | null
-  /** `session_id` de uma sessão encerrada. */
-  resume?: string
-}
+export type SpawnInput =
+  | {
+      pty_id: string
+      cols: number
+      rows: number
+      kind: 'agent'
+      tool: SessionTool
+      /** Id ou key da task. `null` abre scratch. */
+      task: string | null
+      /** `session_id` de uma sessão encerrada. */
+      resume?: string
+    }
+  | { pty_id: string; cols: number; rows: number; kind: 'shell' }
 
 export type SessionHostDeps = {
   spawner: PtySpawner
@@ -85,13 +87,48 @@ export type SessionHost = {
 export function createSessionHost(o: SessionHostDeps): SessionHost {
   const entries = new Map<string, Entry>()
   const byToken = new Map<string, string>()
+  const codexTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  const quietCodex = (id: string): void => {
+    const timer = codexTimers.get(id)
+    if (timer) clearTimeout(timer)
+    codexTimers.delete(id)
+  }
+
+  const bumpCodex = (id: string): void => {
+    const entry = entries.get(id)
+    if (!entry || entry.tool !== 'codex') return
+    if (entry.state !== 'working') {
+      entry.state = 'working'
+      o.events.state(id, 'working', { event: 'output' })
+      const d = o.domain()
+      if (d && entry.session_id) setSessionState(d, entry.session_id, 'working')
+    }
+    quietCodex(id)
+    codexTimers.set(
+      id,
+      setTimeout(() => {
+        codexTimers.delete(id)
+        const cur = entries.get(id)
+        if (!cur || cur.state !== 'working') return
+        cur.state = 'unknown'
+        o.events.state(id, 'unknown', { event: 'quiet' })
+        const d = o.domain()
+        if (d && cur.session_id) setSessionState(d, cur.session_id, 'unknown')
+      }, 3000)
+    )
+  }
 
   const pool = createPtyPool({
     spawner: o.spawner,
     platform: o.platform,
     events: {
-      data: (id, d) => o.events.data(id, d),
+      data: (id, d) => {
+        bumpCodex(id)
+        o.events.data(id, d)
+      },
       exit: (id, code) => {
+        quietCodex(id)
         const entry = entries.get(id)
         const d = o.domain()
         if (d && entry?.session_id)
@@ -111,6 +148,10 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
     entries.delete(ptyId)
   }
 
+  const pinFixed = (entry: Entry, tool: SessionTool): void => {
+    if (tool === 'cursor' || tool === 'other') entry.state = 'unknown'
+  }
+
   const applyState = (ptyId: string, entry: Entry, state: SessionState, b: HookBody): void => {
     if (entry.state === state) return
     entry.state = state
@@ -124,6 +165,26 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
 
   return {
     async spawn(i) {
+      if (i.kind === 'shell') {
+        if (entries.has(i.pty_id) && pool.alive().includes(i.pty_id)) return { session_id: null }
+        const dir = launchDir(null, o.defaultWorkdir(), o.home)
+        entries.set(i.pty_id, {
+          session_id: null,
+          client_id: null,
+          token: null,
+          tool: 'shell',
+          state: null,
+          killed: false
+        })
+        pool.start(
+          i.pty_id,
+          shellArgv(o.platform, process.env),
+          'dir' in dir ? dir.dir : o.home,
+          { PATH: await o.path() },
+          { cols: i.cols, rows: i.rows }
+        )
+        return { session_id: null }
+      }
       const d = o.domain()
       if (!d) throw new IpcError('LOCKED', 'vault locked')
       const live = entries.get(i.pty_id)
@@ -225,6 +286,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
             throw sessionError('CONFLICT', 'pty_busy')
           throw e
         }
+        pinFixed(entry, i.tool)
         return { session_id: opened.session_id }
       }
 
@@ -275,6 +337,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
           throw sessionError('CONFLICT', 'pty_busy')
         throw e
       }
+      pinFixed(entry, i.tool)
       return { session_id: opened.session_id }
     },
 
@@ -302,7 +365,14 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
     onHook(token, b) {
       const ptyId = byToken.get(token)
       const entry = ptyId ? entries.get(ptyId) : undefined
-      if (!ptyId || !entry || entry.tool === 'shell') return
+      if (
+        !ptyId ||
+        !entry ||
+        entry.tool === 'shell' ||
+        entry.tool === 'cursor' ||
+        entry.tool === 'other'
+      )
+        return
       const effect = hookEffect(b)
       if (effect.ignoredType !== undefined) o.log(effect.ignoredType)
       else if (b.hook_event_name === 'Notification' && effect.state === null) o.log('')
