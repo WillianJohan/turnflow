@@ -206,7 +206,8 @@ describe('ui.json', () => {
     layout: { panels: [{ tabs: ['T-1'], active: 0 }], focused: 0 },
     sidebar: { folded: false, width: 288 },
     home: 'list',
-    fab: { edge: 'right', offset: 24 }
+    fab: { edge: 'right', offset: 24 },
+    density: 'normal'
   }
 
   it('ausente lê null; set grava e a leitura seguinte devolve o mesmo', async () => {

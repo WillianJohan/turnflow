@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { DEFAULT_UI, SIDEBAR_DEFAULT } from '../../shared/uiFile'
+import { DEFAULT_UI, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
+import type { TaskRow } from '../../shared/contracts'
 import type { ConfigState, Task, TaskState } from '../../shared/types'
 import { Action, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
 import { Sidebar } from './Sidebar'
@@ -25,7 +26,12 @@ function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([])
   const [layout, dispatch] = useReducer(reduce, { panels: [], focused: 0 })
   const [hydrated, setHydrated] = useState(false)
-  const [extra, setExtra] = useState({ home: DEFAULT_UI.home, fab: DEFAULT_UI.fab })
+  const [extra, setExtra] = useState({
+    home: DEFAULT_UI.home,
+    fab: DEFAULT_UI.fab,
+    density: DEFAULT_UI.density
+  })
+  const [attention, setAttention] = useState<TaskRow[]>([])
   const [sb, setSb] = useState<{ folded: boolean; width: number }>({
     folded: false,
     width: SIDEBAR_DEFAULT
@@ -82,12 +88,27 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     let cancel = false
+    const load = (): void => {
+      void unwrap(window.turnflow.taskList({ scope: 'attention' })).then((rows) => {
+        if (!cancel && rows) setAttention(rows)
+      })
+    }
+    load()
+    const off = window.turnflow.onDomainChanged(() => load())
+    return () => {
+      cancel = true
+      off()
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancel = false
     void unwrap(window.turnflow.uiGet()).then((file) => {
       if (cancel) return
       if (file) {
         dispatch({ t: 'restore', layout: file.layout })
         setSb(file.sidebar)
-        setExtra({ home: file.home, fab: file.fab })
+        setExtra({ home: file.home, fab: file.fab, density: file.density })
       }
       setHydrated(true)
     })
@@ -122,7 +143,14 @@ function App(): React.JSX.Element {
   const act = useCallback((a: Action) => dispatch(a), [])
   useEffect(() => {
     if (!hydrated) return
-    saver.current.push({ version: 1, layout, sidebar: sb, home: extra.home, fab: extra.fab })
+    saver.current.push({
+      version: 1,
+      layout,
+      sidebar: sb,
+      home: extra.home,
+      fab: extra.fab,
+      density: extra.density
+    })
   }, [hydrated, layout, sb, extra])
   useEffect(() => () => saver.current.flush(), [])
   const [root, setRoot] = useState('')
@@ -242,6 +270,9 @@ function App(): React.JSX.Element {
         root={root}
         folded={sb.folded}
         width={sb.width}
+        attention={attention}
+        density={extra.density}
+        onDensity={(density: Density) => setExtra((x) => ({ ...x, density }))}
         onToggle={() => setSb((x) => ({ ...x, folded: !x.folded }))}
         onWidth={(w) => setSb((x) => ({ ...x, width: w }))}
         icons={cfg?.config.statusIcons}

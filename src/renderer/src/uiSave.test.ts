@@ -7,7 +7,8 @@ const file = (id: string): UiFile => ({
   layout: { panels: [{ tabs: [id], active: 0 }], focused: 0 },
   sidebar: { folded: false, width: 288 },
   home: 'list',
-  fab: { edge: 'right', offset: 24 }
+  fab: { edge: 'right', offset: 24 },
+  density: 'normal'
 })
 
 afterEach(() => {

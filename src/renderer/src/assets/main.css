@@ -1433,3 +1433,35 @@ body.resizing .settings-page {
   padding-top: 6px;
   overflow-y: auto;
 }
+.attn-switch {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+}
+.attn-switch button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px 8px;
+}
+.attn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+.attn-title,
+.attn-next {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.attn-title {
+  flex: 1;
+}

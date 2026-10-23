@@ -15,7 +15,8 @@ const file = {
   layout: { panels: [{ tabs: ['T-1'], active: 0 }], focused: 0 },
   sidebar: { folded: false, width: 288 },
   home: 'list' as const,
-  fab: { edge: 'right' as const, offset: 24 }
+  fab: { edge: 'right' as const, offset: 24 },
+  density: 'normal' as const
 }
 
 it('arquivo ausente ou quebrado lê null', async () => {

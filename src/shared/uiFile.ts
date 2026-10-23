@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const DensityZ = z.enum(['compact', 'normal', 'wide'])
+export type Density = z.infer<typeof DensityZ>
+
 export const SIDEBAR_MIN = 220
 export const SIDEBAR_MAX = 440
 export const SIDEBAR_DEFAULT = 288
@@ -32,7 +35,8 @@ export const UiFileZ = z
       width: z.number().int().min(SIDEBAR_MIN).max(SIDEBAR_MAX)
     }),
     home: z.enum(['list', 'kanban']),
-    fab: FabZ
+    fab: FabZ,
+    density: DensityZ
   })
   .strict()
 
@@ -43,7 +47,8 @@ export const DEFAULT_UI: UiFile = {
   layout: { panels: [], focused: 0 },
   sidebar: { folded: false, width: SIDEBAR_DEFAULT },
   home: 'list',
-  fab: { edge: 'right', offset: 24 }
+  fab: { edge: 'right', offset: 24 },
+  density: 'normal'
 }
 
 export function clampSidebar(width: number): number {
@@ -56,7 +61,8 @@ const Loose = z.object({
   layout: LayoutZ,
   sidebar: z.object({ folded: z.boolean(), width: z.number() }).optional(),
   home: z.enum(['list', 'kanban']).optional(),
-  fab: FabZ.optional()
+  fab: FabZ.optional(),
+  density: DensityZ.optional()
 })
 
 /** `null` quando o JSON não é um layout desta versão. Largura fora da faixa é puxada para dentro. */
@@ -85,6 +91,7 @@ export function parseUi(raw: string): UiFile | null {
       width: clampSidebar(parsed.data.sidebar?.width ?? SIDEBAR_DEFAULT)
     },
     home: parsed.data.home ?? 'list',
-    fab: parsed.data.fab ?? DEFAULT_UI.fab
+    fab: parsed.data.fab ?? DEFAULT_UI.fab,
+    density: parsed.data.density ?? 'normal'
   }
 }

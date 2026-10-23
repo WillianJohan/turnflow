@@ -1,6 +1,8 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { clampSidebar, SIDEBAR_DEFAULT } from '../../shared/uiFile'
+import type { TaskRow } from '../../shared/contracts'
+import { clampSidebar, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
 import type { Task } from '../../shared/types'
+import { AttentionList } from './AttentionList'
 import type { Live } from './App'
 import { Dot } from './Dot'
 import { kidCount, tree, visibleRows } from './tree'
@@ -24,6 +26,9 @@ type Props = {
   onToggle?(): void
   onWidth?(w: number): void
   icons?: Record<string, string>
+  attention?: TaskRow[]
+  density?: Density
+  onDensity?(density: Density): void
 }
 
 const COLLAPSED = new Set(['Concluído', 'Arquivada'])
@@ -66,9 +71,12 @@ export function Sidebar({
   actions,
   root,
   folded,
-  width = 320,
+  width = SIDEBAR_DEFAULT,
   onToggle,
-  onWidth
+  onWidth,
+  attention = [],
+  density = 'normal',
+  onDensity
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(COLLAPSED)
   const [expanded, setExpanded] = useState<Set<string>>(new Set()) // épicos abertos
@@ -222,6 +230,18 @@ export function Sidebar({
         {foldBtn}
         <span className="rail-actions">{actions}</span>
         <div className="rail-open">
+          {attention
+            .filter((row) => row.group === 'sua_vez')
+            .map((row) => (
+              <button
+                key={row.id}
+                data-nav
+                title={`${row.key} — ${row.title}`}
+                onClick={() => onOpen(row.id)}
+              >
+                <Dot state={row.session?.state} />
+              </button>
+            ))}
           {open.map((t) => (
             <button key={t.id} data-nav title={`${t.id} — ${t.title}`} onClick={() => onOpen(t.id)}>
               <Dot state={live.alive.has(t.id) ? live.states[t.id] : undefined} />
@@ -337,6 +357,25 @@ export function Sidebar({
         </div>
       )}
       <div className="sb-scroll">
+        <div className="attn-switch" role="group" aria-label="Density">
+          {(
+            [
+              ['compact', 'Compact'],
+              ['normal', 'Normal'],
+              ['wide', 'Wide']
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={density === id}
+              onClick={() => onDensity?.(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <AttentionList rows={attention} density={density} onOpen={onOpen} onPeek={onPeek} />
         {!tasks.length && (
           <p className="sb-empty">
             {root
