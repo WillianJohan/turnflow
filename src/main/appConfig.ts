@@ -34,7 +34,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   // pasta de trabalho das tasks sem `workdir` próprio (absoluta); null = nenhuma
   defaultWorkdir: null,
   // pasta do brain do último import (absoluta), gravada pelo apply; null = nenhuma
-  brainDir: null
+  brainDir: null,
+  agents: { codex: 'codex', cursor: 'cursor-agent', other: null }
 }
 
 const DARK: Theme = {
@@ -592,8 +593,29 @@ const sane = (raw: Record<string, unknown>): AppConfig => ({
     })
   ),
   defaultWorkdir: absolutePath(raw.defaultWorkdir) ?? DEFAULT_CONFIG.defaultWorkdir,
-  brainDir: absolutePath(raw.brainDir) ?? DEFAULT_CONFIG.brainDir
+  brainDir: absolutePath(raw.brainDir) ?? DEFAULT_CONFIG.brainDir,
+  agents: saneAgents(raw.agents)
 })
+
+const COMMAND_MAX = 1024
+
+const saneCommand = (v: unknown, fallback: string): string =>
+  typeof v === 'string' && v.length <= COMMAND_MAX ? v : fallback
+
+const saneAgents = (v: unknown): AppConfig['agents'] => {
+  const raw = v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+  const other = raw.other
+  return {
+    codex: saneCommand(raw.codex, DEFAULT_CONFIG.agents.codex),
+    cursor: saneCommand(raw.cursor, DEFAULT_CONFIG.agents.cursor),
+    other:
+      other === null
+        ? null
+        : typeof other === 'string' && other.length <= COMMAND_MAX
+          ? other
+          : DEFAULT_CONFIG.agents.other
+  }
+}
 
 // Saída do `fc-list : family` → nomes únicos ordenados (cada linha pode listar apelidos após vírgula).
 export const parseFcList = (out: string): string[] =>

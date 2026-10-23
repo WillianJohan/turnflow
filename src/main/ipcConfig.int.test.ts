@@ -137,6 +137,16 @@ describe('config.json × pasta padrão', () => {
   })
 })
 
+describe('config.json × agents', () => {
+  it('config:set com agents → VALIDATION e o arquivo não muda', async () => {
+    const before = await readFile(cfgFile(), 'utf8')
+    expect(
+      await call('setConfig', { agents: { codex: 'x', cursor: 'y', other: null } })
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION' } })
+    expect(await readFile(cfgFile(), 'utf8')).toBe(before)
+  })
+})
+
 describe('config.json × brain da lateral herdada', () => {
   it('brainDir novo rearma o watcher e a lateral lista dele', async () => {
     const brain = tmpDir()

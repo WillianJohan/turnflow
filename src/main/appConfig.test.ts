@@ -156,6 +156,29 @@ describe('proteção do config.json', () => {
     )
     expect((await readConfig(d)).config).toEqual(DEFAULT_CONFIG)
   })
+  it('agents inválido volta ao padrão por campo', async () => {
+    expect(DEFAULT_CONFIG.agents).toEqual({ codex: 'codex', cursor: 'cursor-agent', other: null })
+    const d = await tmp()
+    await writeFile(
+      join(d, 'config.json'),
+      JSON.stringify({
+        agents: { codex: 5, cursor: 'x'.repeat(1025), other: false, extra: 'no' }
+      })
+    )
+    expect((await readConfig(d)).config.agents).toEqual(DEFAULT_CONFIG.agents)
+    await writeFile(
+      join(d, 'config.json'),
+      JSON.stringify({ agents: { codex: 'my-codex', cursor: 'cursor-agent', other: 'my-ai' } })
+    )
+    expect((await readConfig(d)).config.agents).toEqual({
+      codex: 'my-codex',
+      cursor: 'cursor-agent',
+      other: 'my-ai'
+    })
+    await writeFile(join(d, 'config.json'), JSON.stringify({ agents: { other: null } }))
+    expect((await readConfig(d)).config.agents.other).toBeNull()
+    expect((await readConfig(d)).config.agents.codex).toBe('codex')
+  })
   it('pasta padrão: só caminho absoluto; relativo ou não-texto vira null', async () => {
     expect(DEFAULT_CONFIG.defaultWorkdir).toBeNull()
     const d = await tmp()

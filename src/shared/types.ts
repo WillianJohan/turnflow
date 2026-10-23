@@ -49,6 +49,8 @@ export type AppConfig = {
   defaultWorkdir: string | null
   /** Pasta do brain do último import (absoluta) ou `null`; a lateral herdada lista dela. */
   brainDir: string | null
+  /** Comandos dos agentes que não são o Claude. `other: null` = não configurado. Só pelo arquivo. */
+  agents: { codex: string; cursor: string; other: string | null }
 }
 export type ConfigState = {
   dir: string

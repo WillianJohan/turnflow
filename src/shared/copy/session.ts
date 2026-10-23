@@ -19,5 +19,10 @@ export const SESSION_COPY = {
     end: 'Session ended'
   },
   clientName: (tool: string, key: string | null): string =>
-    `session ${tool}${key ? ` · ${key}` : ''}`
+    `session ${tool}${key ? ` · ${key}` : ''}`,
+  initialPrompt: (key: string, title: string, server: string): string =>
+    `We're working on task ${key}: ${title}\n\n` +
+    `Before anything else, call the guidelines_get and task_get tools from the ${server} MCP server.`,
+  descriptionIntro: '\n\nTask description:\n',
+  descriptionCut: '\n\n[Description truncated. Read the rest with task_get.]'
 } as const
