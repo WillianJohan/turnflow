@@ -1,4 +1,5 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { clampSidebar, SIDEBAR_DEFAULT } from '../../shared/uiFile'
 import type { Task } from '../../shared/types'
 import type { Live } from './App'
 import { Dot } from './Dot'
@@ -235,8 +236,7 @@ export function Sidebar({
     e.preventDefault()
     const x0 = e.clientX
     document.body.classList.add('resizing')
-    const move = (ev: MouseEvent): void =>
-      onWidth?.(Math.min(520, Math.max(180, width + ev.clientX - x0)))
+    const move = (ev: MouseEvent): void => onWidth?.(clampSidebar(width + ev.clientX - x0))
     const up = (): void => {
       document.body.classList.remove('resizing')
       window.removeEventListener('mousemove', move)
@@ -248,7 +248,12 @@ export function Sidebar({
 
   return (
     <nav className="sidebar" id="sidebar" onKeyDown={onKeyNav} style={{ width }}>
-      <div className="sb-resize" onMouseDown={startResize} title="Arraste pra mudar a largura" />
+      <div
+        className="sb-resize"
+        onMouseDown={startResize}
+        onDoubleClick={() => onWidth?.(SIDEBAR_DEFAULT)}
+        title="Arraste pra mudar a largura. Duplo clique volta ao padrão."
+      />
       <div className="sb-head">
         <Logo />
         <span className="sb-actions">

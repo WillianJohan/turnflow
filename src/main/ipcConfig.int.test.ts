@@ -199,3 +199,33 @@ describe('config.json × brain da lateral herdada', () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining('brain ilegível'))
   })
 })
+
+describe('ui.json', () => {
+  const file = {
+    version: 1,
+    layout: { panels: [{ tabs: ['T-1'], active: 0 }], focused: 0 },
+    sidebar: { folded: false, width: 288 },
+    home: 'list',
+    fab: { edge: 'right', offset: 24 }
+  }
+
+  it('ausente lê null; set grava e a leitura seguinte devolve o mesmo', async () => {
+    expect(await call('uiGet')).toEqual({ ok: true, data: null })
+    expect(data(await call('uiSet', file))).toEqual(file)
+    expect(data(await call('uiGet'))).toEqual(file)
+    expect(await readFile(join(dir, 'ui.json'), 'utf8')).toContain('"T-1"')
+  })
+
+  it('largura fora da faixa é VALIDATION e não grava', async () => {
+    expect(await call('uiSet', { ...file, sidebar: { folded: false, width: 10 } })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+    expect(await call('uiGet')).toEqual({ ok: true, data: null })
+  })
+
+  it('json quebrado lê null', async () => {
+    await writeFile(join(dir, 'ui.json'), '{ quebrado')
+    expect(await call('uiGet')).toEqual({ ok: true, data: null })
+  })
+})

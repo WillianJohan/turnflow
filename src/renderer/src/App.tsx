@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { DEFAULT_UI, SIDEBAR_DEFAULT } from '../../shared/uiFile'
 import type { ConfigState, Task, TaskState } from '../../shared/types'
-import { Action, loadLayout, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
+import { Action, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
 import { Sidebar } from './Sidebar'
 import { Panels } from './Panels'
 import { disposeTerm, getTerm, hasTerm, liveTerms } from './terms'
@@ -12,15 +13,7 @@ import { notifyText, shouldNotify, type HookInfo } from './notify'
 import { Icon } from './Icon'
 import { appCommand } from './shortcuts'
 import { unwrap } from './ipc'
-
-const LAYOUT_KEY = 'turnflow.layout'
-const readLayout = (): string | null => {
-  try {
-    return localStorage.getItem(LAYOUT_KEY)
-  } catch {
-    return null
-  }
-}
+import { createUiSaver } from './uiSave'
 
 export type Live = {
   states: Record<string, TaskState>
@@ -30,7 +23,14 @@ export type Live = {
 
 function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [layout, dispatch] = useReducer(reduce, null, () => loadLayout(readLayout()))
+  const [layout, dispatch] = useReducer(reduce, { panels: [], focused: 0 })
+  const [hydrated, setHydrated] = useState(false)
+  const [extra, setExtra] = useState({ home: DEFAULT_UI.home, fab: DEFAULT_UI.fab })
+  const [sb, setSb] = useState<{ folded: boolean; width: number }>({
+    folded: false,
+    width: SIDEBAR_DEFAULT
+  })
+  const saver = useRef(createUiSaver((file) => void unwrap(window.turnflow.uiSet(file))))
   const [live, setLive] = useState<Live>({ states: {}, alive: new Set(), exited: {} })
 
   // Aviso do sistema (igual Cursor) quando um claude passa a esperar você e você não está vendo a aba.
@@ -81,12 +81,20 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
-    } catch {
-      // sem storage: layout só não persiste
+    let cancel = false
+    void unwrap(window.turnflow.uiGet()).then((file) => {
+      if (cancel) return
+      if (file) {
+        dispatch({ t: 'restore', layout: file.layout })
+        setSb(file.sidebar)
+        setExtra({ home: file.home, fab: file.fab })
+      }
+      setHydrated(true)
+    })
+    return () => {
+      cancel = true
     }
-  }, [layout])
+  }, [])
 
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
   const openIds = useMemo(() => new Set(layout.panels.flatMap((p) => p.tabs)), [layout])
@@ -112,25 +120,11 @@ function App(): React.JSX.Element {
   }, [live.exited, openIds])
 
   const act = useCallback((a: Action) => dispatch(a), [])
-  // lista lateral: recolhida e largura ficam no localStorage
-  const [sb, setSb] = useState<{ folded: boolean; width: number }>(() => {
-    try {
-      return {
-        folded: false,
-        width: 320,
-        ...JSON.parse(localStorage.getItem('turnflow.sidebar') ?? '{}')
-      }
-    } catch {
-      return { folded: false, width: 320 }
-    }
-  })
   useEffect(() => {
-    try {
-      localStorage.setItem('turnflow.sidebar', JSON.stringify(sb))
-    } catch {
-      // sem storage
-    }
-  }, [sb])
+    if (!hydrated) return
+    saver.current.push({ version: 1, layout, sidebar: sb, home: extra.home, fab: extra.fab })
+  }, [hydrated, layout, sb, extra])
+  useEffect(() => () => saver.current.flush(), [])
   const [root, setRoot] = useState('')
   // a pasta muda sem reiniciar (import grava brainDir): relê a cada lista nova
   useEffect(() => {
@@ -168,8 +162,9 @@ function App(): React.JSX.Element {
   }, [layout])
   // restore: abas de tasks que sumiram do brain saem do layout
   useEffect(() => {
-    if (tasks.length) dispatch({ t: 'retain', ids: new Set(tasks.map((t) => t.id)) })
-  }, [tasks])
+    if (!hydrated || !tasks.length) return
+    dispatch({ t: 'retain', ids: new Set(tasks.map((t) => t.id)) })
+  }, [tasks, hydrated])
   const activeId = layout.panels[layout.focused]?.tabs[layout.panels[layout.focused].active]
 
   const toggleDraft = useCallback(() => {

@@ -20,6 +20,7 @@ export type Action =
   | { t: 'move'; taskId: string; toPanel: number }
   | { t: 'splitMove'; taskId: string; panel: number; side: -1 | 1 } // aba solta na borda do painel
   | { t: 'retain'; ids: Set<string> }
+  | { t: 'restore'; layout: Layout }
 
 export const EMPTY: Layout = { panels: [], focused: 0 }
 
@@ -170,6 +171,17 @@ export function reduce(l: Layout, a: Action): Layout {
         for (const id of p.tabs)
           if (!a.ids.has(id) && !scratchKind(id) && id !== SETTINGS) out = removeTab(out, id)
       return out
+    }
+    case 'restore': {
+      const panels = a.layout.panels.map((p) => ({
+        ...p,
+        active: p.tabs.length ? Math.min(Math.max(0, p.active), p.tabs.length - 1) : 0
+      }))
+      if (!panels.length) return EMPTY
+      return {
+        panels,
+        focused: Math.min(Math.max(0, a.layout.focused), panels.length - 1)
+      }
     }
   }
 }
