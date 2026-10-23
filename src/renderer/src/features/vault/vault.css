@@ -1,0 +1,152 @@
+/* Telas de segurança: HTML/CSS simples com as variáveis de :root, sem o DS. */
+.vault {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  overflow: auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.vault-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 460px;
+  padding: 24px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.vault-card h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.vault-card p {
+  margin: 0;
+  line-height: 1.45;
+}
+.vault-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-dim);
+}
+.vault-card input[type='password'],
+.vault-card textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.vault-card input:focus-visible,
+.vault-card textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.vault-card label.vault-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+}
+.vault-row {
+  display: flex;
+  gap: 8px;
+}
+.vault-row button {
+  padding: 6px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.vault-primary {
+  padding: 8px 12px;
+  background: var(--accent) !important;
+  color: var(--primary-fg) !important;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.vault-card button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.vault-link {
+  align-self: flex-start;
+  color: var(--accent);
+  text-decoration: underline;
+  padding: 0;
+}
+.vault-hint {
+  color: var(--fg-dim);
+}
+.vault-warn {
+  padding: 8px;
+  background: var(--warn-bg);
+  color: var(--yellow);
+  border-radius: 4px;
+}
+.vault-error {
+  padding: 8px;
+  background: var(--err-bg);
+  color: var(--err-fg);
+  border-radius: 4px;
+}
+.vault-words {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+  padding: 12px 12px 12px 36px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  user-select: text;
+}
+/* Apagar tudo: regras próprias porque também aparece dentro dos Ajustes, fora do .vault-card. */
+.vault-wipe {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.vault-wipe p {
+  margin: 0;
+  line-height: 1.45;
+}
+.vault-wipe label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-dim);
+}
+.vault-wipe input[type='text'] {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.vault-wipe input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.vault-danger {
+  align-self: flex-start;
+  padding: 8px 12px;
+  background: var(--err-bg) !important;
+  color: var(--err-fg) !important;
+  border: 1px solid var(--red) !important;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.vault-wipe button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

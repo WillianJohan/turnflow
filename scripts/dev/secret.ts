@@ -1,0 +1,247 @@
+import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
+import { connect } from 'node:net'
+import { homedir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+import { ReadStream as TtyReadStream } from 'node:tty'
+import { Writable, type Readable } from 'node:stream'
+import { DbOpenError, openDb, type Db } from '../../src/core/db/open'
+import { LATEST } from '../../src/core/db/migrations'
+import { VaultError } from '../../src/core/key/errors'
+import { readKeyFile, unlockDek, type Credential } from '../../src/core/key/keyfile'
+import { vaultPaths } from '../../src/core/key/paths'
+import { VAULT_COPY } from '../../src/shared/copy/vault'
+import { configDir, socketPath } from '../../src/shared/paths'
+
+// Grava/lista segredos na tabela `secret` do banco de DEV, fora do app (o app de dev precisa estar
+// fechado). O valor entra só pelo stdin: nunca por argv (vaza em `ps`/histórico) e nunca é impresso.
+
+export type SecretIo = {
+  stdin: Readable
+  stdout: Writable
+  stderr: Writable
+  isTTY: boolean
+  prompt(question: string, hidden: boolean): Promise<string>
+}
+
+export type SecretDeps = {
+  env?: NodeJS.ProcessEnv
+  appRunning?: () => Promise<boolean>
+  now?: () => Date
+}
+
+const USAGE =
+  'uso: dev:secret set <name> [--service <s>] [--allow-host <h>]... [--words-file <path>]\n' +
+  '     dev:secret list [--words-file <path>]\n' +
+  '  valor: stdin (nunca argv). --service omitido = o próprio <name> (segredo novo).\n' +
+  '  Em segredo existente, só mudam --service e --allow-host quando a flag vem; created_at fica.'
+
+type Parsed = {
+  cmd: 'set' | 'list'
+  name?: string
+  service?: string
+  allowHosts: string[]
+  wordsFile?: string
+}
+
+class CliError extends Error {}
+
+function parseArgs(argv: string[]): Parsed {
+  const [cmd, ...rest] = argv
+  if (cmd !== 'set' && cmd !== 'list') throw new CliError(USAGE)
+  const out: Parsed = { cmd, allowHosts: [] }
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i]
+    if (a === '--service' || a === '--allow-host' || a === '--words-file') {
+      const v = rest[++i]
+      if (v === undefined) throw new CliError(`${a} precisa de um valor`)
+      if (a === '--service') out.service = v
+      else if (a === '--allow-host') out.allowHosts.push(v)
+      else out.wordsFile = v
+    } else if (a.startsWith('--')) {
+      throw new CliError(`opção desconhecida: ${a}`)
+    } else if (cmd === 'set' && out.name === undefined) {
+      out.name = a
+    } else {
+      throw new CliError(USAGE)
+    }
+  }
+  if (cmd === 'set' && !out.name) throw new CliError(USAGE)
+  return out
+}
+
+async function readAll(stream: Readable): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c as string))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function readValue(io: SecretIo): Promise<string> {
+  const raw = io.isTTY ? await io.prompt('Valor do segredo: ', true) : await readAll(io.stdin)
+  const value = io.isTTY ? raw : raw.replace(/\r?\n$/, '')
+  if (value === '') throw new CliError('Valor vazio: mande o segredo pelo stdin')
+  return value
+}
+
+async function credentialFor(
+  p: Parsed,
+  io: SecretIo,
+  mode: 'password' | 'keyring'
+): Promise<Credential> {
+  if (p.wordsFile) {
+    let text: string
+    try {
+      text = readFileSync(p.wordsFile, 'utf8')
+    } catch {
+      throw new CliError('Não consegui ler o arquivo das palavras')
+    }
+    return { words: text }
+  }
+  if (mode === 'keyring')
+    throw new CliError(
+      'Banco no modo chaveiro: fora do app só abre com as palavras (--words-file <arquivo salvo>)'
+    )
+  return { password: await io.prompt('Senha mestra: ', true) }
+}
+
+const describe = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+export async function runSecretCli(
+  argv: string[],
+  io: SecretIo,
+  deps: SecretDeps = {}
+): Promise<number> {
+  const env = deps.env ?? process.env
+  const appRunning =
+    deps.appRunning ?? (() => socketAccepts(socketPath(env, process.platform, homedir(), true)))
+  const now = deps.now ?? ((): Date => new Date())
+  let db: Db | undefined
+  let dek: Buffer | undefined
+  try {
+    const p = parseArgs(argv)
+    const value = p.cmd === 'set' ? await readValue(io) : ''
+    const paths = vaultPaths(configDir(env, process.platform, homedir(), true))
+    const keyFile = existsSync(paths.keyFile) ? readKeyFile(paths.keyFile) : null
+    if (!keyFile) throw new CliError('Banco de dev não existe: abra o app uma vez')
+    dek = await unlockDek(keyFile, await credentialFor(p, io, keyFile.mode))
+    // logo antes de abrir: depois dos prompts (a senha pode demorar) e o mais perto possível do open
+    if (await appRunning()) throw new CliError('Feche o app de dev antes')
+    try {
+      db = openDb({ file: paths.db, dek, create: false, migrate: false })
+    } catch (e) {
+      if (e instanceof DbOpenError && e.code === 'WRONG_KEY') throw new VaultError('WRONG_KEY')
+      if (e instanceof DbOpenError && e.code === 'NOT_FOUND')
+        throw new CliError('Banco de dev não existe: abra o app uma vez')
+      throw e
+    }
+    const version = db.pragma('user_version', { simple: true }) as number
+    if (version < LATEST) throw new CliError('Banco desatualizado: abra o app uma vez para migrar')
+    if (version > LATEST) throw new CliError(VAULT_COPY.newerSchema(version, LATEST))
+
+    if (p.cmd === 'set') {
+      // created_at fica no upsert; service/allow_hosts só mudam quando a flag vem; inject nunca
+      db.prepare(
+        `insert into secret(name, service, value, allow_hosts, inject, created_at)
+         values (@name, @service, @value, @hosts, null, @at)
+         on conflict(name) do update set value = excluded.value,
+           service = case when @setService then excluded.service else service end,
+           allow_hosts = case when @setHosts then excluded.allow_hosts else allow_hosts end`
+      ).run({
+        name: p.name,
+        service: p.service ?? p.name,
+        value,
+        hosts: JSON.stringify(p.allowHosts),
+        at: now().toISOString(),
+        setService: p.service === undefined ? 0 : 1,
+        setHosts: p.allowHosts.length > 0 ? 1 : 0
+      })
+      io.stdout.write(`segredo ${p.name} gravado\n`)
+    } else {
+      const rows = db
+        .prepare('select name, service, allow_hosts from secret order by name')
+        .all() as { name: string; service: string; allow_hosts: string | null }[]
+      for (const r of rows) io.stdout.write(`${r.name} ${r.service} ${r.allow_hosts ?? '[]'}\n`)
+    }
+    return 0
+  } catch (e) {
+    io.stderr.write(
+      `${e instanceof CliError || e instanceof VaultError || e instanceof DbOpenError ? describe(e) : `Erro inesperado: ${describe(e)}`}\n`
+    )
+    return 1
+  } finally {
+    db?.close()
+    dek?.fill(0)
+  }
+}
+
+/** App de dev aberto = alguém aceita conexão no socket dele (≤300 ms). */
+export function socketAccepts(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = connect(path)
+    const done = (v: boolean): void => {
+      s.destroy()
+      resolve(v)
+    }
+    s.setTimeout(300, () => done(false))
+    s.once('connect', () => done(true))
+    s.once('error', () => done(false))
+  })
+}
+
+const silent = new Writable({ write: (_c, _e, cb) => cb() })
+
+/**
+ * Terminal de verdade (`/dev/tty`) para quando o stdin traz o valor por pipe. Precisa ser um
+ * `tty.ReadStream`: só ele tem `setRawMode`, que desliga o eco do kernel (um fs.ReadStream deixava
+ * a senha aparecer na tela). `undefined` = sem terminal (CI, Windows).
+ */
+function openTty(): TtyReadStream | undefined {
+  let fd: number | undefined
+  try {
+    fd = openSync('/dev/tty', 'r')
+    return new TtyReadStream(fd)
+  } catch {
+    if (fd !== undefined) closeSync(fd)
+    return undefined
+  }
+}
+
+/** Prompt no terminal; `hidden` não ecoa (raw mode + saída muda) e o modo é restaurado sempre. */
+function ttyPrompt(question: string, hidden: boolean): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const own = process.stdin.isTTY ? undefined : openTty()
+    const input = own ?? (process.stdin.isTTY ? process.stdin : undefined)
+    if (!input) return reject(new CliError('Sem terminal para perguntar: use --words-file'))
+    process.stderr.write(question)
+    const rl = createInterface({ input, output: hidden ? silent : process.stderr, terminal: true })
+    let answered = false
+    const finish = (): void => {
+      rl.close() // readline devolve o modo do terminal
+      if (own) {
+        own.setRawMode(false)
+        own.destroy() // fecha o fd do /dev/tty
+      }
+      if (hidden) process.stderr.write('\n')
+    }
+    rl.once('line', (line) => {
+      answered = true
+      finish()
+      resolve(line)
+    })
+    rl.once('close', () => {
+      if (answered) return
+      finish()
+      reject(new CliError('Entrada encerrada sem resposta'))
+    })
+  })
+}
+
+if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+  void runSecretCli(process.argv.slice(2), {
+    stdin: process.stdin,
+    stdout: process.stdout,
+    stderr: process.stderr,
+    isTTY: Boolean(process.stdin.isTTY),
+    prompt: ttyPrompt
+  }).then((code) => process.exit(code))
+}
