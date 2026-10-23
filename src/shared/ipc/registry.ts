@@ -10,6 +10,7 @@ import * as search from './search'
 import * as session from './session'
 import * as tasks from './tasks'
 import * as theme from './theme'
+import * as ui from './ui'
 import * as vault from './vault'
 import * as win from './win'
 
@@ -32,6 +33,8 @@ export const CHANNELS = {
   setConfig: config.configSet,
   cloneTheme: config.configCloneTheme,
   openConfigDir: config.configOpenDir,
+  uiGet: ui.uiGet,
+  uiSet: ui.uiSet,
   readTheme: theme.themeRead,
   saveTheme: theme.themeSave,
   deleteTheme: theme.themeDelete,

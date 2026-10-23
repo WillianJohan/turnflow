@@ -35,6 +35,7 @@ import { nodePtySpawner, type PtySpawner } from './pty'
 import { createPtyGuard } from './ptyGuard'
 import { binMatch, findProcessByArg } from './procs'
 import { findSessionFile } from './sessions'
+import { readUi, writeUi } from './uiStore'
 import { createSessionHost, type SessionHost } from './sessionHost'
 import { loadTasks, watchTasks } from './tasks'
 import { getHeader, readCache } from './header'
@@ -137,6 +138,11 @@ export async function registerIpc(
       () => undefined
     )
   )
+  handle(C.CHANNELS.uiGet, () => readUi(cfgDir))
+  handle(C.CHANNELS.uiSet, async (file) => {
+    await writeUi(cfgDir, file)
+    return file
+  })
   handle(C.CHANNELS.config, () => configState())
   handle(C.CHANNELS.setConfig, async (patch) => {
     await writeConfig(cfgDir, patch)

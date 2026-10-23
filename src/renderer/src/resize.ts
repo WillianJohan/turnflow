@@ -1,4 +1,4 @@
-export const MIN_PANEL = 200
+export const MIN_PANEL = 300
 
 // Divisória entre dois painéis: dx em px vira novos pesos (flex-grow), mantendo a soma dos dois.
 export function dragSizes(
