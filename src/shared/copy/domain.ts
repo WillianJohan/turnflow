@@ -2,8 +2,9 @@
 // pt-BR; o E6.9 troca por i18n. Nunca interpolar título, descrição ou checkpoint de task aqui.
 
 import { IMPORT_COPY } from './import'
+import { SESSION_COPY } from './session'
 
-export type NotFoundEntity = 'task' | 'project' | 'activity' | 'flow' | 'stage' | 'type'
+export type NotFoundEntity = 'task' | 'project' | 'activity' | 'flow' | 'stage' | 'type' | 'session'
 
 const ERRORS = {
   title_required: 'Dê um título para a task',
@@ -39,7 +40,8 @@ const NOT_FOUND: Record<NotFoundEntity, string> = {
   activity: 'Atividade não encontrada',
   flow: 'Fluxo não encontrado',
   stage: 'Etapa não encontrada',
-  type: 'Tipo não encontrado'
+  type: 'Tipo não encontrado',
+  session: 'Sessão não encontrada'
 }
 
 const ACTOR = {
@@ -78,6 +80,8 @@ const SUMMARY: Record<string, (d: Data) => string> = {
   stage_remap: (d) => `remapeou a etapa: ${arrow(d)}`,
   project_delete: (d) => `apagou o projeto ${str(d.name)}`,
   task_import: (d) => (d.created ? IMPORT_COPY.activity.created : IMPORT_COPY.activity.updated),
+  session_adopt: () => SESSION_COPY.activity.adopt,
+  session_end: () => SESSION_COPY.activity.end,
   undo: () => 'desfez uma ação'
 }
 

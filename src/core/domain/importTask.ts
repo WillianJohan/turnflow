@@ -391,7 +391,7 @@ function syncSessions(d: DomainDeps, taskId: string, list: ImportSession[]): Ses
       }
     } else if (row.task_id === null) {
       d.db
-        .prepare('update ai_session set task_id = ?, label = ? where id = ?')
+        .prepare('update ai_session set task_id = ?, label = coalesce(label, ?) where id = ?')
         .run(taskId, s.label, row.id)
       out.added++
       out.changed = true

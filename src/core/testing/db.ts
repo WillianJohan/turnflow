@@ -80,13 +80,30 @@ export function insertSession(
     state_at: string
     ended_at?: string | null
     tool?: string
+    /** `undefined` = o id da linha; `null` = sem id externo. */
+    external_id?: string | null
+    started_at?: string
+    cwd?: string | null
+    label?: string | null
   }
 ): string {
   const id = randomUUID()
+  const external = p.external_id === undefined ? id : p.external_id
   db.prepare(
-    `insert into ai_session(id, task_id, tool, external_id, state, state_at, started_at, ended_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, p.task_id, p.tool ?? 'claude', id, p.state, p.state_at, p.state_at, p.ended_at ?? null)
+    `insert into ai_session(id, task_id, tool, external_id, cwd, state, state_at, started_at, ended_at, label)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    p.task_id,
+    p.tool ?? 'claude-code',
+    external,
+    p.cwd ?? null,
+    p.state,
+    p.state_at,
+    p.started_at ?? p.state_at,
+    p.ended_at ?? null,
+    p.label ?? null
+  )
   return id
 }
 

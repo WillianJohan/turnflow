@@ -65,6 +65,8 @@ export type ActivityOp =
   | 'stage_remap'
   | 'project_delete'
   | 'task_import'
+  | 'session_adopt'
+  | 'session_end'
   | 'undo'
 
 /**

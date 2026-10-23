@@ -23,6 +23,7 @@ import {
   updateTask,
   type TaskCommandResult
 } from './task'
+import { adoptSession } from './session'
 import { dismissTask } from './turn'
 import { undoActivity } from './undo'
 
@@ -44,7 +45,8 @@ export const COMMAND_OPS = [
   'project_update',
   'project_delete',
   'flow_save_stage',
-  'flow_delete_stage'
+  'flow_delete_stage',
+  'session_adopt'
 ] as const
 
 type Outbox = 'queued' | 'none'
@@ -67,6 +69,7 @@ export type Command =
   | { op: 'project_delete'; id: string }
   | { op: 'flow_save_stage'; input: SaveStageInput }
   | { op: 'flow_delete_stage'; id: string; to_stage_id?: string }
+  | { op: 'session_adopt'; session_id: string; task_id: string }
 
 type Op = (typeof COMMAND_OPS)[number]
 type Assert<T extends true> = T
@@ -92,6 +95,7 @@ export type CommandResults = {
   project_delete: { deleted: true; task_ids: string[] }
   flow_save_stage: Flow
   flow_delete_stage: Flow
+  session_adopt: TaskCommandResult
 }
 
 export type CommandOutcome<R> =
@@ -140,6 +144,8 @@ function dispatch(d: DomainDeps, actor: Actor, cmd: Command): CommandResults[Com
       return saveStage(d, actor, cmd.input)
     case 'flow_delete_stage':
       return deleteStage(d, actor, { id: cmd.id, to_stage_id: cmd.to_stage_id })
+    case 'session_adopt':
+      return adoptSession(d, actor, { session_id: cmd.session_id, task_id: cmd.task_id })
     default:
       return assertNever(cmd)
   }
