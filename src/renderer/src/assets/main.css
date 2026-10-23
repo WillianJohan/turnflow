@@ -509,6 +509,7 @@ kbd {
 }
 
 .taskview {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1507,3 +1508,101 @@ body.resizing .settings-page {
   color: inherit;
 }
 
+.term-plain {
+  border: 0;
+  background: var(--bg);
+}
+.task-head .th-actions button,
+.task-menu button,
+.stage-bar button,
+.task-summary button,
+.task-ask button,
+.timeline button,
+.toast button {
+  min-height: 24px;
+  min-width: 24px;
+}
+.task-menu {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+}
+.task-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 4px 8px;
+}
+.stage-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.stage-bar button[aria-current='step'] {
+  color: var(--fg);
+  background: var(--bg3);
+  border-radius: 4px;
+}
+.task-summary,
+.task-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.task-summary p,
+.task-ask p {
+  margin: 0;
+}
+.task-summary .k,
+.timeline-kind {
+  color: var(--fg-dim);
+}
+.task-summary input,
+.task-ask input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-height: 24px;
+}
+.timeline-wrap,
+.timeline {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.timeline ol {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px 24px;
+}
+.timeline li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.timeline-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.toast {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
