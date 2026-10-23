@@ -1,0 +1,13 @@
+dist
+dist/
+.DS_Store
+.eslintcache
+*.log*
+node_modules
+node_modules/
+out
+out/
+out-test/
+.superpowers/
+test-results/
+playwright-report/

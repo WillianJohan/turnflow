@@ -1,0 +1,177 @@
+import { statSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import type { DomainChanged } from '../../shared/ipc/events'
+import { insertCheckpoint, insertSession, insertTask, openTestDb, tmpDir } from '../testing/db'
+import type { Db } from './open'
+import { compact, purgeTask } from './purge'
+import { runSearch } from './search'
+import { createTx } from './tx'
+
+const SECRET = 'segredo-lgpd-xyz'
+
+/** Banco em disco com uma task de 2 checkpoints com o segredo e outras tasks de enchimento. */
+function seeded(): { db: Db; file: string; id: string } {
+  const dir = tmpDir()
+  const db = openTestDb(dir)
+  const id = insertTask(db, { key: 'T-1', title: 'Pessoal', description: `nota ${SECRET}` })
+  insertCheckpoint(db, { task_id: id, text: `primeiro ${SECRET}` })
+  insertCheckpoint(db, { task_id: id, text: `segundo ${SECRET} ${'texto longo '.repeat(400)}` })
+  for (let i = 0; i < 20; i++) {
+    const t = insertTask(db, { key: `F-${i}`, title: `Outra ${i}` })
+    insertCheckpoint(db, { task_id: t, text: `enchimento ${'abc '.repeat(300)}` })
+  }
+  return { db, file: join(dir, 'turnflow.db'), id }
+}
+
+const count = (db: Db, sql: string, ...args: unknown[]): number =>
+  (db.prepare(sql).get(...args) as { n: number }).n
+
+const noop = (): void => undefined
+
+// Toca disco (tamanho do -wal), por isso .int.test.ts: é o lgpd.test.ts do plano.
+describe('LGPD local', () => {
+  it('secure_delete ligado', () => {
+    const db = openTestDb()
+    expect(db.pragma('secure_delete', { simple: true })).toBe(1)
+    db.close()
+  })
+
+  it('temp_store em memória: o VACUUM não deixa temporário em disco', () => {
+    const db = openTestDb()
+    expect(db.pragma('temp_store', { simple: true })).toBe(2) // 2 = MEMORY
+    db.close()
+  })
+
+  it('compact dentro de transação lança antes do VACUUM', () => {
+    const { db, file } = seeded()
+    db.exec('begin')
+    expect(() => compact(db)).toThrow(/transação/)
+    db.exec('rollback')
+    expect(statSync(file + '-wal').size).toBeGreaterThan(0) // nada foi checkpointado
+    db.close()
+  })
+
+  it('purge limpa FTS e derivados', () => {
+    const { db, id } = seeded()
+    expect(runSearch(db, SECRET).length).toBeGreaterThan(0)
+    expect(purgeTask(db, id, createTx(db, noop))).toBe(true)
+
+    expect(runSearch(db, SECRET)).toEqual([])
+    expect(count(db, 'select count(*) as n from checkpoint where task_id = ?', id)).toBe(0)
+    expect(count(db, 'select count(*) as n from search_fts where task_id = ?', id)).toBe(0)
+    db.exec("create virtual table temp.vocab using fts5vocab(main, 'search_fts', 'row')")
+    // trigramas que só o segredo tinha
+    expect(count(db, "select count(*) as n from temp.vocab where term in ('xyz', 'gpd')")).toBe(0)
+    // o resto continua achável
+    expect(runSearch(db, 'enchimento').length).toBeGreaterThan(0)
+    db.close()
+  })
+
+  it('purge leva activity, project_item e outbox e solta a sessão', () => {
+    const { db, id } = seeded()
+    db.prepare("insert into project(id, name) values ('p', 'P')").run()
+    db.prepare(
+      "insert into project_item(id, project_id, rank, kind, task_id) values ('i', 'p', 'a0', 'task', ?)"
+    ).run(id)
+    db.prepare(
+      "insert into activity(id, at, actor, op, task_id) values ('a', '2026-10-22T00:00:00Z', 'user', 'create', ?)"
+    ).run(id)
+    db.prepare(
+      "insert into sync_outbox(id, task_id, op, idem_key, created_at) values ('o', ?, 'comment', 'comment:a', '2026-10-22T00:00:00Z')"
+    ).run(id)
+    const s = insertSession(db, { task_id: id, state: 'working', state_at: '2026-10-22T00:00:00Z' })
+
+    expect(purgeTask(db, id, createTx(db, noop))).toBe(true)
+
+    for (const t of ['activity', 'project_item', 'sync_outbox'])
+      expect(count(db, `select count(*) as n from ${t} where task_id = ?`, id)).toBe(0)
+    const row = db.prepare('select task_id from ai_session where id = ?').get(s) as {
+      task_id: string | null
+    }
+    expect(row.task_id).toBeNull()
+    db.close()
+  })
+
+  it('purge de task importada deixa tombstone só com a key', () => {
+    const { db, id } = seeded()
+    db.prepare(
+      `insert into import_record(source_key, source_path, task_id, file_hash, field_hashes, imported_at)
+       values ('ABC-1', 'current/ABC-1/README.md', ?, 'abc', '{"title":{"md":"a","app":"b"}}', 'x')`
+    ).run(id)
+    db.prepare(
+      `insert into ai_session(id, task_id, tool, external_id, state, state_at, started_at, ended_at, label)
+       values ('s', ?, 'claude-code', 'uuid-1', 'unknown', 'x', 'x', 'x', 'texto do readme')`
+    ).run(id)
+    expect(purgeTask(db, id, createTx(db, noop))).toBe(true)
+    expect(db.prepare('select * from import_record').all()).toEqual([
+      {
+        source_key: 'ABC-1',
+        source_path: '',
+        task_id: null,
+        file_hash: '',
+        field_hashes: '{}',
+        imported_at: 'x'
+      }
+    ])
+    expect(db.prepare("select task_id, label from ai_session where id = 's'").get()).toEqual({
+      task_id: null,
+      label: null
+    })
+    db.close()
+  })
+
+  it('o vocabulário tinha os trigramas antes do purge (o teste acima não é vácuo)', () => {
+    const { db } = seeded()
+    db.exec("create virtual table temp.vocab using fts5vocab(main, 'search_fts', 'row')")
+    expect(count(db, "select count(*) as n from temp.vocab where term in ('xyz', 'gpd')")).toBe(2)
+    db.close()
+  })
+
+  it('WAL zerado depois do purge', () => {
+    const { db, file, id } = seeded()
+    expect(statSync(file + '-wal').size).toBeGreaterThan(0)
+    purgeTask(db, id, createTx(db, noop))
+    expect(statSync(file + '-wal').size).toBe(0)
+    db.close()
+  })
+
+  it('freelist vazia depois do purge', () => {
+    const { db, id } = seeded()
+    db.prepare('delete from task where key like ?').run('F-1%') // páginas livres antes do purge
+    db.pragma('wal_checkpoint(TRUNCATE)')
+    expect(db.pragma('freelist_count', { simple: true })).toBeGreaterThan(0)
+    purgeTask(db, id, createTx(db, noop))
+    expect(db.pragma('freelist_count', { simple: true })).toBe(0)
+    db.close()
+  })
+
+  it('domain.changed depois do commit, uma vez', () => {
+    const { db, id } = seeded()
+    const seen: { c: DomainChanged; exists: number }[] = []
+    const after = vi.fn((c: DomainChanged) => {
+      seen.push({ c, exists: count(db, 'select count(*) as n from task where id = ?', id) })
+    })
+    purgeTask(db, id, createTx(db, after))
+    expect(after).toHaveBeenCalledTimes(1)
+    expect(seen).toEqual([{ c: { entity: 'task', ids: [id], op: 'delete' }, exists: 0 }])
+    db.close()
+  })
+
+  it('task inexistente: false e sem emit', () => {
+    const { db } = seeded()
+    const after = vi.fn()
+    expect(purgeTask(db, 'nao-existe', createTx(db, after))).toBe(false)
+    expect(after).not.toHaveBeenCalled()
+    db.close()
+  })
+
+  it('compact zera WAL e freelist', () => {
+    const { db, file } = seeded()
+    db.prepare('delete from task where key like ?').run('F-%')
+    compact(db)
+    expect(statSync(file + '-wal').size).toBe(0)
+    expect(db.pragma('freelist_count', { simple: true })).toBe(0)
+    db.close()
+  })
+})

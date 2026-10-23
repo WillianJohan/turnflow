@@ -1,0 +1,131 @@
+import { createRequire } from 'module'
+import { ptyEnv } from './launch'
+
+export type PtyProc = {
+  pid: number
+  onData(cb: (d: string) => void): void
+  onExit(cb: (e: { exitCode: number }) => void): void
+  write(d: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+}
+
+export type PtySpawner = (
+  file: string,
+  args: string[],
+  o: { cols: number; rows: number; cwd: string; env: Record<string, string> }
+) => PtyProc
+
+// Único lugar que carrega o node-pty (binário do ABI do Electron): unit e int nunca passam
+// por aqui, usam um spawner fake.
+export const nodePtySpawner: PtySpawner = (file, args, o) =>
+  (createRequire(__filename)('node-pty') as typeof import('node-pty')).spawn(file, args, o)
+
+export type PtyPool = {
+  start(
+    id: string,
+    argv: string[],
+    cwd: string,
+    env: Record<string, string>,
+    size: { cols: number; rows: number }
+  ): void
+  write(id: string, d: string): void
+  resize(id: string, cols: number, rows: number): void
+  kill(id: string): void
+  killAndWait(id: string, ms: number): Promise<void>
+  killAllAndWait(ms: number, filter?: (id: string) => boolean): Promise<void>
+  alive(): string[]
+  ownPids(): Set<number>
+}
+
+type Events = { data(id: string, d: string): void; exit(id: string, code: number): void }
+type Leaving = { p: PtyProc; waiters: Set<() => void>; timer: NodeJS.Timeout | null }
+
+export function createPtyPool(o: {
+  spawner: PtySpawner
+  events: Events
+  platform?: NodeJS.Platform
+  baseEnv?: Record<string, string | undefined>
+  killGraceMs?: number
+}): PtyPool {
+  const platform = o.platform ?? process.platform
+  const grace = o.killGraceMs ?? 3000
+  const live = new Map<string, PtyProc>()
+  // morto por `kill` e ainda sem `onExit`: o id continua ocupado até o processo sair de fato
+  const leaving = new Map<string, Leaving>()
+
+  const kill = (id: string): void => {
+    const p = live.get(id)
+    if (!p) return
+    live.delete(id)
+    const l: Leaving = { p, waiters: new Set(), timer: null }
+    leaving.set(id, l)
+    p.kill()
+    // claude que ignora SIGHUP vira processo invisível; sem exit em `grace` vai no SIGKILL.
+    // No Windows (conpty) matar por pid não existe: só `p.kill()` e esperar o exit.
+    if (platform !== 'win32')
+      l.timer = setTimeout(() => {
+        l.timer = null
+        try {
+          process.kill(p.pid, 'SIGKILL')
+        } catch {
+          // já saiu
+        }
+      }, grace)
+  }
+
+  const waitExit = (id: string, ms: number): Promise<void> => {
+    const l = leaving.get(id)
+    if (!l) return Promise.resolve()
+    return new Promise((resolve) => {
+      const done = (): void => {
+        clearTimeout(t)
+        l.waiters.delete(done)
+        resolve()
+      }
+      const t = setTimeout(done, ms)
+      l.waiters.add(done)
+    })
+  }
+
+  const killAndWait = (id: string, ms: number): Promise<void> => {
+    kill(id)
+    return waitExit(id, ms)
+  }
+
+  return {
+    start(id, argv, cwd, env, size) {
+      if (live.has(id) || leaving.has(id)) throw new Error('pty_busy')
+      const p = o.spawner(argv[0], argv.slice(1), {
+        cols: size.cols,
+        rows: size.rows,
+        cwd,
+        env: ptyEnv(o.baseEnv ?? process.env, env)
+      })
+      live.set(id, p)
+      p.onData((d) => o.events.data(id, d))
+      p.onExit(({ exitCode }) => {
+        // só o exit do processo certo libera o id: o de um processo velho nunca encerra o novo
+        if (live.get(id) === p) live.delete(id)
+        const l = leaving.get(id)
+        if (l?.p === p) {
+          leaving.delete(id)
+          if (l.timer) clearTimeout(l.timer)
+          for (const w of [...l.waiters]) w()
+        }
+        o.events.exit(id, exitCode)
+      })
+    },
+    write: (id, d) => live.get(id)?.write(d),
+    resize: (id, c, r) => live.get(id)?.resize(c, r),
+    kill,
+    killAndWait,
+    killAllAndWait: async (ms, filter) => {
+      const ids = [...live.keys(), ...leaving.keys()].filter((id) => !filter || filter(id))
+      await Promise.all(ids.map((id) => killAndWait(id, ms)))
+    },
+    alive: () => [...live.keys()],
+    ownPids: () =>
+      new Set([...live.values(), ...[...leaving.values()].map((l) => l.p)].map((p) => p.pid))
+  }
+}
