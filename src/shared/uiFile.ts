@@ -58,9 +58,33 @@ export function clampSidebar(width: number): number {
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(width)))
 }
 
+const LooseLayout = z.object({
+  panels: z.array(
+    z.object({
+      tabs: z.array(TabId),
+      active: z.number().int().nonnegative(),
+      preview: TabId.optional(),
+      size: z.number().optional()
+    })
+  ),
+  focused: z.number().int().nonnegative()
+})
+
+/** Peso de painel fora do contrato (0, negativo, infinito) cai fora; o painel volta a peso 1. */
+export function cleanLayout(layout: z.infer<typeof LooseLayout>): UiFile['layout'] {
+  return {
+    panels: layout.panels.map(({ size, ...p }) => ({
+      ...p,
+      active: p.tabs.length ? Math.min(p.active, p.tabs.length - 1) : 0,
+      ...(size !== undefined && Number.isFinite(size) && size > 0 ? { size } : {})
+    })),
+    focused: layout.panels.length ? Math.min(layout.focused, layout.panels.length - 1) : 0
+  }
+}
+
 const Loose = z.object({
   version: z.number().optional(),
-  layout: LayoutZ,
+  layout: LooseLayout,
   sidebar: z.object({ folded: z.boolean(), width: z.number() }).optional(),
   home: z.enum(['list', 'kanban']).optional(),
   fab: FabZ.optional(),
@@ -79,16 +103,9 @@ export function parseUi(raw: string): UiFile | null {
   const parsed = Loose.safeParse(json)
   if (!parsed.success || (parsed.data.version !== undefined && parsed.data.version !== 1))
     return null
-  const layout = parsed.data.layout
   return {
     version: 1,
-    layout: {
-      panels: layout.panels.map((p) => ({
-        ...p,
-        active: p.tabs.length ? Math.min(p.active, p.tabs.length - 1) : 0
-      })),
-      focused: layout.panels.length ? Math.min(layout.focused, layout.panels.length - 1) : 0
-    },
+    layout: cleanLayout(parsed.data.layout),
     sidebar: {
       folded: parsed.data.sidebar?.folded ?? false,
       width: clampSidebar(parsed.data.sidebar?.width ?? SIDEBAR_DEFAULT)

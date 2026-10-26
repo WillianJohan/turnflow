@@ -13,3 +13,14 @@ it('nenhum painel fica menor que 300px', () => {
   const [c] = dragSizes(1, 1, 500, 500, -450)
   expect(c / 2).toBeCloseTo(300 / 1000)
 })
+it('painéis menores que dois mínimos não geram peso zero ou negativo', () => {
+  for (const [wa, wb] of [
+    [100, 100],
+    [0, 0]
+  ]) {
+    const [a, b] = dragSizes(1, 1, wa, wb, 10)
+    expect(a).toBeGreaterThan(0)
+    expect(b).toBeGreaterThan(0)
+    expect(a + b).toBeCloseTo(2)
+  }
+})

@@ -6,6 +6,8 @@ export type HomeColumn = {
   label: string
   rows: TaskRow[]
   stalled: number
+  /** Paradas em projetos (só no Pendente): a linha "N stalled" abre esta lista. */
+  stalledRows: TaskRow[]
 }
 
 const LABELS = {
@@ -16,12 +18,13 @@ const LABELS = {
 
 /** Três colunas de atenção. Paradas em projeto não entram nas colunas; a contagem fica no Pendente. */
 export function homeColumns(rows: TaskRow[]): HomeColumn[] {
-  const stalled = rows.filter((row) => row.group === 'fila_projeto').length
+  const stalled = rows.filter((row) => row.group === 'fila_projeto')
   return (['sua_vez', 'pendente', 'encaminhado'] as const).map((id) => ({
     id,
     label: LABELS[id],
     rows: rows.filter((row) => row.group === id),
-    stalled: id === 'pendente' ? stalled : 0
+    stalled: id === 'pendente' ? stalled.length : 0,
+    stalledRows: id === 'pendente' ? stalled : []
   }))
 }
 

@@ -285,3 +285,32 @@ it('Concluídas vêm por janela de tempo e "Show older" alarga', async () => {
   await act(async () => await new Promise((r) => setTimeout(r, 400)))
   expect(doneScopes().length).toBe(n)
 })
+
+it('aba aberta antes do ui.json chegar não é apagada pelo restore', async () => {
+  let release: (file: UiFile) => void = () => undefined
+  const fake = fakeApi(
+    { brain: [brainTask('WF-9')], rows: [taskRow(ULID, 'T-1')] },
+    {
+      uiGet: (() =>
+        new Promise((resolve) => (release = (file) => resolve({ ok: true, data: file })))) as never
+    }
+  )
+  ;(window as unknown as { turnflow: unknown }).turnflow = fake.api
+  act(() => root.render(<App />))
+  await flush()
+  act(() => host.querySelector<HTMLElement>('[role="option"]')!.click())
+  await act(async () => release(withLayout(['WF-9'])))
+  await flush()
+  expect(tabs()).toEqual([expect.stringContaining('WF-9'), expect.stringContaining('T-1')])
+})
+
+it('fechar a janela grava o ui.json na hora (sem esperar o debounce)', async () => {
+  const fake = await mount({ brain: [brainTask('WF-9')], ui: withLayout(['WF-9']) })
+  const before = fake.calls.filter((c) => c.name === 'uiSet').length
+  key('KeyW')
+  expect(tabs()).toEqual([])
+  act(() => window.dispatchEvent(new Event('pagehide')))
+  const saves = fake.calls.filter((c) => c.name === 'uiSet')
+  expect(saves.length).toBe(before + 1)
+  expect((saves.at(-1)!.args[0] as UiFile).layout.panels).toEqual([])
+})

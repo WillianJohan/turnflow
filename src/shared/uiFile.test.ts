@@ -63,3 +63,24 @@ describe('shortcuts do ui.json', () => {
     expect(parseUi(raw)?.shortcuts).toEqual({ draft: 'KeyJ', sync: '' })
   })
 })
+
+describe('pesos de painel', () => {
+  it('peso inválido no arquivo cai fora sem perder o layout', () => {
+    const raw = JSON.stringify({
+      layout: {
+        panels: [
+          { tabs: ['T-1'], active: 0, size: 0 },
+          { tabs: ['T-2'], active: 0, size: 2 }
+        ],
+        focused: 1
+      }
+    })
+    expect(parseUi(raw)?.layout).toEqual({
+      panels: [
+        { tabs: ['T-1'], active: 0 },
+        { tabs: ['T-2'], active: 0, size: 2 }
+      ],
+      focused: 1
+    })
+  })
+})

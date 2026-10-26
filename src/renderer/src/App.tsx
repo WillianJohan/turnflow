@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { DEFAULT_UI, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
+import { cleanLayout, DEFAULT_UI, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
 import type { TaskRow } from '../../shared/contracts'
 import type { ConfigState, Task, TaskState } from '../../shared/types'
 import {
@@ -56,6 +56,13 @@ function App(): React.JSX.Element {
   const [domainTick, setDomainTick] = useState(0)
   const [layout, dispatch] = useReducer(reduce, { panels: [], focused: 0 })
   const [hydrated, setHydrated] = useState(false)
+  // Ações do usuário antes do ui.json chegar: o restore não pode apagá-las, então são repetidas
+  // em cima do layout restaurado.
+  const early = useRef<Action[] | null>([])
+  const act = useCallback((a: Action) => {
+    early.current?.push(a)
+    dispatch(a)
+  }, [])
   const [extra, setExtra] = useState({
     home: DEFAULT_UI.home,
     fab: DEFAULT_UI.fab,
@@ -70,7 +77,11 @@ function App(): React.JSX.Element {
     folded: false,
     width: SIDEBAR_DEFAULT
   })
-  const saver = useRef(createUiSaver((file) => void unwrap(window.turnflow.uiSet(file))))
+  const saver = useRef(
+    createUiSaver(
+      (file) => void unwrap(window.turnflow.uiSet({ ...file, layout: cleanLayout(file.layout) }))
+    )
+  )
   const [live, setLive] = useState<Live>({ states: {}, alive: new Set(), exited: {} })
 
   // Aviso do sistema (igual Cursor) quando um claude passa a esperar você e você não está vendo a aba.
@@ -101,7 +112,7 @@ function App(): React.JSX.Element {
     })
     n.onclick = () => {
       window.turnflow.focusWindow()
-      dispatch({ t: 'open', taskId: id })
+      act({ t: 'open', taskId: id })
     }
   }
 
@@ -178,8 +189,11 @@ function App(): React.JSX.Element {
     let cancel = false
     void unwrap(window.turnflow.uiGet()).then((file) => {
       if (cancel) return
+      const pending = early.current ?? []
+      early.current = null
       if (file) {
         dispatch({ t: 'restore', layout: file.layout })
+        pending.forEach(dispatch)
         setSb(file.sidebar)
         setExtra({
           home: file.home,
@@ -238,7 +252,6 @@ function App(): React.JSX.Element {
     termsToDispose(live.exited, openIds).forEach(disposeTerm)
   }, [live.exited, openIds])
 
-  const act = useCallback((a: Action) => dispatch(a), [])
   useEffect(() => {
     if (!hydrated) return
     saver.current.push({
@@ -251,7 +264,17 @@ function App(): React.JSX.Element {
       shortcuts: extra.shortcuts
     })
   }, [hydrated, layout, sb, extra])
-  useEffect(() => () => saver.current.flush(), [])
+  // fechar/recarregar a janela não espera o debounce de 500 ms
+  useEffect(() => {
+    const saveNow = (): void => saver.current.flush()
+    window.addEventListener('pagehide', saveNow)
+    window.addEventListener('beforeunload', saveNow)
+    return () => {
+      window.removeEventListener('pagehide', saveNow)
+      window.removeEventListener('beforeunload', saveNow)
+      saveNow()
+    }
+  }, [])
   const [root, setRoot] = useState('')
   // a pasta muda sem reiniciar (import grava brainDir): relê a cada lista nova
   useEffect(() => {
@@ -322,11 +345,11 @@ function App(): React.JSX.Element {
   }, [])
   const newTab = useCallback(
     (kind: NewAction, panel: number) => {
-      if (layout.panels[panel]) dispatch({ t: 'focusAt', panel })
+      if (layout.panels[panel]) act({ t: 'focusAt', panel })
       if (kind === 'task') setSearching('new')
       else if (kind === 'project') setProjectName('')
       else
-        dispatch({
+        act({
           t: 'open',
           taskId: scratchId(
             kind === 'terminal' ? 'shell' : 'claude',

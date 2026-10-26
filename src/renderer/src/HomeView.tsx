@@ -48,6 +48,21 @@ export function HomeView({
   }, [narrow])
   const tight = narrow ?? measured
   const columns = homeColumns(rows)
+  const [stalledOpen, setStalledOpen] = useState(false)
+  // > 3 dias sem mexer (faded, do core): esmaece, mas continua clicável
+  const item = (row: TaskRow): React.JSX.Element => {
+    const line = homeLine(row, tight)
+    return (
+      <li key={row.id} className={row.faded ? 'faded' : undefined}>
+        <ListRow onClick={() => onOpen(row.id)}>
+          {line.key && <span className="home-key">{line.key}</span>}
+          <span className="home-title">{line.title}</span>
+          {line.motive && <span className="home-motive">{line.motive}</span>}
+          {line.tag && <Tag>{line.tag}</Tag>}
+        </ListRow>
+      </li>
+    )
+  }
   return (
     <div ref={host} className={`home ${mode}`} data-narrow={tight ? '1' : '0'}>
       <div className="home-bar">
@@ -88,23 +103,21 @@ export function HomeView({
               <h3>
                 {col.label} <Counter value={col.rows.length} />
               </h3>
-              <ul>
-                {col.rows.map((row) => {
-                  const line = homeLine(row, tight)
-                  return (
-                    <li key={row.id}>
-                      <ListRow onClick={() => onOpen(row.id)}>
-                        {line.key && <span className="home-key">{line.key}</span>}
-                        <span className="home-title">{line.title}</span>
-                        {line.motive && <span className="home-motive">{line.motive}</span>}
-                        {line.tag && <Tag>{line.tag}</Tag>}
-                      </ListRow>
-                    </li>
-                  )
-                })}
-              </ul>
+              <ul>{col.rows.map(item)}</ul>
               {col.id === 'pendente' && stalledLabel(col.stalled) && (
-                <p className="home-stalled">{stalledLabel(col.stalled)}</p>
+                <>
+                  <button
+                    type="button"
+                    className="home-stalled"
+                    aria-expanded={stalledOpen}
+                    onClick={() => setStalledOpen((v) => !v)}
+                  >
+                    {stalledLabel(col.stalled)}
+                  </button>
+                  {stalledOpen && (
+                    <ul className="home-stalled-list">{col.stalledRows.map(item)}</ul>
+                  )}
+                </>
               )}
             </section>
           ))}

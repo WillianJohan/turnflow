@@ -9,7 +9,9 @@ export function dragSizes(
   dx: number
 ): [number, number] {
   const total = wa + wb
-  const na = Math.min(total - MIN_PANEL, Math.max(MIN_PANEL, wa + dx))
   const sum = a + b
+  // dois painéis que já não cabem os dois mínimos (janela estreita): não há o que arrastar
+  if (!(total > 2 * MIN_PANEL)) return [a, b]
+  const na = Math.min(total - MIN_PANEL, Math.max(MIN_PANEL, wa + dx))
   return [(sum * na) / total, sum - (sum * na) / total]
 }

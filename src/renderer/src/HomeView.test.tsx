@@ -112,3 +112,31 @@ it('painel estreito esconde a key e mantém a tag', () => {
   expect(blocked?.textContent).not.toContain('T-3')
   expect(blocked?.textContent).toContain('Bloq.')
 })
+
+it('linha esmaecida no Início e "N stalled" abre a lista das paradas', () => {
+  const opened: string[] = []
+  act(() =>
+    root.render(
+      <HomeView
+        {...base}
+        onOpen={(id) => opened.push(id)}
+        rows={[
+          row({ id: 'old', key: 'T-8', title: 'Old', group: 'pendente', faded: true }),
+          row({ id: 'd', key: 'T-9', title: 'Parked', group: 'fila_projeto' })
+        ]}
+      />
+    )
+  )
+  const old = [...host.querySelectorAll('li')].find((li) => li.textContent?.includes('Old'))
+  expect(old?.classList.contains('faded')).toBe(true)
+  expect(host.textContent).not.toContain('Parked')
+  const stalled = [...host.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('1 stalled in projects')
+  )!
+  act(() => stalled.click())
+  const parked = [...host.querySelectorAll('button')].find((b) =>
+    b.textContent?.includes('Parked')
+  )!
+  act(() => parked.click())
+  expect(opened).toEqual(['d'])
+})

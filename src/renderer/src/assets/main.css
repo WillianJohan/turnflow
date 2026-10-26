@@ -1665,3 +1665,13 @@ body.resizing .settings-page {
   gap: 4px;
   margin: 4px 0;
 }
+.home li.faded {
+  opacity: 0.55;
+}
+button.home-stalled {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  text-align: left;
+  cursor: pointer;
+}
