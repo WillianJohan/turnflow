@@ -5,14 +5,23 @@ import { describe, expect, it } from 'vitest'
 import { BRAND } from '../shared/brand'
 import { HOOK_CMD, startHookServer, type HookBody } from './hooks'
 
+// O tempo é medido dentro do bash, só em volta do HOOK_CMD: o spawn do bash (lento num CI
+// carregado) fica fora do teto.
+const TIMED = `s=$EPOCHREALTIME; ${HOOK_CMD}; rc=$?; echo "__T $s $EPOCHREALTIME" >&2; exit $rc`
+
 function runHook(
   env: Record<string, string>,
   input: string
 ): Promise<{ code: number; ms: number }> {
-  const started = Date.now()
   return new Promise((resolve, reject) => {
-    const child = execFile('bash', ['-c', HOOK_CMD], { env, timeout: 5000 }, (err) => {
-      const ms = Date.now() - started
+    const child = execFile('bash', ['-c', TIMED], { env, timeout: 5000 }, (err, _out, errOut) => {
+      const m = /__T (\d+)[.,](\d+) (\d+)[.,](\d+)/.exec(String(errOut))
+      if (!m) {
+        reject(err ?? new Error(`sem marca de tempo: ${errOut}`))
+        return
+      }
+      const us = (sec: string, frac: string): number => Number(sec) * 1e6 + Number(frac)
+      const ms = (us(m[3], m[4]) - us(m[1], m[2])) / 1000
       if (!err) {
         resolve({ code: 0, ms })
         return
