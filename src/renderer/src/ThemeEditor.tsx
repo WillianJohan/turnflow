@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ConfigState, Theme } from '../../shared/types'
+import { COLOR_INPUT_FALLBACK } from '../../shared/theme/builtins'
 import { applyTheme } from './theme'
 import { slug } from './slug'
 import { orThrow, unwrap } from './ipc'
@@ -45,7 +46,7 @@ function ColorRow(props: {
     <label className="color-row">
       <input
         type="color"
-        value={/^#[0-9a-f]{6}$/i.test(v) ? v : '#000000'}
+        value={/^#[0-9a-f]{6}$/i.test(v) ? v : COLOR_INPUT_FALLBACK}
         onChange={(e) => props.onChange(e.target.value)}
       />
       <input

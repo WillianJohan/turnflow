@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Catalog } from './ui/catalog'
 import type { AppConfig, ConfigState } from '../../shared/types'
 import { ThemeEditor } from './ThemeEditor'
 import { IconPicker } from './IconPicker'
@@ -72,6 +73,7 @@ export function SettingsView({
   cfg: ConfigState
   onChange(s: ConfigState): void
 }): React.JSX.Element {
+  const [tab, setTab] = useState<'settings' | 'design'>('settings')
   const [err, setErr] = useState('')
   const [picking, setPicking] = useState<string | null>(null)
   const [fonts, setFonts] = useState<{ all: string[]; mono: string[] }>({ all: [], mono: [] })
@@ -85,134 +87,167 @@ export function SettingsView({
   return (
     <div className="settings-page">
       <div className="sp-inner">
-        <h2>Configurações</h2>
-        {(err || cfg.error) && <p className="err">{err || cfg.error}</p>}
+        <div role="tablist" aria-label="Settings">
+          <button
+            type="button"
+            role="tab"
+            className="ui-target"
+            aria-selected={tab === 'settings'}
+            onClick={() => setTab('settings')}
+          >
+            Settings
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className="ui-target"
+            aria-selected={tab === 'design'}
+            onClick={() => setTab('design')}
+          >
+            Design system
+          </button>
+        </div>
+        {tab === 'design' ? (
+          <Catalog />
+        ) : (
+          <>
+            <h2>Configurações</h2>
+            {(err || cfg.error) && <p className="err">{err || cfg.error}</p>}
 
-        <section className="sp-card">
-          <h3>Tema</h3>
-          <div className="theme-picker">
-            {cfg.themes.map((t) => (
-              <button
-                key={t.id}
-                className={`theme-chip ${t.id === c.theme ? 'on' : ''}`}
-                onClick={() => set({ theme: t.id })}
-                title={`themes/${t.id}.json`}
-              >
-                {t.name}
-                {!t.builtin && <span className="dim"> · seu</span>}
-              </button>
-            ))}
-          </div>
-          <ThemeEditor cfg={cfg} onChange={onChange} />
-        </section>
-
-        <section className="sp-card">
-          <h3>Fontes</h3>
-          <div className="sp-grid">
-            <label>
-              Terminal
-              <FontSelect
-                value={c.termFont}
-                options={fonts.mono}
-                fallback="JetBrains Mono"
-                onChange={(f) => set({ termFont: f })}
-              />
-            </label>
-            <label>
-              Tamanho
-              <SizeField value={c.fontSize} onCommit={(n) => set({ fontSize: n })} />
-            </label>
-            <label>
-              App
-              <FontSelect
-                value={c.appFont}
-                options={fonts.all}
-                fallback="system-ui"
-                onChange={(f) => set({ appFont: f })}
-              />
-            </label>
-            <label>
-              Tamanho
-              <SizeField value={c.appFontSize} onCommit={(n) => set({ appFontSize: n })} />
-            </label>
-          </div>
-        </section>
-
-        <section className="sp-card">
-          <h3>Notificações</h3>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={c.notifications}
-              onChange={(e) => set({ notifications: e.target.checked })}
-            />
-            Avisar no sistema quando um Claude pedir permissão ou terminar e você não estiver
-            olhando aquela aba
-          </label>
-        </section>
-
-        <section className="sp-card">
-          <h3>Rascunho</h3>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={c.draftMode}
-              onChange={(e) => set({ draftMode: e.target.checked })}
-            />
-            Draft mode: caixa de rascunho embaixo do terminal (Enter quebra linha, Ctrl+Enter envia)
-            · <kbd>Ctrl+Shift+D</kbd>
-          </label>
-        </section>
-
-        <section className="sp-card">
-          <h3>Ícones dos status</h3>
-          <div className="icon-grid">
-            {Object.entries(c.statusIcons).map(([name, icon]) => (
-              <div key={name} className="icon-row">
-                <button
-                  className="icon-btn"
-                  title="Escolher ícone"
-                  onClick={() => setPicking(picking === name ? null : name)}
-                >
-                  {icon ? <StatusIcon value={icon} size={15} /> : <span className="dim">—</span>}
-                </button>
-                {name}
-                {picking === name && (
-                  <IconPicker
-                    value={icon}
-                    onClose={() => setPicking(null)}
-                    onPick={(v) => {
-                      setPicking(null)
-                      set({ statusIcons: { ...c.statusIcons, [name]: v } })
-                    }}
-                  />
-                )}
+            <section className="sp-card">
+              <h3>Tema</h3>
+              <div className="theme-picker">
+                {cfg.themes.map((t) => (
+                  <button
+                    key={t.id}
+                    className={`theme-chip ${t.id === c.theme ? 'on' : ''}`}
+                    onClick={() => set({ theme: t.id })}
+                    title={`themes/${t.id}.json`}
+                  >
+                    {t.name}
+                    {!t.builtin && <span className="dim"> · seu</span>}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
+              <ThemeEditor cfg={cfg} onChange={onChange} />
+            </section>
 
-        <section className="sp-card">
-          <h3>Arquivos</h3>
-          <p className="dim">
-            Tudo fica em <code>{cfg.dir}</code>: <code>config.json</code> e{' '}
-            <code>themes/*.json</code>. Editou e salvou, o app aplica na hora.
-          </p>
-          <button onClick={() => window.turnflow.openConfigDir()}>Abrir pasta de config</button>
-        </section>
+            <section className="sp-card">
+              <h3>Fontes</h3>
+              <div className="sp-grid">
+                <label>
+                  Terminal
+                  <FontSelect
+                    value={c.termFont}
+                    options={fonts.mono}
+                    fallback="JetBrains Mono"
+                    onChange={(f) => set({ termFont: f })}
+                  />
+                </label>
+                <label>
+                  Tamanho
+                  <SizeField value={c.fontSize} onCommit={(n) => set({ fontSize: n })} />
+                </label>
+                <label>
+                  App
+                  <FontSelect
+                    value={c.appFont}
+                    options={fonts.all}
+                    fallback="system-ui"
+                    onChange={(f) => set({ appFont: f })}
+                  />
+                </label>
+                <label>
+                  Tamanho
+                  <SizeField value={c.appFontSize} onCommit={(n) => set({ appFontSize: n })} />
+                </label>
+              </div>
+            </section>
 
-        <section className="sp-card" data-testid="settings-import">
-          <h3>{IMPORT_COPY.screen.title}</h3>
-          <ImportBrain brainDir={c.brainDir} />
-          <ImportLegacy />
-          <ExportMarkdown />
-        </section>
+            <section className="sp-card">
+              <h3>Notificações</h3>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={c.notifications}
+                  onChange={(e) => set({ notifications: e.target.checked })}
+                />
+                Avisar no sistema quando um Claude pedir permissão ou terminar e você não estiver
+                olhando aquela aba
+              </label>
+            </section>
 
-        <section className="sp-card" data-testid="settings-wipe">
-          <h3>{VAULT_SCREENS.wipeTitle}</h3>
-          {/* sucesso: o vault.changed (first_run) desmonta o app e o portão mostra o primeiro uso */}
-          <WipeAll embedded onWipe={(confirm) => orThrow(window.turnflow.vaultWipe({ confirm }))} />
-        </section>
+            <section className="sp-card">
+              <h3>Rascunho</h3>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={c.draftMode}
+                  onChange={(e) => set({ draftMode: e.target.checked })}
+                />
+                Draft mode: caixa de rascunho embaixo do terminal (Enter quebra linha, Ctrl+Enter
+                envia) · <kbd>Ctrl+Shift+D</kbd>
+              </label>
+            </section>
+
+            <section className="sp-card">
+              <h3>Ícones dos status</h3>
+              <div className="icon-grid">
+                {Object.entries(c.statusIcons).map(([name, icon]) => (
+                  <div key={name} className="icon-row">
+                    <button
+                      className="icon-btn"
+                      title="Escolher ícone"
+                      onClick={() => setPicking(picking === name ? null : name)}
+                    >
+                      {icon ? (
+                        <StatusIcon value={icon} size={15} />
+                      ) : (
+                        <span className="dim">—</span>
+                      )}
+                    </button>
+                    {name}
+                    {picking === name && (
+                      <IconPicker
+                        value={icon}
+                        onClose={() => setPicking(null)}
+                        onPick={(v) => {
+                          setPicking(null)
+                          set({ statusIcons: { ...c.statusIcons, [name]: v } })
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="sp-card">
+              <h3>Arquivos</h3>
+              <p className="dim">
+                Tudo fica em <code>{cfg.dir}</code>: <code>config.json</code> e{' '}
+                <code>themes/*.json</code>. Editou e salvou, o app aplica na hora.
+              </p>
+              <button onClick={() => window.turnflow.openConfigDir()}>Abrir pasta de config</button>
+            </section>
+
+            <section className="sp-card" data-testid="settings-import">
+              <h3>{IMPORT_COPY.screen.title}</h3>
+              <ImportBrain brainDir={c.brainDir} />
+              <ImportLegacy />
+              <ExportMarkdown />
+            </section>
+
+            <section className="sp-card" data-testid="settings-wipe">
+              <h3>{VAULT_SCREENS.wipeTitle}</h3>
+              {/* sucesso: o vault.changed (first_run) desmonta o app e o portão mostra o primeiro uso */}
+              <WipeAll
+                embedded
+                onWipe={(confirm) => orThrow(window.turnflow.vaultWipe({ confirm }))}
+              />
+            </section>
+          </>
+        )}
       </div>
     </div>
   )

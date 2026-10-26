@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { EMOJIS, ICON_WORDS } from './emojiSet'
 import { ICONS } from './iconSet'
+import { COLOR_INPUT_FALLBACK, ICON_SWATCHES } from '../../shared/theme/builtins'
 import { formatIcon, parseIcon } from './statusIcon'
 
-// Cores do seletor de ícones do Notion; null = acompanha a cor do texto do tema.
+const SWATCH_LABELS = [
+  'Cinza',
+  'Marrom',
+  'Laranja',
+  'Amarelo',
+  'Verde',
+  'Azul',
+  'Roxo',
+  'Rosa',
+  'Vermelho'
+]
+// null = acompanha a cor do texto do tema.
 const COLORS: [string | null, string][] = [
   [null, 'Cor do texto'],
-  ['#91918e', 'Cinza'],
-  ['#a27763', 'Marrom'],
-  ['#cb7b37', 'Laranja'],
-  ['#c29243', 'Amarelo'],
-  ['#4f9768', 'Verde'],
-  ['#2e7cd1', 'Azul'],
-  ['#8d5bc1', 'Roxo'],
-  ['#c94a8c', 'Rosa'],
-  ['#cd5049', 'Vermelho']
+  ...ICON_SWATCHES.map((swatch, index): [string, string] => [swatch, SWATCH_LABELS[index]])
 ]
 const norm = (s: string): string =>
   s
@@ -94,7 +98,7 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
           <label className="ip-swatch custom" title="Outra cor">
             <input
               type="color"
-              value={color ?? '#888888'}
+              value={color ?? COLOR_INPUT_FALLBACK}
               onChange={(e) => setColor(e.target.value)}
             />
           </label>

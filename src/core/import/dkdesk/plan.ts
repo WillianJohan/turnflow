@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { AppConfig, Theme } from '../../../shared/types'
+import { DEFAULT_THEME } from '../../../shared/theme/builtins'
 import type { DkdeskSource } from './read'
 
 // Plano da migração do app legado (Decisão 22): só calcula, não escreve. Tema por id; config só nas
@@ -29,8 +30,8 @@ const NAME_MAX = 80
 const MAX_STR = 256
 const FONT_RANGE = [8, 48] as const
 // base de um tema sem `ui.bg`/`ui.accent` válidos: as cores do tema escuro padrão
-const FALLBACK_BG = '#14161a'
-const FALLBACK_ACCENT = '#58a6ff'
+const FALLBACK_BG = DEFAULT_THEME.ui.bg
+const FALLBACK_ACCENT = DEFAULT_THEME.ui.accent
 const LEGACY_PREFIX = 'dkdesk-'
 const MIGRATED = [
   'theme',

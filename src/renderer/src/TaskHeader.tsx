@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { headerFace, menuItems, summaryPatch, type MenuId } from './taskFace'
+import { StageBar } from './ui/StageBar'
+import { TextField } from './ui/TextField'
+import { Toast } from './ui/Toast'
 
 type Stage = { id: string; short_name: string; position: number }
 
@@ -44,7 +47,6 @@ export function TaskHeader({
   const [what, setWhat] = useState(face.lines[0].text)
   const [next, setNext] = useState(face.lines[1].text)
   const [menu, setMenu] = useState(false)
-  const ordered = [...stages].sort((a, b) => a.position - b.position)
   const showUndo = toast !== null && now < toast.until
 
   return (
@@ -80,17 +82,7 @@ export function TaskHeader({
           ))}
         </ul>
       )}
-      <div className="stage-bar" role="group" aria-label="Stage">
-        {ordered.map((stage) => (
-          <button
-            key={stage.id}
-            aria-current={stage.id === stageId ? 'step' : undefined}
-            onClick={() => onStage(stage.id)}
-          >
-            {stage.short_name}
-          </button>
-        ))}
-      </div>
+      <StageBar stages={stages} current={stageId} onPick={onStage} />
       {editing ? (
         <form
           className="task-summary"
@@ -100,14 +92,8 @@ export function TaskHeader({
             setEditing(false)
           }}
         >
-          <label>
-            Stopped at
-            <input value={what} onChange={(event) => setWhat(event.target.value)} />
-          </label>
-          <label>
-            Next
-            <input value={next} onChange={(event) => setNext(event.target.value)} />
-          </label>
+          <TextField label="Stopped at" value={what} onChange={setWhat} />
+          <TextField label="Next" value={next} onChange={setNext} />
           <button type="submit">Save</button>
         </form>
       ) : (
@@ -129,11 +115,7 @@ export function TaskHeader({
           </button>
         </div>
       )}
-      {showUndo && (
-        <div className="toast" role="status">
-          <button onClick={onUndo}>Undo</button>
-        </div>
-      )}
+      {showUndo && <Toast action="Undo" onAction={onUndo} />}
     </div>
   )
 }

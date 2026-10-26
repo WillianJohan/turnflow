@@ -11,6 +11,7 @@ import { windowPrefs } from './windowPrefs'
 import { isExternalLink } from './links'
 import { binDir, configDir, socketPath } from './config'
 import { BRAND } from '../shared/brand'
+import { DEFAULT_THEME } from '../shared/theme/builtins'
 import { VAULT_COPY } from '../shared/copy/vault'
 import { changeBus } from './changeBusInstance'
 import { cliUserDataDir } from '../shared/paths'
@@ -68,7 +69,7 @@ function createWindow(): BrowserWindow {
     height: 900,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#14161a',
+    backgroundColor: DEFAULT_THEME.ui.bg,
     title: BRAND.name,
     icon: join(__dirname, `../../resources/${BRAND.id}.png`),
     webPreferences: windowPrefs(join(__dirname, '../preload/index.js'))

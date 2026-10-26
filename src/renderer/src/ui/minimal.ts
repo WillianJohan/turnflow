@@ -1,0 +1,22 @@
+export const MIN_COMPONENTS = [
+  'Button',
+  'IconButton',
+  'Dot',
+  'Tag',
+  'Chip',
+  'Counter',
+  'Kbd',
+  'Tooltip',
+  'Menu',
+  'Dialog',
+  'ConfirmDialog',
+  'Toast',
+  'Segmented',
+  'TextField',
+  'ListRow',
+  'ResizeHandle',
+  'StageBar',
+  'EmptyState',
+  'Skeleton',
+  'Markdown'
+] as const

@@ -4,7 +4,7 @@ import { clampSidebar, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile
 import type { Task } from '../../shared/types'
 import { AttentionList } from './AttentionList'
 import type { Live } from './App'
-import { Dot } from './Dot'
+import { Dot } from './ui/Dot'
 import { kidCount, tree, visibleRows } from './tree'
 import { Icon } from './Icon'
 import { Logo } from './Logo'
