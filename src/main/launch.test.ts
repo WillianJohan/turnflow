@@ -228,6 +228,50 @@ describe('agentArgv', () => {
     )
   })
 
+  it('argv[0] cmd/cmd.exe (qualquer caixa, com path) segue a mesma regra do .cmd', () => {
+    const task = launchTask({ title: 'x & calc', description: '%PATH%', first_session: true })
+    for (const cmd of ['cmd', 'CMD.EXE', 'C:\\Windows\\System32\\cmd.exe', 'c:/windows/Cmd']) {
+      const argv = agentArgv({
+        tool: 'other',
+        bin: bins({ other: [cmd, '/c', 'my-ai'] }),
+        task,
+        resume: null,
+        settingsPath: settings
+      })
+      expect(argv).toEqual([cmd, '/c', 'my-ai'])
+      expect(
+        agentArgv({
+          tool: 'codex',
+          bin: bins({ codex: [cmd, '/c', 'codex'] }),
+          task,
+          resume: null,
+          settingsPath: settings
+        })
+      ).toEqual([cmd, '/c', 'codex', SESSION_COPY.initialPromptBatch('T-7', BRAND.id)])
+      expect(() =>
+        agentArgv({
+          tool: 'other',
+          bin: bins({ other: [cmd, '/c', 'a&b'] }),
+          task: null,
+          resume: null,
+          settingsPath: settings
+        })
+      ).toThrow(
+        expect.objectContaining({ code: 'VALIDATION', details: { reason: 'unsafe_batch_arg' } })
+      )
+    }
+    // nome que só contém "cmd" não é o cmd.exe
+    expect(
+      agentArgv({
+        tool: 'codex',
+        bin: bins({ codex: ['mycmd'] }),
+        task,
+        resume: null,
+        settingsPath: settings
+      })[1]
+    ).toBe(initialPrompt(task))
+  })
+
   it('.exe no Windows segue com o prompt inteiro', () => {
     const task = launchTask({ first_session: false, description: '' })
     expect(

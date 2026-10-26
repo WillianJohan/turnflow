@@ -79,7 +79,10 @@ export type AgentCommands = {
 // No Windows um .cmd/.bat roda dentro do cmd.exe, que reinterpreta a linha de comando (%VAR%,
 // &, |, ^, aspas): texto livre no argv vira comando (BatBadBut). Para eles o prompt leva só a
 // key, o --name só a key, e qualquer argumento com metacaractere do cmd é recusado.
-const isBatch = (bin: string | undefined): boolean => !!bin && /\.(cmd|bat)$/i.test(bin)
+// O próprio cmd.exe (`cmd /c …`) também: mesma regra, com ou sem caminho e extensão.
+const CMD_EXE = /^cmd(\.exe)?$/i
+const isBatch = (bin: string | undefined): boolean =>
+  !!bin && (/\.(cmd|bat)$/i.test(bin) || CMD_EXE.test(bin.split(/[/\\]/).pop() ?? ''))
 const CMD_META = /[%^&|<>"!\r\n]/
 
 function batchSafe(argv: string[]): string[] {
