@@ -50,6 +50,9 @@ export function Palette({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const creating = useRef(false)
+  // Enter com a busca desta consulta ainda no ar: espera o resultado antes de decidir (senão o
+  // único item é o Create e nasce uma task duplicada)
+  const [waiting, setWaiting] = useState(false)
   const seq = useRef(0)
   const listId = useId()
 
@@ -72,6 +75,7 @@ export function Palette({
   const current = items[at]
   const optionId = (i: number): string => `${listId}-${i}`
 
+  const searchPending = q !== '' && !q.startsWith('>') && hits.q !== q
   const run = (item: PaletteItem | undefined): void => {
     if (!item) return
     if (item.kind === 'task') onPickTask(item.id)
@@ -93,6 +97,15 @@ export function Palette({
         })
     }
   }
+
+  useEffect(() => {
+    if (!waiting || searchPending) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- consome o Enter guardado
+    setWaiting(false)
+    run(items[at])
+    // roda quando a busca da consulta atual chega; `run`/`items` são os desse render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, searchPending])
 
   return (
     <div className="overlay" onMouseDown={onClose}>
@@ -118,6 +131,7 @@ export function Palette({
             setTypeId(undefined)
             setSel(0)
             setError('')
+            setWaiting(false)
           }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') onClose()
@@ -126,8 +140,10 @@ export function Palette({
             else if (event.key === 'Tab' && current?.kind === 'create') {
               const next = cycleType(types, current.typeId)
               if (next) setTypeId(next)
-            } else if (event.key === 'Enter') run(current)
-            else return
+            } else if (event.key === 'Enter') {
+              if (searchPending && mode === 'search') setWaiting(true)
+              else run(current)
+            } else return
             event.preventDefault()
           }}
         />
@@ -145,7 +161,8 @@ export function Palette({
               aria-selected={index === at}
               aria-disabled={item.kind === 'create' && busy ? true : undefined}
               className={index === at ? 'sel' : ''}
-              onMouseEnter={() => setSel(index)}
+              // mouseMove, não mouseEnter: a lista nasce embaixo do ponteiro parado e roubaria a seleção
+              onMouseMove={() => index !== at && setSel(index)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => run(item)}
             >

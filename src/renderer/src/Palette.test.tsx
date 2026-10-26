@@ -132,3 +132,33 @@ it('setas mexem na opção ativa anunciada pelo aria-activedescendant', async ()
   expect(document.getElementById(second!)?.getAttribute('aria-selected')).toBe('true')
   expect(document.getElementById(second!)?.textContent).toContain('T-2')
 })
+
+it('lista que nasce embaixo do ponteiro parado não rouba a seleção do teclado', async () => {
+  const log = render({ hits: [hit('u1', 'T-1', 'gamma task')] })
+  act(() => typeIn('gamma'))
+  await settle()
+  const create = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find((o) =>
+    o.textContent?.startsWith('Create')
+  )!
+  act(() => {
+    create.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+  })
+  act(() => press('Enter'))
+  expect(log.picked).toEqual(['u1'])
+  expect(log.created).toEqual([])
+  // mexer o mouse de verdade seleciona
+  act(() => {
+    create.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }))
+  })
+  expect(create.getAttribute('aria-selected')).toBe('true')
+})
+
+it('Enter antes da busca voltar espera o resultado e abre a existente', async () => {
+  const log = render({ hits: [hit('u1', 'T-1', 'gamma task')] })
+  act(() => typeIn('gamma'))
+  act(() => press('Enter'))
+  expect(log.created).toEqual([])
+  await settle()
+  expect(log.picked).toEqual(['u1'])
+  expect(log.created).toEqual([])
+})
