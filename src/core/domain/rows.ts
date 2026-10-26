@@ -40,7 +40,10 @@ export type TaskRecord = {
 }
 
 export type TaskScope =
-  'attention' | { project_id: string } | { done_since?: string } | { ids: string[] }
+  | 'attention'
+  | { project_id: string }
+  | { done_since?: string; limit?: number; offset?: number }
+  | { ids: string[] }
 
 type StageRecord = {
   id: string
@@ -92,8 +95,15 @@ export function listTasks(d: DomainDeps, scope: TaskScope): TaskRow[] {
     where = 'done_at is not null and done_at >= ?'
     args = [scope.done_since]
   } else where = 'done_at is not null'
+  // Concluídas crescem sem fim: com `limit`, página na ordem do grupo (done_at desc, id), que é a
+  // mesma do sort_key de `concluida`
+  let page = ''
+  if (typeof scope === 'object' && 'limit' in scope && scope.limit !== undefined) {
+    page = ' order by done_at desc, id asc limit ? offset ?'
+    args = [...args, scope.limit, scope.offset ?? 0]
+  }
   const recs = d.db
-    .prepare(`select * from task where deleted_at is null and ${where}`)
+    .prepare(`select * from task where deleted_at is null and ${where}${page}`)
     .all(...args) as TaskRecord[]
   return buildRows(d, recs).sort(
     (a, b) =>

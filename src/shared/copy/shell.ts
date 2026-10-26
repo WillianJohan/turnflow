@@ -74,7 +74,8 @@ export const SHELL_COPY = {
     toTerminal: 'Go to terminal'
   },
   home: {
-    older: 'Show older'
+    older: 'Show older',
+    more: 'Load more'
   },
   tabs: {
     settings: 'Settings',

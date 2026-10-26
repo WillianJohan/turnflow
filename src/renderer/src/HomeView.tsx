@@ -20,6 +20,8 @@ type Props = {
   onToggleDone(): void
   /** Alarga a janela das Concluídas; ausente = já mostra todas. */
   onOlder?(): void
+  /** Próxima página das Concluídas; ausente = não há mais. */
+  onMore?(): void
   onOpen(id: string): void
 }
 
@@ -32,6 +34,7 @@ export function HomeView({
   onMode,
   onToggleDone,
   onOlder,
+  onMore,
   onOpen
 }: Props): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null)
@@ -88,6 +91,13 @@ export function HomeView({
               </button>
             </li>
           ))}
+          {onMore && (
+            <li>
+              <button type="button" className="home-older" onClick={onMore}>
+                {SHELL_COPY.home.more}
+              </button>
+            </li>
+          )}
           {onOlder && (
             <li>
               <button type="button" className="home-older" onClick={onOlder}>

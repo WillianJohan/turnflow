@@ -98,7 +98,11 @@ export function fakeApi(
         const ids = (scope as { ids: string[] }).ids
         return ok(all().filter((r) => ids.includes(r.id)))
       }
-      return ok(world.done ?? [])
+      const page = scope as { limit?: number; offset?: number }
+      const done = world.done ?? []
+      if (page.limit === undefined) return ok(done)
+      const from = page.offset ?? 0
+      return ok(done.slice(from, from + page.limit))
     },
     taskGet: async ({ id }: { id: string }) => {
       const row = all().find((r) => r.id === id || r.key === id)

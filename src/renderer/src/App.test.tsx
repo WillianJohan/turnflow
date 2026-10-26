@@ -420,3 +420,30 @@ it('sem brain (lista vazia ou indisponível) a aba de task do domínio apagada s
   await flush()
   expect(tabs()).toEqual([expect.stringContaining('WF-OLD')])
 })
+
+it('Concluídas "todas" vêm em páginas de 200 com "Load more"', async () => {
+  const done = Array.from({ length: 450 }, (_, i) =>
+    taskRow(`D${String(i).padStart(25, '0')}`, `T-${i}`, { group: 'concluida' })
+  )
+  await mount({ brain: [], rows: [], done, ui: withLayout(['~home']) })
+  const btn = (text: string): HTMLButtonElement | undefined =>
+    [...host.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent?.trim() === text
+    )
+  const shown = (): number => host.querySelectorAll('.home-done li button:not(.home-older)').length
+  act(() => btn('Done')!.click())
+  await flush()
+  for (let i = 0; i < 3; i++) {
+    act(() => btn('Show older')!.click())
+    await flush()
+  }
+  expect(btn('Show older')).toBeUndefined()
+  expect(shown()).toBe(200)
+  act(() => btn('Load more')!.click())
+  await flush()
+  expect(shown()).toBe(400)
+  act(() => btn('Load more')!.click())
+  await flush()
+  expect(shown()).toBe(450)
+  expect(btn('Load more')).toBeUndefined()
+})

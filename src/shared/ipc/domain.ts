@@ -37,7 +37,13 @@ const Confirmed = z.object({ id: Id, confirmed: z.literal(true) }).strict()
 export const TaskScopeZ = z.union([
   z.literal('attention'),
   z.object({ project_id: Id }).strict(),
-  z.object({ done_since: z.string().datetime().optional() }).strict(),
+  z
+    .object({
+      done_since: z.string().datetime().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+      offset: z.number().int().min(0).optional()
+    })
+    .strict(),
   z.object({ ids: z.array(Id).max(500) }).strict()
 ])
 

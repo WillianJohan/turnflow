@@ -403,6 +403,24 @@ describe('leitura', () => {
     expect(reasonOf(() => getTask(h.d, 'T-1')).code).toBe('NOT_FOUND')
   })
 
+  it('listTasks: concluídas em páginas (limit/offset), mais recente primeiro, sem repetir', () => {
+    const h = setup()
+    const ids: string[] = []
+    for (let i = 0; i < 5; i++) {
+      const id = createTask(h.d, USER, { title: `t${i}` }).row!.id
+      h.db
+        .prepare('update task set done_at = ? where id = ?')
+        .run(`2026-10-1${i}T00:00:00.000Z`, id)
+      ids.push(id)
+    }
+    const newest = [...ids].reverse()
+    const p1 = listTasks(h.d, { limit: 2 }).map((r) => r.id)
+    const p2 = listTasks(h.d, { limit: 2, offset: 2 }).map((r) => r.id)
+    const p3 = listTasks(h.d, { limit: 2, offset: 4 }).map((r) => r.id)
+    expect([...p1, ...p2, ...p3]).toEqual(newest)
+    expect(p3).toHaveLength(1)
+  })
+
   it('listTasks: apagada some de todos os escopos; done_since só concluídas; ids por id', () => {
     const h = setup()
     const a = createTask(h.d, USER, { title: 'a' }).row!.id

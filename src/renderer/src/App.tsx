@@ -44,6 +44,7 @@ export type Live = {
 }
 
 const RELOAD_MS = 100
+const DONE_PAGE = 200
 const ATTENTION_ENTITIES = new Set(['task', 'session', 'project', 'flow'])
 
 /** Nome curto de uma aba de task: key e título, venha ela do brain ou do domínio. */
@@ -74,6 +75,8 @@ function App(): React.JSX.Element {
   const [showDone, setShowDone] = useState(false)
   const [doneRows, setDoneRows] = useState<TaskRow[]>([])
   const [doneWindow, setDoneWindow] = useState(0)
+  const [donePages, setDonePages] = useState(1)
+  const [doneMore, setDoneMore] = useState(false)
   const [sb, setSb] = useState<{ folded: boolean; width: number }>({
     folded: false,
     width: SIDEBAR_DEFAULT
@@ -169,16 +172,32 @@ function App(): React.JSX.Element {
     }
   }, [])
 
-  // Concluídas: só com o filtro aberto e por janela de tempo (§7 `done_since`); "Show older" alarga.
+  // Concluídas: só com o filtro aberto, por janela de tempo (§7 `done_since`; "Show older" alarga)
+  // e em páginas de 200 ("Load more"). Recarregar refaz as páginas que já estavam na tela.
   useEffect(() => {
     if (!showDone) return
     let cancel = false
     const load = async (): Promise<void> => {
       const since = doneSince(doneWindow, Date.now())
-      const rows = await unwrap(
-        window.turnflow.taskList({ scope: since ? { done_since: since } : {} })
-      )
-      if (!cancel && rows) setDoneRows(rows)
+      const all: TaskRow[] = []
+      let more = false
+      for (let p = 0; p < donePages; p++) {
+        const rows = await unwrap(
+          window.turnflow.taskList({
+            scope: {
+              ...(since ? { done_since: since } : {}),
+              limit: DONE_PAGE,
+              offset: p * DONE_PAGE
+            }
+          })
+        )
+        if (cancel || !rows) return
+        all.push(...rows)
+        more = rows.length === DONE_PAGE
+        if (!more) break
+      }
+      setDoneRows(all)
+      setDoneMore(more)
     }
     void load()
     const loader = coalesce(load, RELOAD_MS)
@@ -190,7 +209,7 @@ function App(): React.JSX.Element {
       loader.cancel()
       off()
     }
-  }, [showDone, doneWindow])
+  }, [showDone, doneWindow, donePages])
 
   useEffect(() => {
     let cancel = false
@@ -576,8 +595,14 @@ function App(): React.JSX.Element {
             onMode={(home) => setExtra((x) => ({ ...x, home }))}
             onToggleDone={() => setShowDone((v) => !v)}
             onOlder={
-              doneWindow < DONE_WINDOWS.length ? () => setDoneWindow((w) => w + 1) : undefined
+              doneWindow < DONE_WINDOWS.length
+                ? () => {
+                    setDoneWindow((w) => w + 1)
+                    setDonePages(1)
+                  }
+                : undefined
             }
+            onMore={doneMore ? () => setDonePages((n) => n + 1) : undefined}
             onOpen={(id) => act({ t: 'open', taskId: id })}
           />
         }
