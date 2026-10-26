@@ -25,7 +25,11 @@ import { selectKeyBackend } from './keychain'
 import { createLocalLog } from './localLog'
 import { writeSecretFile } from './secretFile'
 import { installDevMenu } from './devMenu'
+import { allowDebug, debugTarget } from './debug'
 import { wireVaultEvents, type VaultDialogs } from './ipc/vault'
+
+// TURNFLOW_DEBUG só em dev e no build de teste
+allowDebug(is.dev || __TURNFLOW_TEST__)
 
 // Despacho do modo CLI (`turnflow mcp`): antes do lock, do whenReady e de qualquer janela.
 // O lock é da instância com janela; a CLI nunca o disputa nem foca a janela aberta.
@@ -77,8 +81,7 @@ function createWindow(): BrowserWindow {
   win.on('ready-to-show', () => win.show())
   // arquivo solto na janela ou link não pode trocar a página: o reload mataria todos os PTYs
   win.webContents.on('will-navigate', (e) => e.preventDefault())
-  if (process.env.TURNFLOW_DEBUG)
-    win.webContents.on('console-message', (e) => console.log('[r]', e.message))
+  if (debugTarget()) win.webContents.on('console-message', (e) => console.log('[r]', e.message))
   win.webContents.setWindowOpenHandler((d) => {
     if (isExternalLink(d.url)) shell.openExternal(d.url)
     return { action: 'deny' }

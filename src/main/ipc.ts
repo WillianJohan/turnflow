@@ -30,6 +30,7 @@ import { configDir, runDir, socketPath } from './config'
 import { brainTasksDir, createLegacyBrain, sessionCwd } from './brainDir'
 import { startHookServer, writeHookSettings } from './hooks'
 import { splitCommand, type AgentCommands } from './launch'
+import { debugTarget } from './debug'
 import { shellEnv, type ShellEnv } from './loginEnv'
 import { nodePtySpawner, type PtySpawner } from './pty'
 import { createPtyGuard } from './ptyGuard'
@@ -270,7 +271,8 @@ export async function registerIpc(
       }),
     events: {
       data: (id, d) => {
-        if (process.env.TURNFLOW_DEBUG) appendFileSync(process.env.TURNFLOW_DEBUG, d)
+        const debug = debugTarget()
+        if (debug) appendFileSync(debug, d)
         send('pty:data', id, d)
       },
       exit: (id, code) => {

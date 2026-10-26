@@ -1,6 +1,7 @@
 import type { IpcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { z } from 'zod'
 import { VAULT_COPY } from '../../shared/copy/vault'
+import { debugTarget } from '../debug'
 import type { Channel } from '../../shared/ipc/define'
 import { err, ok, type ErrCode, type Result } from '../../shared/ipc/result'
 
@@ -27,7 +28,7 @@ export type Handler<C extends Channel> = (
 export type Register = <C extends Channel>(ch: C, fn: Handler<C>) => void
 
 const debugLog = (msg: string): void => {
-  if (process.env.TURNFLOW_DEBUG) console.debug(msg)
+  if (debugTarget()) console.debug(msg)
 }
 
 // O renderer manda sempre um único argumento; qualquer coisa a mais é payload inválido.
