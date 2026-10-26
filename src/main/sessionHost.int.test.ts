@@ -734,6 +734,32 @@ describe('session host', () => {
     b.db.close()
   })
 
+  it('retomar Codex só com o external_id do E7; sem ele é not_resumable', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    const opened = await spawn(b, { tool: 'codex', task: t.id })
+    b.host.kill('p1')
+    b.procs[0].emitExit(0)
+    await expect(
+      spawn(b, { pty_id: 'p2', tool: 'codex', task: t.id, resume: opened.session_id! })
+    ).rejects.toMatchObject({ code: 'VALIDATION', details: { reason: 'not_resumable' } })
+    const e7 = insertSession(b.db, {
+      task_id: t.id,
+      state: 'idle',
+      state_at: '2026-10-22T11:00:00.000Z',
+      ended_at: '2026-10-22T11:30:00.000Z',
+      external_id: U2,
+      cwd: '/w',
+      tool: 'codex'
+    })
+    b.calls.length = 0
+    await spawn(b, { pty_id: 'p3', tool: 'codex', task: t.id, resume: e7 })
+    expect([b.calls[0].file, ...b.calls[0].args]).toEqual(['codex', 'resume', U2])
+    expect(b.elsewhereTool).toBe('codex')
+    await b.close()
+    b.db.close()
+  })
+
   it('Cursor e Outra ficam unknown', async () => {
     const b = await boot()
     b.other = ['my-ai']

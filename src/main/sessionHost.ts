@@ -210,6 +210,8 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
     }
     const target = getSession(d, i.resume)
     if (!target) throw notFound('session', i.resume)
+    // Codex: só retoma com o external_id que o E7 grava (o Codex não tem hook aqui, então o E5
+    // nunca preenche). Sem ele cai em not_resumable.
     const can =
       target.external_id !== null &&
       (target.tool === 'claude-code' || target.tool === 'codex') &&

@@ -109,6 +109,7 @@ export function agentArgv(i: {
   }
   if (i.tool === 'codex') {
     const bin = i.bin.codex
+    // `codex resume <id>`: só chega aqui com o external_id do E7 (o host recusa sem ele)
     if (i.resume) return batchSafe([...bin, 'resume', i.resume])
     if (t) return batchSafe([...bin, prompt(bin[0])])
     return batchSafe([...bin])
