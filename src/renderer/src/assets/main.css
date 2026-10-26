@@ -1591,12 +1591,18 @@ body.resizing .settings-page {
   min-width: 24px;
 }
 
+/* Reduzir movimento vale pra tudo que anima (ponto de IA, cursor do logo, zona de soltar, toasts,
+   painéis, FAB): sem lista de classes, nada novo escapa. */
 @media (prefers-reduced-motion: reduce) {
-  .toast,
-  .panel,
-  .fab {
-    animation-duration: 0s;
-    transition-duration: 0s;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
   }
 }
 
