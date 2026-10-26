@@ -61,7 +61,7 @@ export function HomeView({
           {line.key && <span className="home-key">{line.key}</span>}
           <span className="home-title">{line.title}</span>
           {line.motive && <span className="home-motive">{line.motive}</span>}
-          {line.tag && <Tag>{line.tag}</Tag>}
+          {line.tag && <Tag tone="danger">{line.tag}</Tag>}
         </ListRow>
       </li>
     )

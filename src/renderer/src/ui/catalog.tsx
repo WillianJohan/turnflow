@@ -39,11 +39,20 @@ const samples: Record<(typeof MIN_COMPONENTS)[number], React.ReactNode> = {
   Button: <Button primary>Save</Button>,
   IconButton: <IconButton icon="plus" label="Add" />,
   Dot: <Dot state="waiting" />,
-  Tag: <Tag>Bloq.</Tag>,
+  Tag: (
+    <>
+      <Tag>Info</Tag>
+      <Tag tone="danger">Bloq.</Tag>
+    </>
+  ),
   Chip: <Chip pressed>Done</Chip>,
   Counter: <Counter value={3} />,
   Kbd: <Kbd>Ctrl</Kbd>,
-  Tooltip: <Tooltip label="Search">Find</Tooltip>,
+  Tooltip: (
+    <Tooltip label="Search tasks">
+      <IconButton icon="search" label="Find" />
+    </Tooltip>
+  ),
   Menu: <Menu label="Task" open items={[{ id: 'close', label: 'Close' }]} />,
   Dialog: (
     <Dialog title="Rename" onClose={() => undefined} preview>
@@ -67,7 +76,7 @@ const samples: Record<(typeof MIN_COMPONENTS)[number], React.ReactNode> = {
   ),
   TextField: <TextField label="Name" value="" onChange={() => undefined} />,
   ListRow: <ListRow>Ship the login fix</ListRow>,
-  ResizeHandle: <ResizeHandle />,
+  ResizeHandle: <ResizeHandle value={288} min={220} max={440} />,
   StageBar: (
     <StageBar
       stages={[

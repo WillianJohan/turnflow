@@ -52,6 +52,11 @@
   padding: 0 6px;
   color: var(--fg-dim);
 }
+.ui-tag[data-tone='danger'] {
+  color: var(--red);
+  border-color: currentColor;
+  font-weight: 650;
+}
 .ui-kbd {
   font: inherit;
 }
@@ -110,9 +115,27 @@
   text-align: left;
 }
 .ui-resize {
+  position: relative;
+  flex: none;
   width: 24px;
   cursor: col-resize;
+  background: transparent;
+}
+/* traço fino no meio da área de 24 px */
+.ui-resize::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
   background: var(--line);
+  transform: translateX(-50%);
+}
+.ui-resize:hover::before,
+.ui-resize:focus-visible::before {
+  width: 2px;
+  background: var(--accent);
 }
 .ui-empty {
   padding: 12px;

@@ -1372,18 +1372,12 @@ body.resizing .settings-page {
   flex: none;
   position: relative;
 }
-.sb-resize {
+.sidebar > .sb-resize {
   position: absolute;
   top: 0;
-  right: -3px;
+  right: -12px;
   bottom: 0;
-  width: 6px;
-  cursor: col-resize;
   z-index: 6;
-}
-.sb-resize:hover {
-  background: var(--accent);
-  opacity: 0.6;
 }
 .sidebar.rail {
   width: 44px !important;
@@ -1466,10 +1460,6 @@ body.resizing .settings-page {
   gap: 8px;
   align-items: center;
   padding: 8px 12px 0;
-}
-.home-tag {
-  color: var(--red);
-  font-weight: 650;
 }
 .home-stalled {
   margin: 8px 0 0;

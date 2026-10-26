@@ -1,7 +1,14 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { SHELL_COPY } from '../../shared/copy/shell'
 import type { TaskRow } from '../../shared/contracts'
-import { clampSidebar, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
+import {
+  clampSidebar,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  type Density
+} from '../../shared/uiFile'
+import { ResizeHandle } from './ui/ResizeHandle'
 import type { Task } from '../../shared/types'
 import { AttentionList } from './AttentionList'
 import type { Live } from './App'
@@ -273,11 +280,15 @@ export function Sidebar({
 
   return (
     <nav className="sidebar" id="sidebar" onKeyDown={onKeyNav} style={{ width }}>
-      <div
+      <ResizeHandle
         className="sb-resize"
-        onMouseDown={startResize}
-        onDoubleClick={() => onWidth?.(SIDEBAR_DEFAULT)}
-        title={S.resize}
+        label={S.resize}
+        value={width}
+        min={SIDEBAR_MIN}
+        max={SIDEBAR_MAX}
+        onChange={(next) => onWidth?.(next)}
+        onDrag={startResize}
+        onReset={() => onWidth?.(SIDEBAR_DEFAULT)}
       />
       <div className="sb-head">
         <Logo />
