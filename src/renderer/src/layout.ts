@@ -248,6 +248,9 @@ export function windowTitle(
   return ids.length ? `${ids.map(label).join(' │ ')} — ${BRAND.name}` : BRAND.name
 }
 
+/** Id de task do domínio (ULID, 26 caracteres Crockford). Id do brain é a key (`WF-1`, `T-3`). */
+export const isDomainId = (id: string): boolean => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(id)
+
 /** Aba que não é de task: Início, Ajustes e as avulsas. */
 export const isFixedTab = (id: string): boolean =>
   id === HOME || id === SETTINGS || scratchKind(id) !== null

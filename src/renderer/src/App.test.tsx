@@ -401,3 +401,22 @@ it('retain só refaz com evento de task, e a rajada vira uma consulta', async ()
   expect(byIds() - before).toBeGreaterThanOrEqual(1)
   expect(byIds() - before).toBeLessThanOrEqual(2)
 })
+
+it('sem brain (lista vazia ou indisponível) a aba de task do domínio apagada sai mesmo assim', async () => {
+  await mount({ brain: [], rows: [], ui: withLayout([ULID, 'WF-OLD']) })
+  expect(tabs()).toEqual([expect.stringContaining('WF-OLD')])
+  const fake = fakeApi(
+    { rows: [], ui: withLayout([ULID, 'WF-OLD']) },
+    {
+      listTasks: (async () => ({
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'no brain' }
+      })) as never
+    }
+  )
+  ;(window as unknown as { turnflow: unknown }).turnflow = fake.api
+  act(() => root.render(<></>))
+  act(() => root.render(<App />))
+  await flush()
+  expect(tabs()).toEqual([expect.stringContaining('WF-OLD')])
+})

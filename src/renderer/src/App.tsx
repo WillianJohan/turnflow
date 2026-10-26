@@ -5,6 +5,7 @@ import type { ConfigState, Task, TaskState } from '../../shared/types'
 import {
   Action,
   HOME,
+  isDomainId,
   isFixedTab,
   reduce,
   scratchId,
@@ -380,11 +381,11 @@ function App(): React.JSX.Element {
   useEffect(() => {
     document.title = windowTitle(layout, (id) => names.get(id)?.key)
   }, [layout, names])
-  // Restore e mudanças do domínio: aba de task que não existe nem no brain nem no domínio sai do
-  // layout. Sem lista do brain (pasta vazia ou ainda carregando) não dá pra dizer que uma aba
-  // não-domínio sumiu: nesse caso nada sai.
+  // Restore e mudanças do domínio: aba de task que não existe mais sai do layout. Aba com cara de
+  // ULID é do domínio e quem decide é ele, com ou sem brain. As outras são do brain e só saem com a
+  // lista do brain carregada e não vazia (pasta vazia ou fora do ar não prova que a task sumiu).
   useEffect(() => {
-    if (!hydrated || !brainLoaded) return
+    if (!hydrated) return
     const ids = domainTabs ? domainTabs.split('\n') : []
     let cancel = false
     void (async () => {
@@ -393,12 +394,21 @@ function App(): React.JSX.Element {
         : ([] as TaskRow[])
       if (cancel || !rows) return
       setTabRows(new Map(rows.map((r) => [r.id, r])))
-      if (!tasks.length) return
-      dispatch({ t: 'retain', ids: new Set([...tasks.map((t) => t.id), ...rows.map((r) => r.id)]) })
+      const found = new Set(rows.map((r) => r.id))
+      const brainKnown = brainLoaded && tasks.length > 0
+      const keep = new Set(
+        [...openIds].filter(
+          (id) =>
+            isFixedTab(id) || byId.has(id) || found.has(id) || (!isDomainId(id) && !brainKnown)
+        )
+      )
+      dispatch({ t: 'retain', ids: keep })
     })()
     return () => {
       cancel = true
     }
+    // openIds/byId entram pelo `domainTabs` (a lista das candidatas)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, hydrated, brainLoaded, domainTabs, domainTick])
   const activeId = layout.panels[layout.focused]?.tabs[layout.panels[layout.focused].active]
 
