@@ -1,5 +1,6 @@
 // Eventos main → renderer. Sem zod: o main é a fonte confiável e o preload não carrega npm.
-import type { ConfigState, Task, TaskState } from '../types'
+import type { SessionState } from '../contracts'
+import type { ConfigState, Task } from '../types'
 import type { Boot } from './vault'
 
 export type Entity = 'task' | 'project' | 'flow' | 'session' | 'activity' | 'confirm'
@@ -10,8 +11,7 @@ export type Events = {
   'tasks:changed': [tasks: Task[]]
   'pty:data': [id: string, data: string]
   'pty:exit': [id: string, code: number]
-  'pty:state': [id: string, state: TaskState, info?: { event: string; message?: string }]
-  'pty:renamed': [from: string, to: string]
+  'pty:state': [id: string, state: SessionState, info?: { event: string; message?: string }]
   'config:changed': [state: ConfigState]
   'domain.changed': [change: DomainChanged]
   'vault.changed': [boot: Boot]
@@ -23,7 +23,6 @@ export const EVENTS = {
   onData: 'pty:data',
   onExit: 'pty:exit',
   onState: 'pty:state',
-  onRenamed: 'pty:renamed',
   onConfig: 'config:changed',
   onDomainChanged: 'domain.changed',
   onVaultChanged: 'vault.changed'

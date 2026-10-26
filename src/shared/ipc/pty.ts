@@ -1,26 +1,27 @@
 import { z } from 'zod'
-import type { How } from '../types'
+import { SESSION_TOOLS } from '../../core/domain/session'
 import { defineChannel } from './define'
 import { Cells, Id, MAX_PTY_DATA } from './common'
-
-export const HowZ = z.union([
-  z.object({ resume: Id }).strict(),
-  z.object({ newPrompt: z.literal(true) }).strict()
-]) satisfies z.ZodType<How>
 
 const Size = { cols: Cells, rows: Cells }
 const Data = z.string().max(MAX_PTY_DATA)
 
-export const ptyStart = defineChannel(
-  'pty:start',
-  z.object({ id: Id, how: HowZ, ...Size }).strict(),
-  z.void()
-)
-export const ptyStartUpdate = defineChannel('pty:startUpdate', z.object(Size).strict(), z.void())
-export const ptyStartScratch = defineChannel(
-  'pty:startScratch',
-  z.object({ id: Id, ...Size }).strict(),
-  z.void()
+export const ptySpawn = defineChannel(
+  'pty.spawn',
+  z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal('agent'),
+        pty_id: Id,
+        tool: z.enum(SESSION_TOOLS),
+        task: z.string().min(1).max(64).nullable(),
+        resume: Id.optional(),
+        ...Size
+      })
+      .strict(),
+    z.object({ kind: z.literal('shell'), pty_id: Id, ...Size }).strict()
+  ]),
+  z.object({ session_id: z.string().nullable() }).strict()
 )
 export const ptyWrite = defineChannel(
   'pty:write',

@@ -1,43 +1,66 @@
+import { activeBindings, commandFor } from './commands'
+
 export type AppCmd =
   | 'search'
+  | 'new'
+  | 'newTab'
   | 'split'
   | 'closeTab'
-  | 'update'
   | 'sidebar'
   | 'copy'
   | 'paste'
   | 'draft'
-  | 'newTab'
+  | 'sync'
+  | 'shortcuts'
   | { tab: number }
   | { panel: -1 | 1 }
   | { cycle: -1 | 1 }
 
 type Key = { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; key: string; code: string }
 
-// Pelo `code` (tecla física): `key` muda com Shift e com o layout ABNT.
-const BY_CODE: Record<string, AppCmd> = {
-  KeyK: 'search',
-  Backslash: 'split',
-  IntlBackslash: 'split',
-  KeyW: 'closeTab',
-  KeyU: 'update',
-  KeyB: 'sidebar',
-  KeyC: 'copy',
-  KeyV: 'paste',
-  KeyD: 'draft',
-  KeyT: 'newTab',
-  ArrowLeft: { panel: -1 },
-  ArrowRight: { panel: 1 },
-  PageUp: { cycle: -1 },
-  PageDown: { cycle: 1 }
+const SIMPLE = new Set<string>([
+  'search',
+  'new',
+  'newTab',
+  'split',
+  'closeTab',
+  'sidebar',
+  'copy',
+  'paste',
+  'draft',
+  'sync',
+  'shortcuts'
+])
+
+let commandBindings: Record<string, string> | null = null
+
+/** O xterm consulta o atalho sem o estado do React. O App publica o mapa gravado. */
+export function setCommandBindings(bindings: Record<string, string>): void {
+  commandBindings = bindings
 }
 
-// Só Ctrl+Shift (sem Alt) é do app; todo o resto vai pro terminal.
-export function appCommand(e: Key): AppCmd | null {
+const asAppCmd = (id: string): AppCmd | null => {
+  if (SIMPLE.has(id)) return id as AppCmd
+  if (id.startsWith('tab-')) {
+    const n = Number(id.slice(4))
+    return n >= 1 && n <= 9 ? { tab: n } : null
+  }
+  if (id === 'panel-prev') return { panel: -1 }
+  if (id === 'panel-next') return { panel: 1 }
+  if (id === 'cycle-prev') return { cycle: -1 }
+  if (id === 'cycle-next') return { cycle: 1 }
+  return null
+}
+
+// Só Ctrl+Shift (sem Alt) é do app, pelo `code` físico (ABNT incluso). `bindings` remapeia.
+export function appCommand(
+  e: Key,
+  bindings: Record<string, string> = commandBindings ?? activeBindings({})
+): AppCmd | null {
   if (!e.ctrlKey || !e.shiftKey || e.altKey) return null
-  const d = e.code.match(/^Digit([1-9])$/)
-  if (d) return { tab: Number(d[1]) }
-  return BY_CODE[e.code] ?? null
+  const code = e.code === 'IntlBackslash' && bindings.split === 'Backslash' ? 'Backslash' : e.code
+  const id = commandFor(bindings, code)
+  return id ? asAppCmd(id) : null
 }
 
 export type TermCmd = 'copy' | 'paste' | 'newline'

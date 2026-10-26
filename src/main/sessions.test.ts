@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, mkdir, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { findSessionFile, runningElsewhere, transcriptTail } from './sessions'
+import { findSessionFile, transcriptTail } from './sessions'
 
 const U = '6cf3f5b1-5d12-4759-bb5b-09a9aaea132f'
 const tmp = (): Promise<string> => mkdtemp(join(tmpdir(), 'dk-'))
@@ -25,32 +25,6 @@ describe('findSessionFile', () => {
 
   it('uuid ausente devolve null', async () => {
     expect(await findSessionFile(U, await tmp())).toBeNull()
-  })
-})
-
-describe('runningElsewhere', () => {
-  const proc = async (cmd: string): Promise<string> => {
-    const root = await tmp()
-    await mkdir(join(root, '123'))
-    await mkdir(join(root, 'self'))
-    await writeFile(join(root, '123', 'cmdline'), cmd)
-    return root
-  }
-
-  it('acha claude com o uuid', async () => {
-    expect(
-      await runningElsewhere(U, new Set(), await proc(`node\0/usr/bin/claude\0--resume\0${U}\0`))
-    ).toBe(123)
-  })
-
-  it('ignora pid do próprio app', async () => {
-    expect(
-      await runningElsewhere(U, new Set([123]), await proc(`claude\0--resume\0${U}\0`))
-    ).toBeNull()
-  })
-
-  it('ignora cmdline sem claude', async () => {
-    expect(await runningElsewhere(U, new Set(), await proc(`grep\0${U}\0`))).toBeNull()
   })
 })
 

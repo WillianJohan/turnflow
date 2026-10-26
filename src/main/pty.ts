@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module'
+import { createRequire } from 'module'
 import { ptyEnv } from './launch'
 
 export type PtyProc = {
@@ -16,17 +16,10 @@ export type PtySpawner = (
   o: { cols: number; rows: number; cwd: string; env: Record<string, string> }
 ) => PtyProc
 
-/** Único lugar que carrega `node-pty`. O unit usa um spawner fake e nunca chama isto. */
-export const nodePtySpawner: PtySpawner = (file, args, o) => {
-  const pty = createRequire(__filename)('node-pty') as {
-    spawn(
-      file: string,
-      args: string[],
-      opts: { cols: number; rows: number; cwd: string; env: Record<string, string> }
-    ): PtyProc
-  }
-  return pty.spawn(file, args, o)
-}
+// Único lugar que carrega o node-pty (binário do ABI do Electron): unit e int nunca passam
+// por aqui, usam um spawner fake.
+export const nodePtySpawner: PtySpawner = (file, args, o) =>
+  (createRequire(__filename)('node-pty') as typeof import('node-pty')).spawn(file, args, o)
 
 export type PtyPool = {
   start(
@@ -45,102 +38,94 @@ export type PtyPool = {
   ownPids(): Set<number>
 }
 
-type Slot = { proc: PtyProc; waiters: (() => void)[]; sigkill?: ReturnType<typeof setTimeout> }
-
-const DEFAULT_GRACE_MS = 3000
+type Events = { data(id: string, d: string): void; exit(id: string, code: number): void }
+type Leaving = { p: PtyProc; waiters: Set<() => void>; timer: NodeJS.Timeout | null }
 
 export function createPtyPool(o: {
   spawner: PtySpawner
-  events: { data(id: string, d: string): void; exit(id: string, code: number): void }
+  events: Events
   platform?: NodeJS.Platform
   baseEnv?: Record<string, string | undefined>
   killGraceMs?: number
 }): PtyPool {
   const platform = o.platform ?? process.platform
-  const grace = o.killGraceMs ?? DEFAULT_GRACE_MS
-  const alive = new Map<string, Slot>()
-  const leaving = new Map<string, Slot>()
+  const grace = o.killGraceMs ?? 3000
+  const live = new Map<string, PtyProc>()
+  // morto por `kill` e ainda sem `onExit`: o id continua ocupado até o processo sair de fato
+  const leaving = new Map<string, Leaving>()
 
-  const finish = (id: string, slot: Slot, code: number): void => {
-    if (slot.sigkill) clearTimeout(slot.sigkill)
-    alive.delete(id)
-    leaving.delete(id)
-    const waiters = slot.waiters.splice(0)
-    for (const w of waiters) w()
-    o.events.exit(id, code)
+  const kill = (id: string): void => {
+    const p = live.get(id)
+    if (!p) return
+    live.delete(id)
+    const l: Leaving = { p, waiters: new Set(), timer: null }
+    leaving.set(id, l)
+    p.kill()
+    // claude que ignora SIGHUP vira processo invisível; sem exit em `grace` vai no SIGKILL.
+    // No Windows (conpty) matar por pid não existe: só `p.kill()` e esperar o exit.
+    if (platform !== 'win32')
+      l.timer = setTimeout(() => {
+        l.timer = null
+        try {
+          process.kill(p.pid, 'SIGKILL')
+        } catch {
+          // já saiu
+        }
+      }, grace)
   }
 
-  const wait = (slot: Slot, ms: number): Promise<void> =>
-    new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        slot.waiters = slot.waiters.filter((w) => w !== done)
-        resolve()
-      }, ms)
+  const waitExit = (id: string, ms: number): Promise<void> => {
+    const l = leaving.get(id)
+    if (!l) return Promise.resolve()
+    return new Promise((resolve) => {
       const done = (): void => {
-        clearTimeout(timer)
+        clearTimeout(t)
+        l.waiters.delete(done)
         resolve()
       }
-      slot.waiters.push(done)
+      const t = setTimeout(done, ms)
+      l.waiters.add(done)
     })
-
-  const killSlot = (id: string, slot: Slot): void => {
-    alive.delete(id)
-    leaving.set(id, slot)
-    slot.proc.kill()
-    // No Windows o conpty só confirma a saída no onExit; SIGKILL por pid não vale (S1).
-    if (platform === 'win32') return
-    slot.sigkill = setTimeout(() => {
-      if (!leaving.has(id)) return
-      try {
-        process.kill(slot.proc.pid, 'SIGKILL')
-      } catch {
-        // já saiu, ou o pid foi reciclado depois do onExit
-      }
-    }, grace)
   }
 
   const killAndWait = (id: string, ms: number): Promise<void> => {
-    const slot = alive.get(id) ?? leaving.get(id)
-    if (!slot) return Promise.resolve()
-    if (alive.has(id)) killSlot(id, slot)
-    return wait(slot, ms)
+    kill(id)
+    return waitExit(id, ms)
   }
 
   return {
     start(id, argv, cwd, env, size) {
-      if (alive.has(id) || leaving.has(id)) throw new Error('pty_busy')
-      const proc = o.spawner(argv[0], argv.slice(1), {
+      if (live.has(id) || leaving.has(id)) throw new Error('pty_busy')
+      const p = o.spawner(argv[0], argv.slice(1), {
         cols: size.cols,
         rows: size.rows,
         cwd,
         env: ptyEnv(o.baseEnv ?? process.env, env)
       })
-      const slot: Slot = { proc, waiters: [] }
-      let closed = false
-      alive.set(id, slot)
-      proc.onData((d) => o.events.data(id, d))
-      proc.onExit(({ exitCode }) => {
-        if (closed) return
-        closed = true
-        finish(id, slot, exitCode)
+      live.set(id, p)
+      p.onData((d) => o.events.data(id, d))
+      p.onExit(({ exitCode }) => {
+        // só o exit do processo certo libera o id: o de um processo velho nunca encerra o novo
+        if (live.get(id) === p) live.delete(id)
+        const l = leaving.get(id)
+        if (l?.p === p) {
+          leaving.delete(id)
+          if (l.timer) clearTimeout(l.timer)
+          for (const w of [...l.waiters]) w()
+        }
+        o.events.exit(id, exitCode)
       })
     },
-    write(id, d) {
-      alive.get(id)?.proc.write(d)
-    },
-    resize(id, cols, rows) {
-      alive.get(id)?.proc.resize(cols, rows)
-    },
-    kill(id) {
-      const slot = alive.get(id)
-      if (slot) killSlot(id, slot)
-    },
+    write: (id, d) => live.get(id)?.write(d),
+    resize: (id, c, r) => live.get(id)?.resize(c, r),
+    kill,
     killAndWait,
-    killAllAndWait(ms, filter) {
-      const ids = [...alive.keys()].filter((id) => (filter ? filter(id) : true))
-      return Promise.all(ids.map((id) => killAndWait(id, ms))).then(() => undefined)
+    killAllAndWait: async (ms, filter) => {
+      const ids = [...live.keys(), ...leaving.keys()].filter((id) => !filter || filter(id))
+      await Promise.all(ids.map((id) => killAndWait(id, ms)))
     },
-    alive: () => [...alive.keys()],
-    ownPids: () => new Set([...alive.values(), ...leaving.values()].map((s) => s.proc.pid))
+    alive: () => [...live.keys()],
+    ownPids: () =>
+      new Set([...live.values(), ...[...leaving.values()].map((l) => l.p)].map((p) => p.pid))
   }
 }

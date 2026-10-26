@@ -13,7 +13,8 @@ const DEFAULTS: AppConfig = {
   appFontSize: 13,
   statusIcons: { Outros: 'x' },
   defaultWorkdir: null,
-  brainDir: null
+  brainDir: null,
+  agents: { codex: 'codex', cursor: 'cursor-agent', other: null }
 }
 const BUILTIN: Record<string, Theme> = {
   escuro: { name: 'Dark', ui: { bg: '#14161a' }, terminal: { background: '#14161a' } },

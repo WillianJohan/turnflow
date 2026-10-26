@@ -78,7 +78,7 @@ export function SettingsView({
   useEffect(() => {
     unwrap(window.turnflow.fonts()).then((f) => f && setFonts(f))
   }, [])
-  const set = (patch: Partial<AppConfig>): void => {
+  const set = (patch: Partial<Omit<AppConfig, 'agents'>>): void => {
     orThrow(window.turnflow.setConfig(patch)).then(onChange, (e) => setErr(String(e?.message ?? e)))
   }
   const c = cfg.config

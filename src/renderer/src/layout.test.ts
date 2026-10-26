@@ -9,6 +9,7 @@ import {
   scratchKind,
   windowTitle,
   SETTINGS,
+  HOME,
   tabLabel
 } from './layout'
 
@@ -219,6 +220,17 @@ describe('reduce', () => {
   })
 })
 
+describe('restore', () => {
+  it('troca o layout inteiro e limita foco e aba ativa', () => {
+    expect(
+      reduce(EMPTY, {
+        t: 'restore',
+        layout: { panels: [{ tabs: ['A', 'B'], active: 9 }], focused: 4 }
+      })
+    ).toEqual(L([[['A', 'B'], 1]], 0))
+  })
+})
+
 describe('loadLayout', () => {
   it('JSON inválido vira EMPTY', () => {
     expect(loadLayout('{lixo')).toEqual(EMPTY)
@@ -367,6 +379,11 @@ describe('aba de configurações', () => {
     expect(l.panels[0].tabs).toEqual([SETTINGS])
     expect(reduce(l, { t: 'retain', ids: new Set() }).panels[0].tabs).toEqual([SETTINGS])
     expect(tabLabel(SETTINGS)).toBe('Configurações')
+    expect(
+      reduce(reduce(EMPTY, { t: 'open', taskId: HOME }), { t: 'retain', ids: new Set() }).panels[0]
+        .tabs
+    ).toEqual([HOME])
+    expect(tabLabel(HOME)).toBe('Home')
   })
 })
 

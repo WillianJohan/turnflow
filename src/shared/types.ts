@@ -1,4 +1,5 @@
 // Tipos compartilhados entre main, preload e renderer.
+import type { SessionState } from './contracts'
 export type Bucket = { idx: number; name: string }
 export type SessionRef = { date: string; uuid: string; desc: string }
 export type Dir = 'current' | 'done'
@@ -12,21 +13,7 @@ export type Task = {
   readmePath: string
   sessions: SessionRef[] // ordem do arquivo: mais recente por último
 }
-export type TaskState = 'working' | 'waiting' | 'idle'
-export type Plan =
-  | { kind: 'resume'; uuid: string; cwd: string }
-  | { kind: 'elsewhere'; uuid: string; pid: number; by?: string } // by = outra aba do app
-  | { kind: 'gone'; uuid: string; cwd: string }
-  | { kind: 'missing'; uuids: string[] }
-  | { kind: 'none' }
-export type How = { resume: string } | { newPrompt: true }
-export type SessionInfo = {
-  uuid: string
-  exists: boolean
-  current: boolean
-  date: string
-  desc: string
-}
+export type TaskState = SessionState
 export type Header = { what: string; where: string; next: string }
 export type HeaderCache = {
   readmeMtime: number
@@ -49,6 +36,8 @@ export type AppConfig = {
   defaultWorkdir: string | null
   /** Pasta do brain do último import (absoluta) ou `null`; a lateral herdada lista dela. */
   brainDir: string | null
+  /** Comandos dos agentes que não são o Claude. `other: null` = não configurado. Só pelo arquivo. */
+  agents: { codex: string; cursor: string; other: string | null }
 }
 export type ConfigState = {
   dir: string

@@ -19,6 +19,9 @@ vi.mock('electron', () => ({
 }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 vi.mock('./pty', () => ({
+  nodePtySpawner: () => {
+    throw new Error('sem node-pty no unit')
+  },
   createPtyPool: () => ({
     start: () => undefined,
     write: () => undefined,
@@ -28,10 +31,7 @@ vi.mock('./pty', () => ({
     killAllAndWait: async () => undefined,
     alive: () => [],
     ownPids: () => new Set()
-  }),
-  nodePtySpawner: () => {
-    throw new Error('node-pty')
-  }
+  })
 }))
 const legacy = vi.hoisted(() => ({
   load: vi.fn<(root: string) => Promise<unknown[]>>(async () => []),
@@ -78,13 +78,15 @@ beforeEach(async () => {
     webContents: { id: 1, on: () => undefined, send: () => undefined },
     isDestroyed: () => false
   }
-  dispose = await registerIpc(win as never, ipc as never, {
-    vault: { db: () => db } as never,
-    version: '0.0.0',
-    dialogs: { save: async () => null, open: async () => null, folder: async () => null },
-    domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
-    log
-  })
+  dispose = (
+    await registerIpc(win as never, ipc as never, {
+      vault: { db: () => db } as never,
+      version: '0.0.0',
+      dialogs: { save: async () => null, open: async () => null, folder: async () => null },
+      domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
+      log
+    })
+  ).dispose
   call = async (method, input) =>
     (await invokes.get(CHANNELS[method].name)!(
       { sender: { id: 1 } },
@@ -137,6 +139,16 @@ describe('config.json × pasta padrão', () => {
   })
 })
 
+describe('config.json × agents', () => {
+  it('config:set com agents → VALIDATION e o arquivo não muda', async () => {
+    const before = await readFile(cfgFile(), 'utf8')
+    expect(
+      await call('setConfig', { agents: { codex: 'x', cursor: 'y', other: null } })
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION' } })
+    expect(await readFile(cfgFile(), 'utf8')).toBe(before)
+  })
+})
+
 describe('config.json × brain da lateral herdada', () => {
   it('brainDir novo rearma o watcher e a lateral lista dele', async () => {
     const brain = tmpDir()
@@ -175,13 +187,47 @@ describe('config.json × brain da lateral herdada', () => {
       isDestroyed: () => false
     }
     const ipc = { handle: () => undefined, on: () => undefined }
-    dispose = await registerIpc(win as never, ipc as never, {
-      vault: { db: () => db } as never,
-      version: '0.0.0',
-      dialogs: { save: async () => null, open: async () => null, folder: async () => null },
-      domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
-      log
-    })
+    dispose = (
+      await registerIpc(win as never, ipc as never, {
+        vault: { db: () => db } as never,
+        version: '0.0.0',
+        dialogs: { save: async () => null, open: async () => null, folder: async () => null },
+        domain: { now: () => new Date('2026-10-22T12:00:00.000Z') },
+        log
+      })
+    ).dispose
     expect(log).toHaveBeenCalledWith(expect.stringContaining('brain ilegível'))
+  })
+})
+
+describe('ui.json', () => {
+  const file = {
+    version: 1,
+    layout: { panels: [{ tabs: ['T-1'], active: 0 }], focused: 0 },
+    sidebar: { folded: false, width: 288 },
+    home: 'list',
+    fab: { edge: 'right', offset: 24 },
+    density: 'normal',
+    shortcuts: {}
+  }
+
+  it('ausente lê null; set grava e a leitura seguinte devolve o mesmo', async () => {
+    expect(await call('uiGet')).toEqual({ ok: true, data: null })
+    expect(data(await call('uiSet', file))).toEqual(file)
+    expect(data(await call('uiGet'))).toEqual(file)
+    expect(await readFile(join(dir, 'ui.json'), 'utf8')).toContain('"T-1"')
+  })
+
+  it('largura fora da faixa é VALIDATION e não grava', async () => {
+    expect(await call('uiSet', { ...file, sidebar: { folded: false, width: 10 } })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION' }
+    })
+    expect(await call('uiGet')).toEqual({ ok: true, data: null })
+  })
+
+  it('json quebrado lê null', async () => {
+    await writeFile(join(dir, 'ui.json'), '{ quebrado')
+    expect(await call('uiGet')).toEqual({ ok: true, data: null })
   })
 })

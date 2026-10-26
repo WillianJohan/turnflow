@@ -32,7 +32,12 @@ export const AppConfigZ = z.object({
     .string()
     .max(Limits.workdir)
     .refine(isAbsolutePath, DOMAIN_COPY.errors.workdir_relative)
-    .nullable()
+    .nullable(),
+  agents: z.object({
+    codex: z.string(),
+    cursor: z.string(),
+    other: z.string().nullable()
+  })
 }) satisfies z.ZodType<AppConfig>
 
 export const ConfigStateZ = z.object({
@@ -44,7 +49,11 @@ export const ConfigStateZ = z.object({
 }) satisfies z.ZodType<ConfigState>
 
 export const configGet = defineChannel('config:get', NoInput, ConfigStateZ)
-export const configSet = defineChannel('config:set', AppConfigZ.partial().strict(), ConfigStateZ)
+export const configSet = defineChannel(
+  'config:set',
+  AppConfigZ.omit({ agents: true }).partial().strict(),
+  ConfigStateZ
+)
 export const configCloneTheme = defineChannel(
   'config:cloneTheme',
   z.object({ from: Id }).strict(),

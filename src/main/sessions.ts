@@ -1,5 +1,5 @@
 import { createReadStream } from 'fs'
-import { access, readdir, readFile } from 'fs/promises'
+import { access, readdir } from 'fs/promises'
 import { join } from 'path'
 import { createInterface } from 'readline'
 import { CLAUDE_PROJECTS } from './config'
@@ -29,19 +29,6 @@ export async function findSessionFile(
     }
     rl.close()
     return { path, cwd }
-  }
-  return null
-}
-
-export async function runningElsewhere(
-  uuid: string,
-  ownPids: Set<number>,
-  procDir = '/proc'
-): Promise<number | null> {
-  for (const pid of await readdir(procDir).catch(() => [] as string[])) {
-    if (!/^\d+$/.test(pid) || ownPids.has(Number(pid))) continue
-    const args = (await readFile(join(procDir, pid, 'cmdline'), 'utf8').catch(() => '')).split('\0')
-    if (args.includes(uuid) && args.some((a) => /(^|\/)claude$/.test(a))) return Number(pid)
   }
   return null
 }

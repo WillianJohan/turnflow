@@ -1,95 +1,357 @@
+import http from 'node:http'
+import net from 'node:net'
 import { describe, expect, it } from 'vitest'
-import { exec, execSync } from 'child_process'
-import { mkdtemp, readFile } from 'fs/promises'
-import { tmpdir } from 'os'
-import { join } from 'path'
-import { HOOK_CMD, startHookServer, stateFromHook, writeHookSettings } from './hooks'
+import { BRAND } from '../shared/brand'
+import { DEFAULT_CONFIG } from './appConfig'
+import {
+  HOOK_CMD,
+  MAX_HOOK_BODY,
+  NOTIFICATION_MATCHER,
+  hookEffect,
+  hookSettings,
+  startHookServer,
+  type HookBody,
+  type HookEffect
+} from './hooks'
 
-describe('stateFromHook', () => {
-  it.each([
-    ['UserPromptSubmit', 'working'],
-    ['PreToolUse', 'working'],
-    ['Notification', 'waiting'],
-    ['Stop', 'waiting'],
-    ['SessionStart', 'waiting'],
-    ['PostToolUse', 'working'], // aprovou a permissão: voltou a trabalhar
-    ['SubagentStop', null]
-  ])('%s → %s', (ev, st) => expect(stateFromHook({ hook_event_name: ev })).toBe(st))
+const SID = '00000000-0000-4000-8000-000000000001'
+
+const base: HookEffect = { state: null, start: null, prompt: false }
+
+describe('hookEffect', () => {
+  it.each<{ name: string; body: HookBody; effect: HookEffect }>([
+    {
+      name: 'SessionStart',
+      body: { hook_event_name: 'SessionStart', session_id: SID, cwd: '/w' },
+      effect: { state: 'idle', start: { external_id: SID, cwd: '/w' }, prompt: false }
+    },
+    {
+      name: 'SessionStart sem session_id',
+      body: { hook_event_name: 'SessionStart' },
+      effect: { state: 'idle', start: null, prompt: false }
+    },
+    {
+      name: 'UserPromptSubmit',
+      body: { hook_event_name: 'UserPromptSubmit' },
+      effect: { state: 'working', start: null, prompt: true }
+    },
+    {
+      name: 'PreToolUse',
+      body: { hook_event_name: 'PreToolUse' },
+      effect: { state: 'working', start: null, prompt: false }
+    },
+    {
+      name: 'PostToolUse',
+      body: { hook_event_name: 'PostToolUse' },
+      effect: { state: 'working', start: null, prompt: false }
+    },
+    {
+      name: 'Notification permission_prompt',
+      body: { hook_event_name: 'Notification', notification_type: 'permission_prompt' },
+      effect: { state: 'waiting', start: null, prompt: false }
+    },
+    {
+      name: 'Notification elicitation_dialog',
+      body: { hook_event_name: 'Notification', notification_type: 'elicitation_dialog' },
+      effect: { state: 'waiting', start: null, prompt: false }
+    },
+    {
+      name: 'Notification idle_prompt',
+      body: { hook_event_name: 'Notification', notification_type: 'idle_prompt' },
+      effect: { state: 'idle', start: null, prompt: false }
+    },
+    {
+      name: 'Notification auth_success',
+      body: { hook_event_name: 'Notification', notification_type: 'auth_success' },
+      effect: { ...base, ignoredType: 'auth_success' }
+    },
+    {
+      name: 'Notification sem notification_type',
+      body: { hook_event_name: 'Notification' },
+      effect: base
+    },
+    {
+      name: 'Stop',
+      body: { hook_event_name: 'Stop' },
+      effect: { state: 'idle', start: null, prompt: false }
+    },
+    {
+      name: 'SessionEnd',
+      body: { hook_event_name: 'SessionEnd' },
+      effect: base
+    },
+    {
+      name: 'SubagentStop',
+      body: { hook_event_name: 'SubagentStop' },
+      effect: base
+    }
+  ])('mapa hook → estado ($name)', ({ body, effect }) => {
+    expect(hookEffect(body)).toEqual(effect)
+  })
+
+  it('Stop = idle sem opção', () => {
+    expect(hookEffect.length).toBe(1)
+    expect(hookEffect({ hook_event_name: 'Stop' }).state).toBe('idle')
+    for (const key of Object.keys(DEFAULT_CONFIG)) expect(key).not.toMatch(/stop|hook/i)
+  })
 })
+
+describe('hookSettings', () => {
+  it('settings registra o Notification com o matcher', () => {
+    const hooks = hookSettings().hooks
+    expect(NOTIFICATION_MATCHER).toBe('permission_prompt|elicitation_dialog')
+    expect(hooks.Notification[0].matcher).toBe(NOTIFICATION_MATCHER)
+    expect(hooks.Notification[0].hooks).toEqual([{ type: 'command', command: HOOK_CMD }])
+    for (const ev of ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop']) {
+      expect(hooks[ev][0].matcher).toBe('*')
+      expect(hooks[ev][0].hooks).toEqual([{ type: 'command', command: HOOK_CMD }])
+    }
+    expect(hooks.SessionEnd).toBeUndefined()
+    expect(Object.keys(hooks)).toEqual([
+      'SessionStart',
+      'UserPromptSubmit',
+      'PreToolUse',
+      'PostToolUse',
+      'Notification',
+      'Stop'
+    ])
+    expect(HOOK_CMD).toBe(
+      `curl -s -m 1 -X POST -H "${BRAND.tokenHeader}: $TURNFLOW_SESSION_TOKEN" -H "content-type: application/json" --data-binary @- "http://127.0.0.1:$TURNFLOW_HOOK_PORT/hook" || true`
+    )
+  })
+})
+
+async function withServer(
+  accept: (token: string) => boolean,
+  onHook: (token: string, body: HookBody) => void,
+  fn: (port: number) => Promise<void>,
+  log?: (line: string) => void
+): Promise<void> {
+  const s = await startHookServer({ accept, onHook, log })
+  try {
+    await fn(s.port)
+  } finally {
+    await s.close()
+  }
+}
+
+function post(
+  port: number,
+  body: string,
+  headers: Record<string, string> = {}
+): Promise<{ status: number }> {
+  return fetch(`http://127.0.0.1:${port}/hook`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body
+  }).then((r) => ({ status: r.status }))
+}
 
 describe('startHookServer', () => {
-  it('entrega evento com token e recusa sem', async () => {
-    const got: [string, string][] = []
-    const s = await startHookServer((id, st) => got.push([id, st]))
-    const url = `http://127.0.0.1:${s.port}/hook/T-1`
-    const body = JSON.stringify({ hook_event_name: 'PreToolUse' })
-    const bad = await fetch(url, { method: 'POST', body })
-    const ok = await fetch(url, { method: 'POST', body, headers: { 'x-turnflow-token': s.token } })
-    await s.close()
-    expect(bad.status).toBe(401)
-    expect(ok.status).toBe(204)
-    expect(got).toEqual([['T-1', 'working']])
-  })
-
-  it('o comando do hook via curl chega no servidor', async () => {
-    const got: string[] = []
-    const s = await startHookServer((id, st) => got.push(`${id}:${st}`))
-    await new Promise<void>((res, rej) =>
-      exec(
-        HOOK_CMD,
-        {
-          env: {
-            ...process.env,
-            TURNFLOW_PORT: String(s.port),
-            TURNFLOW_TOKEN: s.token,
-            TURNFLOW_TASK: 'T-9'
-          }
-        },
-        (e: Error | null) => (e ? rej(e) : res())
-      ).stdin?.end(JSON.stringify({ hook_event_name: 'Stop' }))
+  it('token aceito → 204 e onHook (com message)', async () => {
+    const got: { token: string; body: HookBody }[] = []
+    await withServer(
+      (t) => t === 'secret',
+      (token, body) => got.push({ token, body }),
+      async (port) => {
+        const res = await post(
+          port,
+          JSON.stringify({
+            hook_event_name: 'Notification',
+            notification_type: 'permission_prompt',
+            message: 'allow?'
+          }),
+          { [BRAND.tokenHeader]: 'secret' }
+        )
+        expect(res.status).toBe(204)
+      }
     )
-    await s.close()
-    expect(got).toEqual(['T-9:waiting'])
-  })
-})
-
-describe('session_id', () => {
-  it('o servidor repassa o session_id do hook (é por ele que a aba descobre a conversa)', async () => {
-    const got: unknown[] = []
-    const s = await startHookServer((id, st, sid) => got.push([id, st, sid]))
-    await fetch(`http://127.0.0.1:${s.port}/hook/~claude-1`, {
-      method: 'POST',
-      headers: { 'x-turnflow-token': s.token },
-      body: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'abc-123' })
-    })
-    await s.close()
-    expect(got).toEqual([['~claude-1', 'waiting', 'abc-123']])
-  })
-})
-
-describe('HOOK_CMD', () => {
-  it('servidor fora do ar não trava o claude: < 2s, exit 0', () => {
-    const t = Date.now()
-    execSync(HOOK_CMD, {
-      input: '{}',
-      env: { ...process.env, TURNFLOW_PORT: '9', TURNFLOW_TOKEN: 'x', TURNFLOW_TASK: 'T-1' }
-    })
-    expect(Date.now() - t).toBeLessThan(2000)
-  })
-})
-
-describe('writeHookSettings', () => {
-  it('grava os eventos com o comando', async () => {
-    const p = await writeHookSettings(await mkdtemp(join(tmpdir(), 'dk-')))
-    const j = JSON.parse(await readFile(p, 'utf8'))
-    expect(Object.keys(j.hooks).sort()).toEqual([
-      'Notification',
-      'PostToolUse',
-      'PreToolUse',
-      'SessionStart',
-      'Stop',
-      'UserPromptSubmit'
+    expect(got).toEqual([
+      {
+        token: 'secret',
+        body: {
+          hook_event_name: 'Notification',
+          notification_type: 'permission_prompt',
+          message: 'allow?'
+        }
+      }
     ])
-    expect(j.hooks.Stop[0].hooks[0]).toEqual({ type: 'command', command: HOOK_CMD })
+  })
+
+  it('token desconhecido → 401 sem onHook', async () => {
+    const got: HookBody[] = []
+    await withServer(
+      (t) => t === 'secret',
+      (_token, body) => got.push(body),
+      async (port) => {
+        const res = await post(port, '{}', { [BRAND.tokenHeader]: 'nope' })
+        expect(res.status).toBe(401)
+      }
+    )
+    expect(got).toEqual([])
+  })
+
+  it('Origin → 403', async () => {
+    await withServer(
+      () => true,
+      () => undefined,
+      async (port) => {
+        const res = await post(port, '{}', {
+          [BRAND.tokenHeader]: 'secret',
+          Origin: 'http://evil.example'
+        })
+        expect(res.status).toBe(403)
+      }
+    )
+  })
+
+  it('Host diferente → 403', async () => {
+    await withServer(
+      () => true,
+      () => undefined,
+      async (port) => {
+        const status = await new Promise<number>((resolve, reject) => {
+          const req = http.request(
+            {
+              host: '127.0.0.1',
+              port,
+              path: '/hook',
+              method: 'POST',
+              headers: { Host: `localhost:${port}`, [BRAND.tokenHeader]: 'secret' }
+            },
+            (res) => {
+              res.resume()
+              resolve(res.statusCode ?? 0)
+            }
+          )
+          req.on('error', reject)
+          req.end('{}')
+        })
+        expect(status).toBe(403)
+      }
+    )
+  })
+
+  it('OPTIONS não responde', async () => {
+    await withServer(
+      () => true,
+      () => undefined,
+      async (port) => {
+        const bytes = await new Promise<number>((resolve, reject) => {
+          let n = 0
+          const sock = net.connect(port, '127.0.0.1')
+          const timer = setTimeout(() => {
+            sock.destroy()
+            reject(new Error('OPTIONS ficou aberto'))
+          }, 1000)
+          sock.on('data', (c) => {
+            n += c.length
+          })
+          sock.on('connect', () => {
+            sock.write(`OPTIONS /hook HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\n\r\n`)
+          })
+          const done = (): void => {
+            clearTimeout(timer)
+            resolve(n)
+          }
+          sock.on('close', done)
+          sock.on('error', done)
+        })
+        expect(bytes).toBe(0)
+      }
+    )
+  })
+
+  it('path /hook/T-1 → 404', async () => {
+    await withServer(
+      () => true,
+      () => undefined,
+      async (port) => {
+        const res = await fetch(`http://127.0.0.1:${port}/hook/T-1`, {
+          method: 'POST',
+          headers: { [BRAND.tokenHeader]: 'secret' },
+          body: '{}'
+        })
+        expect(res.status).toBe(404)
+      }
+    )
+  })
+
+  it('JSON inválido → 400', async () => {
+    const got: HookBody[] = []
+    await withServer(
+      () => true,
+      (_token, body) => got.push(body),
+      async (port) => {
+        const res = await post(port, '{', { [BRAND.tokenHeader]: 'secret' })
+        expect(res.status).toBe(400)
+      }
+    )
+    expect(got).toEqual([])
+  })
+
+  it('onHook que lança não derruba o próximo request', async () => {
+    let n = 0
+    const logs: string[] = []
+    await withServer(
+      () => true,
+      () => {
+        n += 1
+        if (n === 1) throw new Error('boom')
+      },
+      async (port) => {
+        const a = await post(port, JSON.stringify({ hook_event_name: 'Stop' }), {
+          [BRAND.tokenHeader]: 'secret'
+        })
+        const b = await post(port, JSON.stringify({ hook_event_name: 'Stop' }), {
+          [BRAND.tokenHeader]: 'secret'
+        })
+        expect(a.status).toBe(204)
+        expect(b.status).toBe(204)
+      },
+      (line) => logs.push(line)
+    )
+    expect(n).toBe(2)
+    expect(logs.join('\n')).toMatch(/boom/)
+  })
+
+  it('corpo de 2 MiB entrega o evento pelos primeiros bytes', async () => {
+    const got: HookBody[] = []
+    const raw = JSON.stringify({
+      hook_event_name: 'PostToolUse',
+      session_id: SID,
+      tool_response: 'x'.repeat(2 * 1024 * 1024)
+    })
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(MAX_HOOK_BODY)
+    await withServer(
+      () => true,
+      (_token, body) => got.push(body),
+      async (port) => {
+        const res = await post(port, raw, { [BRAND.tokenHeader]: 'secret' })
+        expect(res.status).toBe(204)
+      }
+    )
+    expect(got).toEqual([{ hook_event_name: 'PostToolUse', session_id: SID }])
+  })
+
+  it("filtro do main vale com o hook em '*'", async () => {
+    const got: HookBody[] = []
+    await withServer(
+      () => true,
+      (_token, body) => got.push(body),
+      async (port) => {
+        for (const notification_type of ['idle_prompt', 'auth_success']) {
+          const res = await post(
+            port,
+            JSON.stringify({ hook_event_name: 'Notification', notification_type }),
+            { [BRAND.tokenHeader]: 't' }
+          )
+          expect(res.status).toBe(204)
+        }
+      }
+    )
+    expect(hookEffect(got[0]).state).toBe('idle')
+    expect(hookEffect(got[1]).state).toBeNull()
+    expect(hookEffect(got[1]).ignoredType).toBe('auth_success')
   })
 })

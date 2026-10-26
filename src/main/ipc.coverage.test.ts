@@ -11,6 +11,9 @@ vi.mock('electron', () => ({
 }))
 vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 vi.mock('./pty', () => ({
+  nodePtySpawner: () => {
+    throw new Error('sem node-pty no unit')
+  },
   createPtyPool: () => ({
     start: () => undefined,
     write: () => undefined,
@@ -20,10 +23,7 @@ vi.mock('./pty', () => ({
     killAllAndWait: async () => undefined,
     alive: () => [],
     ownPids: () => new Set()
-  }),
-  nodePtySpawner: () => {
-    throw new Error('node-pty')
-  }
+  })
 }))
 vi.mock('./tasks', () => ({ loadTasks: async () => [], watchTasks: () => () => undefined }))
 vi.mock('./hooks', () => ({
@@ -54,7 +54,7 @@ describe('registerIpc', () => {
       dialogs: { save: async () => null, open: async () => null, folder: async () => null },
       domain: { now: () => new Date() }
     }
-    const dispose = await registerIpc(win as never, ipc as never, deps)
+    const { dispose } = await registerIpc(win as never, ipc as never, deps)
     dispose()
     const expected = Object.values(CHANNELS).map((c) => c.name)
     expect(handled.sort()).toEqual(expected.sort())
