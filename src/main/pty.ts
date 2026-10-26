@@ -22,23 +22,30 @@ export const nodePtySpawner: PtySpawner = (file, args, o) =>
   (createRequire(__filename)('node-pty') as typeof import('node-pty')).spawn(file, args, o)
 
 export type PtyPool = {
+  /** Devolve a geração do processo: o `exit` dele chega com ela. */
   start(
     id: string,
     argv: string[],
     cwd: string,
     env: Record<string, string>,
     size: { cols: number; rows: number }
-  ): void
+  ): number
   write(id: string, d: string): void
   resize(id: string, cols: number, rows: number): void
   kill(id: string): void
   killAndWait(id: string, ms: number): Promise<void>
   killAllAndWait(ms: number, filter?: (id: string) => boolean): Promise<void>
   alive(): string[]
+  /** Vivo ou morto e ainda sem `onExit`: `start` nesse id lança `pty_busy`. */
+  busy(id: string): boolean
   ownPids(): Set<number>
 }
 
-type Events = { data(id: string, d: string): void; exit(id: string, code: number): void }
+type Events = {
+  data(id: string, d: string): void
+  /** `gen` é a geração devolvida pelo `start` do processo que saiu. */
+  exit(id: string, code: number, gen: number): void
+}
 type Leaving = { p: PtyProc; waiters: Set<() => void>; timer: NodeJS.Timeout | null }
 
 export function createPtyPool(o: {
@@ -51,6 +58,7 @@ export function createPtyPool(o: {
   const platform = o.platform ?? process.platform
   const grace = o.killGraceMs ?? 3000
   const live = new Map<string, PtyProc>()
+  let gens = 0
   // morto por `kill` e ainda sem `onExit`: o id continua ocupado até o processo sair de fato
   const leaving = new Map<string, Leaving>()
 
@@ -102,6 +110,7 @@ export function createPtyPool(o: {
         cwd,
         env: ptyEnv(o.baseEnv ?? process.env, env)
       })
+      const gen = ++gens
       live.set(id, p)
       p.onData((d) => o.events.data(id, d))
       p.onExit(({ exitCode }) => {
@@ -113,8 +122,9 @@ export function createPtyPool(o: {
           if (l.timer) clearTimeout(l.timer)
           for (const w of [...l.waiters]) w()
         }
-        o.events.exit(id, exitCode)
+        o.events.exit(id, exitCode, gen)
       })
+      return gen
     },
     write: (id, d) => live.get(id)?.write(d),
     resize: (id, c, r) => live.get(id)?.resize(c, r),
@@ -125,6 +135,7 @@ export function createPtyPool(o: {
       await Promise.all(ids.map((id) => killAndWait(id, ms)))
     },
     alive: () => [...live.keys()],
+    busy: (id) => live.has(id) || leaving.has(id),
     ownPids: () =>
       new Set([...live.values(), ...[...leaving.values()].map((l) => l.p)].map((p) => p.pid))
   }

@@ -6,6 +6,7 @@ import { attachTerm, getTerm, hasTerm } from './terms'
 import { Composer } from './Composer'
 import { Icon } from './Icon'
 import { orThrow } from './ipc'
+import { spawnWhenFree } from './sessionStart'
 
 type Props = {
   id: string
@@ -40,17 +41,22 @@ export function ScratchView({
     const e = getTerm(id)
     setErr('')
     orThrow(
-      window.turnflow.ptySpawn(
-        kind === 'shell'
-          ? { kind: 'shell', pty_id: id, cols: e.term.cols, rows: e.term.rows }
-          : {
-              kind: 'agent',
-              pty_id: id,
-              tool: 'claude-code',
-              task: null,
-              cols: e.term.cols,
-              rows: e.term.rows
-            }
+      spawnWhenFree(
+        () =>
+          window.turnflow.ptySpawn(
+            kind === 'shell'
+              ? { kind: 'shell', pty_id: id, cols: e.term.cols, rows: e.term.rows }
+              : {
+                  kind: 'agent',
+                  pty_id: id,
+                  tool: 'claude-code',
+                  task: null,
+                  cols: e.term.cols,
+                  rows: e.term.rows
+                }
+          ),
+        window.turnflow.onExit,
+        id
       )
     ).then(
       (opened) => {

@@ -68,7 +68,7 @@ describe('createPtyPool', () => {
     procs[0].emitData('oi')
     procs[0].emitExit(3)
     expect(events.data).toHaveBeenCalledWith('a', 'oi')
-    expect(events.exit).toHaveBeenCalledWith('a', 3)
+    expect(events.exit).toHaveBeenCalledWith('a', 3, 1)
   })
 
   it('start com id vivo lança pty_busy', () => {

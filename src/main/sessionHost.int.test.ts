@@ -69,6 +69,8 @@ type Box = {
   elsewhereTool: string | null
   workdir: string | null
   other: string[] | null
+  /** Segura o `bins()` até resolver: simula o start lento (login do shell). */
+  gate: Promise<void> | null
 }
 
 async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
@@ -89,6 +91,7 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
   box.elsewhereTool = null
   box.workdir = over.workdir === undefined ? '/d' : over.workdir
   box.other = null
+  box.gate = null
   const fake = fakeSpawner()
   box.procs = fake.procs
   box.calls = fake.calls
@@ -108,12 +111,15 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
   const host = createSessionHost({
     spawner: fake.spawner,
     domain: () => box.d,
-    bins: async () => ({
-      claude: 'claude',
-      codex: ['codex'],
-      cursor: ['cursor-agent'],
-      other: box.other
-    }),
+    bins: async () => {
+      if (box.gate) await box.gate
+      return {
+        claude: 'claude',
+        codex: ['codex'],
+        cursor: ['cursor-agent'],
+        other: box.other
+      }
+    },
     path: async () => '/usr/bin',
     settingsPath: '/settings.json',
     socketPath: '/tmp/turnflow.sock',
@@ -336,7 +342,7 @@ describe('session host', () => {
     b.db.close()
   })
 
-  it('aba reaberta antes do exit velho → CONFLICT pty_busy', async () => {
+  it('aba reaberta antes do exit velho → CONFLICT pty_busy sem tocar na sessão velha', async () => {
     const b = await boot()
     const t = task(b, '/w')
     const first = await spawn(b, { task: t.id })
@@ -345,11 +351,75 @@ describe('session host', () => {
       code: 'CONFLICT',
       details: { reason: 'pty_busy' }
     })
+    // nada novo no banco, a sessão velha segue aberta e o token dela vale até o processo sair
+    expect(sessions(b.db)).toBe(1)
+    expect(b.calls).toHaveLength(1)
+    expect(getSession(b.d!, first.session_id!)?.ended_at).toBeNull()
+    expect(await post(b, 'tok-1', { hook_event_name: 'Stop' })).toBe(204)
     b.procs[0].emitExit(0)
+    expect(getSession(b.d!, first.session_id!)?.ended_at).not.toBeNull()
+    expect(await post(b, 'tok-1', { hook_event_name: 'Stop' })).toBe(401)
     const second = await spawn(b, { task: t.id })
     expect(second.session_id).not.toBe(first.session_id)
     expect(getSession(b.d!, second.session_id!)?.ended_at).toBeNull()
     expect(b.host.alive()).toEqual(['p1'])
+    await b.close()
+    b.db.close()
+  })
+
+  it('processo velho sai durante o start do novo → só a sessão velha encerra', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    const first = await spawn(b, { task: t.id })
+    b.host.kill('p1')
+    let release = (): void => undefined
+    b.gate = new Promise((r) => (release = r))
+    const pending = spawn(b, { task: t.id })
+    await new Promise((r) => setTimeout(r, 5))
+    b.procs[0].emitExit(0)
+    release()
+    const second = await pending
+    expect(second.session_id).not.toBe(first.session_id)
+    expect(getSession(b.d!, first.session_id!)?.ended_at).not.toBeNull()
+    expect(getSession(b.d!, second.session_id!)?.ended_at).toBeNull()
+    expect(b.host.alive()).toEqual(['p1'])
+    expect(await post(b, 'tok-1', { hook_event_name: 'UserPromptSubmit' })).toBe(401)
+    expect(await post(b, 'tok-2', { hook_event_name: 'UserPromptSubmit' })).toBe(204)
+    expect(getSession(b.d!, second.session_id!)?.state).toBe('working')
+    await b.close()
+    b.db.close()
+  })
+
+  it('exit repetido de um processo velho não encerra a sessão nova do mesmo pty_id', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    await spawn(b, { task: t.id })
+    b.host.kill('p1')
+    b.procs[0].emitExit(0)
+    const second = await spawn(b, { task: t.id })
+    b.procs[0].emitExit(0)
+    expect(getSession(b.d!, second.session_id!)?.ended_at).toBeNull()
+    expect(await post(b, 'tok-2', { hook_event_name: 'Stop' })).toBe(204)
+    expect(b.logs.some((l) => l.includes('stale'))).toBe(true)
+    await b.close()
+    b.db.close()
+  })
+
+  it('outro start do mesmo pty_id durante o await não apaga a entrada que subiu', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    let release = (): void => undefined
+    b.gate = new Promise((r) => (release = r))
+    const one = spawn(b, { task: t.id })
+    const two = spawn(b, { task: t.id })
+    release()
+    const [a, c] = await Promise.all([one, two])
+    // clique duplo: a segunda chamada devolve a sessão da primeira, sem segunda linha
+    expect(c.session_id).toBe(a.session_id)
+    expect(sessions(b.db)).toBe(1)
+    expect(b.calls).toHaveLength(1)
+    expect(await post(b, 'tok-1', { hook_event_name: 'UserPromptSubmit' })).toBe(204)
+    expect(getSession(b.d!, a.session_id!)?.state).toBe('working')
     await b.close()
     b.db.close()
   })

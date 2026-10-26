@@ -14,7 +14,6 @@ import {
   reopenSession,
   sessionError,
   setSessionState,
-  type OpenedSession,
   type SessionTool
 } from '../core/domain/session'
 import { noteUserPrompt } from '../core/domain/turn'
@@ -62,6 +61,8 @@ export type SessionHostDeps = {
 }
 
 type Entry = {
+  /** Geração do processo no pool: só o exit dela encerra esta entrada. */
+  gen: number
   session_id: string | null
   client_id: string | null
   token: string | null
@@ -127,9 +128,14 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
         bumpCodex(id)
         o.events.data(id, d)
       },
-      exit: (id, code) => {
-        quietCodex(id)
+      exit: (id, code, gen) => {
         const entry = entries.get(id)
+        // exit de um processo que não é o desta entrada: não encerra a sessão de ninguém
+        if (entry && entry.gen !== gen) {
+          o.log(`pty ${id}: exit of a stale process ignored`)
+          return
+        }
+        quietCodex(id)
         const d = o.domain()
         if (d && entry?.session_id)
           endSession(d, entry.session_id, entry.killed ? 'killed' : 'exit')
@@ -141,12 +147,6 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
   })
 
   const tokenOf = (): string => (o.newToken ?? (() => randomBytes(32).toString('hex')))()
-
-  const forget = (ptyId: string): void => {
-    const entry = entries.get(ptyId)
-    if (entry?.token) byToken.delete(entry.token)
-    entries.delete(ptyId)
-  }
 
   const pinFixed = (entry: Entry, tool: SessionTool): void => {
     if (tool === 'cursor' || tool === 'other') entry.state = 'unknown'
@@ -163,12 +163,81 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
     if (d && entry.session_id) setSessionState(d, entry.session_id, state)
   }
 
+  /** Entrada do pty_id com processo vivo (clique duplo devolve a mesma sessão). */
+  const running = (ptyId: string): Entry | null => {
+    const entry = entries.get(ptyId)
+    return entry && pool.alive().includes(ptyId) ? entry : null
+  }
+
+  const startPty = (...a: Parameters<typeof pool.start>): number => {
+    try {
+      return pool.start(...a)
+    } catch (e) {
+      if (e instanceof Error && e.message === 'pty_busy') throw sessionError('CONFLICT', 'pty_busy')
+      throw e
+    }
+  }
+
+  type Plan = { cwd: string; resume: { session_id: string; external: string } | null }
+
+  // Validações com await (pasta, transcript, processo de fora). Não escreve nada.
+  const planAgent = async (
+    d: DomainDeps,
+    i: Extract<SpawnInput, { kind: 'agent' }>
+  ): Promise<Plan> => {
+    const task = i.task === null ? null : getTask(d, i.task)
+    const launched = launchDir(task ? { workdir: task.workdir } : null, o.defaultWorkdir(), o.home)
+    if (!i.resume) {
+      if ('ask' in launched) throw sessionError('CONFLICT', 'workdir_required')
+      if (!(await o.dirExists(launched.dir)))
+        throw sessionError('NOT_FOUND', 'workdir_missing', { path: launched.dir })
+      return { cwd: launched.dir, resume: null }
+    }
+    const target = getSession(d, i.resume)
+    if (!target) throw notFound('session', i.resume)
+    const can =
+      target.external_id !== null &&
+      (target.tool === 'claude-code' || target.tool === 'codex') &&
+      target.tool === i.tool
+    if (!can || target.external_id === null) throw sessionError('VALIDATION', 'not_resumable')
+    const external = target.external_id
+    for (const [pty, entry] of entries) {
+      if (pty === i.pty_id || !entry.session_id || !pool.alive().includes(pty)) continue
+      if (entry.session_id === target.id)
+        throw sessionError('CONFLICT', 'open_in_app', { pty_id: pty })
+      const other = getSession(d, entry.session_id)
+      if (other?.external_id === external && other.tool === target.tool)
+        throw sessionError('CONFLICT', 'open_in_app', { pty_id: pty })
+    }
+    const transcript = await o.findTranscript(external)
+    if (!transcript) throw sessionError('NOT_FOUND', 'transcript_missing')
+    const pid = await o.runningElsewhere(external, pool.ownPids(), target.tool)
+    if (pid) throw sessionError('CONFLICT', 'running_elsewhere', { pid })
+    const picked = target.cwd || transcript.cwd || ('dir' in launched ? launched.dir : '')
+    if (!picked) throw sessionError('CONFLICT', 'workdir_required')
+    if (!(await o.dirExists(picked))) throw sessionError('NOT_FOUND', 'cwd_gone', { path: picked })
+    return { cwd: picked, resume: { session_id: target.id, external } }
+  }
+
   return {
     async spawn(i) {
+      // Todo await vem antes de mexer no estado: do fim deles até o registro é síncrono, então
+      // nenhum exit ou outro start do mesmo pty_id cai no meio (Decisão 30).
       if (i.kind === 'shell') {
-        if (entries.has(i.pty_id) && pool.alive().includes(i.pty_id)) return { session_id: null }
+        if (running(i.pty_id)) return { session_id: null }
         const dir = launchDir(null, o.defaultWorkdir(), o.home)
+        const PATH = await o.path()
+        if (running(i.pty_id)) return { session_id: null }
+        if (pool.busy(i.pty_id)) throw sessionError('CONFLICT', 'pty_busy')
+        const gen = startPty(
+          i.pty_id,
+          shellArgv(o.platform, process.env),
+          'dir' in dir ? dir.dir : o.home,
+          { PATH },
+          { cols: i.cols, rows: i.rows }
+        )
         entries.set(i.pty_id, {
+          gen,
           session_id: null,
           client_id: null,
           token: null,
@@ -176,70 +245,29 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
           state: null,
           killed: false
         })
-        pool.start(
-          i.pty_id,
-          shellArgv(o.platform, process.env),
-          'dir' in dir ? dir.dir : o.home,
-          { PATH: await o.path() },
-          { cols: i.cols, rows: i.rows }
-        )
         return { session_id: null }
       }
+      if (!o.domain()) throw new IpcError('LOCKED', 'vault locked')
+      const live = running(i.pty_id)
+      if (live) return { session_id: live.session_id }
+
+      const plan = await planAgent(o.domain()!, i)
+      const bin = await o.bins()
+      const PATH = await o.path()
+
       const d = o.domain()
       if (!d) throw new IpcError('LOCKED', 'vault locked')
-      const live = entries.get(i.pty_id)
-      if (live && pool.alive().includes(i.pty_id)) return { session_id: live.session_id }
+      const again = running(i.pty_id)
+      if (again) return { session_id: again.session_id }
+      if (pool.busy(i.pty_id)) throw sessionError('CONFLICT', 'pty_busy')
 
       const task = i.task === null ? null : getTask(d, i.task)
-      let cwd: string
-      let opened: OpenedSession
-      let resumeExternal: string
-
-      if (i.resume) {
-        const target = getSession(d, i.resume)
-        if (!target) throw notFound('session', i.resume)
-        const can =
-          target.external_id !== null &&
-          (target.tool === 'claude-code' || target.tool === 'codex') &&
-          target.tool === i.tool
-        if (!can) throw sessionError('VALIDATION', 'not_resumable')
-        for (const [pty, entry] of entries) {
-          if (pty === i.pty_id || !entry.session_id || !pool.alive().includes(pty)) continue
-          if (entry.session_id === target.id)
-            throw sessionError('CONFLICT', 'open_in_app', { pty_id: pty })
-          const other = getSession(d, entry.session_id)
-          if (other?.external_id === target.external_id && other.tool === target.tool)
-            throw sessionError('CONFLICT', 'open_in_app', { pty_id: pty })
-        }
-        const transcript = await o.findTranscript(target.external_id!)
-        if (!transcript) throw sessionError('NOT_FOUND', 'transcript_missing')
-        const pid = await o.runningElsewhere(target.external_id!, pool.ownPids(), target.tool)
-        if (pid) throw sessionError('CONFLICT', 'running_elsewhere', { pid })
-        const launched = launchDir(
-          task ? { workdir: task.workdir } : null,
-          o.defaultWorkdir(),
-          o.home
-        )
-        const picked = target.cwd || transcript.cwd || ('dir' in launched ? launched.dir : '')
-        if (!picked) throw sessionError('CONFLICT', 'workdir_required')
-        if (!(await o.dirExists(picked)))
-          throw sessionError('NOT_FOUND', 'cwd_gone', { path: picked })
-        cwd = picked
-        opened = reopenSession(d, { session_id: target.id, cwd })
-        resumeExternal = target.external_id!
-      } else {
-        const picked = launchDir(
-          task ? { workdir: task.workdir } : null,
-          o.defaultWorkdir(),
-          o.home
-        )
-        if ('ask' in picked) throw sessionError('CONFLICT', 'workdir_required')
-        if (!(await o.dirExists(picked.dir)))
-          throw sessionError('NOT_FOUND', 'workdir_missing', { path: picked.dir })
-        cwd = picked.dir
-        const first = task ? listSessions(d, { task_id: task.id }).length === 0 : false
-        opened = openSession(d, { task_id: task?.id ?? null, tool: i.tool, cwd })
-        const launch = task
+      const first =
+        !plan.resume && task ? listSessions(d, { task_id: task.id }).length === 0 : false
+      const argv = agentArgv({
+        tool: i.tool,
+        bin,
+        task: task
           ? {
               key: task.key,
               title: task.title,
@@ -247,51 +275,35 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
               workdir: task.workdir,
               first_session: first
             }
-          : null
-        const token = tokenOf()
-        const entry: Entry = {
-          session_id: opened.session_id,
-          client_id: opened.client_id,
-          token,
-          tool: i.tool,
-          state: null,
-          killed: false
-        }
-        entries.set(i.pty_id, entry)
-        byToken.set(token, i.pty_id)
-        try {
-          pool.start(
-            i.pty_id,
-            agentArgv({
-              tool: i.tool,
-              bin: await o.bins(),
-              task: launch,
-              resume: null,
-              settingsPath: o.settingsPath
-            }),
-            cwd,
-            sessionEnv({
-              path: await o.path(),
-              token,
-              port: o.hookPort(),
-              socket: o.socketPath,
-              taskKey: task?.key ?? null
-            }),
-            { cols: i.cols, rows: i.rows }
-          )
-        } catch (e) {
-          forget(i.pty_id)
-          discardOpened(d, opened)
-          if (e instanceof Error && e.message === 'pty_busy')
-            throw sessionError('CONFLICT', 'pty_busy')
-          throw e
-        }
-        pinFixed(entry, i.tool)
-        return { session_id: opened.session_id }
-      }
-
+          : null,
+        resume: plan.resume?.external ?? null,
+        settingsPath: o.settingsPath
+      })
+      const opened = plan.resume
+        ? reopenSession(d, { session_id: plan.resume.session_id, cwd: plan.cwd })
+        : openSession(d, { task_id: task?.id ?? null, tool: i.tool, cwd: plan.cwd })
       const token = tokenOf()
+      let gen: number
+      try {
+        gen = startPty(
+          i.pty_id,
+          argv,
+          plan.cwd,
+          sessionEnv({
+            path: PATH,
+            token,
+            port: o.hookPort(),
+            socket: o.socketPath,
+            taskKey: task?.key ?? null
+          }),
+          { cols: i.cols, rows: i.rows }
+        )
+      } catch (e) {
+        discardOpened(d, opened)
+        throw e
+      }
       const entry: Entry = {
+        gen,
         session_id: opened.session_id,
         client_id: opened.client_id,
         token,
@@ -301,42 +313,6 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
       }
       entries.set(i.pty_id, entry)
       byToken.set(token, i.pty_id)
-      const launch = task
-        ? {
-            key: task.key,
-            title: task.title,
-            description: task.description,
-            workdir: task.workdir,
-            first_session: false
-          }
-        : null
-      try {
-        pool.start(
-          i.pty_id,
-          agentArgv({
-            tool: i.tool,
-            bin: await o.bins(),
-            task: launch,
-            resume: resumeExternal,
-            settingsPath: o.settingsPath
-          }),
-          cwd,
-          sessionEnv({
-            path: await o.path(),
-            token,
-            port: o.hookPort(),
-            socket: o.socketPath,
-            taskKey: task?.key ?? null
-          }),
-          { cols: i.cols, rows: i.rows }
-        )
-      } catch (e) {
-        forget(i.pty_id)
-        discardOpened(d, opened)
-        if (e instanceof Error && e.message === 'pty_busy')
-          throw sessionError('CONFLICT', 'pty_busy')
-        throw e
-      }
       pinFixed(entry, i.tool)
       return { session_id: opened.session_id }
     },
