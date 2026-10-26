@@ -90,12 +90,14 @@ export function SettingsView({
   // seleção segue o foco: setas trocam de aba, Home/End vão às pontas
   const onTabKey = (event: React.KeyboardEvent): void => {
     const i = TABS.findIndex((t) => t.id === tab)
-    let next = -1
-    if (event.key === 'ArrowRight') next = (i + 1) % TABS.length
-    else if (event.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length
-    else if (event.key === 'Home') next = 0
-    else if (event.key === 'End') next = TABS.length - 1
-    else return
+    const moves: Record<string, number> = {
+      ArrowRight: (i + 1) % TABS.length,
+      ArrowLeft: (i - 1 + TABS.length) % TABS.length,
+      Home: 0,
+      End: TABS.length - 1
+    }
+    const next = moves[event.key]
+    if (next === undefined) return
     event.preventDefault()
     const id = TABS[next].id
     setTab(id)

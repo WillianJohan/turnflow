@@ -511,4 +511,3 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
   'rose-pine-dawn': ROSE_PINE_DAWN
 }
 export const DEFAULT_THEME = DARK
-
