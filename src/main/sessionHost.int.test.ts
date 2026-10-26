@@ -573,6 +573,23 @@ describe('session host', () => {
     b.db.close()
   })
 
+  it('claude que some do disco entre o login e o spawn → NOT_FOUND sem mandar olhar o config.json', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    b.boom.on = true
+    b.boom.error = Object.assign(new Error('spawn claude ENOENT'), { code: 'ENOENT' })
+    const err = await spawn(b, { task: t.id }).catch((e: unknown) => e)
+    expect(err).toMatchObject({
+      code: 'NOT_FOUND',
+      message: SESSION_COPY.errors.claude_missing,
+      details: { reason: 'claude_missing' }
+    })
+    expect((err as Error).message).not.toMatch(/config\.json/)
+    expect(sessions(b.db)).toBe(0)
+    await b.close()
+    b.db.close()
+  })
+
   it('scratch', async () => {
     const b = await boot()
     const t = task(b, '/w')

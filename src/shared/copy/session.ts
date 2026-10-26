@@ -13,6 +13,7 @@ export const SESSION_COPY = {
     not_resumable: 'This agent cannot resume a session',
     agent_not_configured: 'That agent is not configured',
     agent_missing: 'That agent command was not found. Check it in config.json',
+    claude_missing: 'Claude Code was not found. Install it or add it to your PATH',
     pty_busy: 'The previous process is still shutting down',
     unsafe_batch_arg: 'This launch argument cannot be passed safely to a .cmd launcher'
   },

@@ -180,7 +180,8 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
   }
 
   // Erro conhecido do spawn vira DomainError com a copy; o resto segue cru (INTERNAL no IPC).
-  const startPty = (...a: Parameters<typeof pool.start>): number => {
+  // `tool` decide a copy do binário ausente: o claude não vem do config.json, os outros vêm.
+  const startPty = (tool: SessionTool | 'shell', ...a: Parameters<typeof pool.start>): number => {
     try {
       return pool.start(...a)
     } catch (e) {
@@ -191,7 +192,9 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
         (e as NodeJS.ErrnoException).code === 'ENOENT' ||
         /ENOENT|File not found/i.test(e.message)
       )
-        throw sessionError('NOT_FOUND', 'agent_missing', { command: commandName(a[1][0]) })
+        throw tool === 'claude-code'
+          ? sessionError('NOT_FOUND', 'claude_missing')
+          : sessionError('NOT_FOUND', 'agent_missing', { command: commandName(a[1][0]) })
       throw e
     }
   }
@@ -250,6 +253,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
         if (running(i.pty_id)) return { session_id: null }
         if (pool.busy(i.pty_id)) throw sessionError('CONFLICT', 'pty_busy')
         const gen = startPty(
+          'shell',
           i.pty_id,
           shellArgv(o.platform, process.env),
           'dir' in dir ? dir.dir : o.home,
@@ -306,6 +310,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
       let gen: number
       try {
         gen = startPty(
+          i.tool,
           i.pty_id,
           argv,
           plan.cwd,
