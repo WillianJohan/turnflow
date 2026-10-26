@@ -44,11 +44,18 @@ export function Dialog({
   useEffect(() => {
     if (preview) return
     const box = ref.current
+    // abriu no lugar de outro diálogo (a paleta que roda "> Shortcuts"): quem tinha o foco no
+    // render já saiu da tela, e o fechamento do outro devolveu o foco a quem abriu a cadeia
+    let back = previous
+    if (!back?.isConnected) {
+      const now = document.activeElement
+      back = now instanceof HTMLElement && now !== document.body && !box?.contains(now) ? now : null
+    }
     if (box && !box.contains(document.activeElement)) (focusables(box)[0] ?? box).focus()
     return () => {
       const now = document.activeElement
       const lost = !now || now === document.body || !now.isConnected || !!box?.contains(now)
-      if (lost && previous?.isConnected) previous.focus()
+      if (lost && back?.isConnected) back.focus()
     }
   }, [preview, previous])
 

@@ -118,3 +118,28 @@ it('não rouba o foco que quem fechou já levou pra outro lugar', () => {
   opener.remove()
   elsewhere.remove()
 })
+
+it('diálogo que abre no lugar de outro devolve o foco a quem abriu o primeiro', () => {
+  const opener = document.createElement('button')
+  document.body.appendChild(opener)
+  opener.focus()
+  act(() =>
+    root.render(
+      <Dialog key="a" title="Palette" onClose={() => undefined}>
+        <button type="button">A</button>
+      </Dialog>
+    )
+  )
+  expect(document.activeElement?.textContent).toBe('A')
+  act(() =>
+    root.render(
+      <Dialog key="b" title="Shortcuts" onClose={() => undefined}>
+        <button type="button">B</button>
+      </Dialog>
+    )
+  )
+  expect(document.activeElement?.textContent).toBe('B')
+  act(() => root.render(<></>))
+  expect(document.activeElement).toBe(opener)
+  opener.remove()
+})
