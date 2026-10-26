@@ -1,7 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { SHELL_COPY } from '../../shared/copy/shell'
 import type { ConfigState, Task } from '../../shared/types'
-import { SettingsView } from './SettingsView'
 import type { Live, TabName } from './App'
 import { type Action, type Layout, scratchKind, HOME, SETTINGS, tabLabel } from './layout'
 import { NEW_ACTIONS, type NewAction } from './palette'
@@ -11,6 +10,9 @@ import { Icon } from './Icon'
 import { ScratchView } from './ScratchView'
 import { TaskView } from './TaskView'
 import { dragSizes } from './resize'
+
+// Ajustes (e o catálogo dentro dele) só carregam quando a aba abre.
+const SettingsView = lazy(() => import('./SettingsView').then((m) => ({ default: m.SettingsView })))
 
 type Props = {
   layout: Layout
@@ -236,7 +238,11 @@ export function Panels(props: Props): React.JSX.Element {
             {activeId === HOME ? (
               home
             ) : activeId === SETTINGS ? (
-              cfg && <SettingsView cfg={cfg} onChange={setCfg} />
+              cfg && (
+                <Suspense fallback={null}>
+                  <SettingsView cfg={cfg} onChange={setCfg} />
+                </Suspense>
+              )
             ) : activeId && scratchKind(activeId) ? (
               <ScratchView
                 key={activeId}

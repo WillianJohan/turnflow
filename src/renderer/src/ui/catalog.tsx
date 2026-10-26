@@ -22,12 +22,15 @@ import { Toast } from './Toast'
 import { Tooltip } from './Tooltip'
 import { MIN_COMPONENTS } from './minimal'
 
-const schemeStyle = (id: 'darkest' | 'claro'): React.CSSProperties => {
+// Prévias com os temas embutidos padrão de cada esquema; color-scheme acompanha, pra que controles
+// nativos (scroll, input) de cada prévia sigam o tema dela e não o do app.
+const schemeStyle = (id: 'escuro' | 'claro', scheme: 'dark' | 'light'): React.CSSProperties => {
   const theme = BUILTIN_THEMES[id]
   const style: Record<string, string> = {
     background: 'var(--bg)',
     color: 'var(--fg)',
-    padding: '12px'
+    padding: '12px',
+    colorScheme: scheme
   }
   for (const [key, value] of Object.entries(theme.ui)) {
     style[`--${key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)}`] = value
@@ -107,10 +110,10 @@ function Samples(): React.JSX.Element {
 export function Catalog(): React.JSX.Element {
   return (
     <div className="ds-catalog">
-      <div className="ds-preview" data-scheme="dark" style={schemeStyle('darkest')}>
+      <div className="ds-preview" data-scheme="dark" style={schemeStyle('escuro', 'dark')}>
         <Samples />
       </div>
-      <div className="ds-preview" data-scheme="light" style={schemeStyle('claro')}>
+      <div className="ds-preview" data-scheme="light" style={schemeStyle('claro', 'light')}>
         <Samples />
       </div>
     </div>

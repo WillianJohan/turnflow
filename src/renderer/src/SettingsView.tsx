@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react'
 import { SCREENS_COPY } from '../../shared/copy/screens'
-import { Catalog } from './ui/catalog'
 import type { AppConfig, ConfigState } from '../../shared/types'
 import { ThemeEditor } from './ThemeEditor'
 import { IconPicker } from './IconPicker'
@@ -66,6 +65,15 @@ function FontSelect(props: {
   )
 }
 
+// O catálogo só carrega quando a aba Design system abre.
+const Catalog = lazy(() => import('./ui/catalog').then((m) => ({ default: m.Catalog })))
+
+const TABS = [
+  { id: 'settings', label: SCREENS_COPY.settings.settings },
+  { id: 'design', label: SCREENS_COPY.settings.design }
+] as const
+type TabId = (typeof TABS)[number]['id']
+
 // Aba de Configurações: tudo num lugar só (tema + editor, fontes, rascunho, ícones, pasta).
 export function SettingsView({
   cfg,
@@ -74,7 +82,25 @@ export function SettingsView({
   cfg: ConfigState
   onChange(s: ConfigState): void
 }): React.JSX.Element {
-  const [tab, setTab] = useState<'settings' | 'design'>('settings')
+  const [tab, setTab] = useState<TabId>('settings')
+  const base = useId()
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const tabId = (id: TabId): string => `${base}-tab-${id}`
+  const panelId = (id: TabId): string => `${base}-panel-${id}`
+  // seleção segue o foco: setas trocam de aba, Home/End vão às pontas
+  const onTabKey = (event: React.KeyboardEvent): void => {
+    const i = TABS.findIndex((t) => t.id === tab)
+    let next = -1
+    if (event.key === 'ArrowRight') next = (i + 1) % TABS.length
+    else if (event.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = TABS.length - 1
+    else return
+    event.preventDefault()
+    const id = TABS[next].id
+    setTab(id)
+    tabRefs.current[id]?.focus()
+  }
   const [err, setErr] = useState('')
   const [picking, setPicking] = useState<string | null>(null)
   const [fonts, setFonts] = useState<{ all: string[]; mono: string[] }>({ all: [], mono: [] })
@@ -88,168 +114,173 @@ export function SettingsView({
   return (
     <div className="settings-page">
       <div className="sp-inner">
-        <div role="tablist" aria-label={SCREENS_COPY.settings.tabs}>
-          <button
-            type="button"
-            role="tab"
-            className="ui-target"
-            aria-selected={tab === 'settings'}
-            onClick={() => setTab('settings')}
-          >
-            {SCREENS_COPY.settings.settings}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            className="ui-target"
-            aria-selected={tab === 'design'}
-            onClick={() => setTab('design')}
-          >
-            {SCREENS_COPY.settings.design}
-          </button>
+        <div role="tablist" aria-label={SCREENS_COPY.settings.tabs} onKeyDown={onTabKey}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              ref={(el) => {
+                tabRefs.current[t.id] = el
+              }}
+              type="button"
+              role="tab"
+              id={tabId(t.id)}
+              className="ui-target"
+              aria-selected={tab === t.id}
+              aria-controls={panelId(t.id)}
+              tabIndex={tab === t.id ? 0 : -1}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        {tab === 'design' ? (
-          <Catalog />
-        ) : (
-          <>
-            <h2>{SCREENS_COPY.settings.heading}</h2>
-            {(err || cfg.error) && <p className="err">{err || cfg.error}</p>}
+        <div role="tabpanel" id={panelId(tab)} aria-labelledby={tabId(tab)} tabIndex={0}>
+          {tab === 'design' ? (
+            <Suspense fallback={null}>
+              <Catalog />
+            </Suspense>
+          ) : (
+            <>
+              <h2>{SCREENS_COPY.settings.heading}</h2>
+              {(err || cfg.error) && <p className="err">{err || cfg.error}</p>}
 
-            <section className="sp-card">
-              <h3>{SCREENS_COPY.settings.theme}</h3>
-              <div className="theme-picker">
-                {cfg.themes.map((t) => (
-                  <button
-                    key={t.id}
-                    className={`theme-chip ${t.id === c.theme ? 'on' : ''}`}
-                    onClick={() => set({ theme: t.id })}
-                    title={`themes/${t.id}.json`}
-                  >
-                    {t.name}
-                    {!t.builtin && <span className="dim">{SCREENS_COPY.settings.yours}</span>}
-                  </button>
-                ))}
-              </div>
-              <ThemeEditor cfg={cfg} onChange={onChange} />
-            </section>
-
-            <section className="sp-card">
-              <h3>{SCREENS_COPY.settings.fonts}</h3>
-              <div className="sp-grid">
-                <label>
-                  {SCREENS_COPY.settings.terminal}
-                  <FontSelect
-                    value={c.termFont}
-                    options={fonts.mono}
-                    fallback="JetBrains Mono"
-                    onChange={(f) => set({ termFont: f })}
-                  />
-                </label>
-                <label>
-                  {SCREENS_COPY.settings.size}
-                  <SizeField value={c.fontSize} onCommit={(n) => set({ fontSize: n })} />
-                </label>
-                <label>
-                  {SCREENS_COPY.settings.app}
-                  <FontSelect
-                    value={c.appFont}
-                    options={fonts.all}
-                    fallback="system-ui"
-                    onChange={(f) => set({ appFont: f })}
-                  />
-                </label>
-                <label>
-                  {SCREENS_COPY.settings.size}
-                  <SizeField value={c.appFontSize} onCommit={(n) => set({ appFontSize: n })} />
-                </label>
-              </div>
-            </section>
-
-            <section className="sp-card">
-              <h3>{SCREENS_COPY.settings.notifications}</h3>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={c.notifications}
-                  onChange={(e) => set({ notifications: e.target.checked })}
-                />
-                {SCREENS_COPY.settings.notify}
-              </label>
-            </section>
-
-            <section className="sp-card">
-              <h3>{SCREENS_COPY.settings.draft}</h3>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={c.draftMode}
-                  onChange={(e) => set({ draftMode: e.target.checked })}
-                />
-                {SCREENS_COPY.settings.draftHint} <kbd>{'Ctrl+Shift+D'}</kbd>
-              </label>
-            </section>
-
-            <section className="sp-card">
-              <h3>{SCREENS_COPY.settings.statusIcons}</h3>
-              <div className="icon-grid">
-                {Object.entries(c.statusIcons).map(([name, icon]) => (
-                  <div key={name} className="icon-row">
+              <section className="sp-card">
+                <h3>{SCREENS_COPY.settings.theme}</h3>
+                <div className="theme-picker">
+                  {cfg.themes.map((t) => (
                     <button
-                      className="icon-btn"
-                      title={SCREENS_COPY.settings.chooseIcon}
-                      onClick={() => setPicking(picking === name ? null : name)}
+                      key={t.id}
+                      className={`theme-chip ${t.id === c.theme ? 'on' : ''}`}
+                      onClick={() => set({ theme: t.id })}
+                      title={`themes/${t.id}.json`}
                     >
-                      {icon ? (
-                        <StatusIcon value={icon} size={15} />
-                      ) : (
-                        <span className="dim">—</span>
-                      )}
+                      {t.name}
+                      {!t.builtin && <span className="dim">{SCREENS_COPY.settings.yours}</span>}
                     </button>
-                    {name}
-                    {picking === name && (
-                      <IconPicker
-                        value={icon}
-                        onClose={() => setPicking(null)}
-                        onPick={(v) => {
-                          setPicking(null)
-                          set({ statusIcons: { ...c.statusIcons, [name]: v } })
-                        }}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
+                  ))}
+                </div>
+                <ThemeEditor cfg={cfg} onChange={onChange} />
+              </section>
 
-            <section className="sp-card">
-              <h3>{SCREENS_COPY.settings.files}</h3>
-              <p className="dim">
-                {SCREENS_COPY.settings.filesIn} <code>{cfg.dir}</code>: <code>{'config.json'}</code>{' '}
-                {SCREENS_COPY.settings.filesAnd} <code>{'themes/*.json'}</code>
-                {SCREENS_COPY.settings.filesApply}
-              </p>
-              <button onClick={() => window.turnflow.openConfigDir()}>
-                {SCREENS_COPY.settings.openDir}
-              </button>
-            </section>
+              <section className="sp-card">
+                <h3>{SCREENS_COPY.settings.fonts}</h3>
+                <div className="sp-grid">
+                  <label>
+                    {SCREENS_COPY.settings.terminal}
+                    <FontSelect
+                      value={c.termFont}
+                      options={fonts.mono}
+                      fallback="JetBrains Mono"
+                      onChange={(f) => set({ termFont: f })}
+                    />
+                  </label>
+                  <label>
+                    {SCREENS_COPY.settings.size}
+                    <SizeField value={c.fontSize} onCommit={(n) => set({ fontSize: n })} />
+                  </label>
+                  <label>
+                    {SCREENS_COPY.settings.app}
+                    <FontSelect
+                      value={c.appFont}
+                      options={fonts.all}
+                      fallback="system-ui"
+                      onChange={(f) => set({ appFont: f })}
+                    />
+                  </label>
+                  <label>
+                    {SCREENS_COPY.settings.size}
+                    <SizeField value={c.appFontSize} onCommit={(n) => set({ appFontSize: n })} />
+                  </label>
+                </div>
+              </section>
 
-            <section className="sp-card" data-testid="settings-import">
-              <h3>{IMPORT_COPY.screen.title}</h3>
-              <ImportBrain brainDir={c.brainDir} />
-              <ImportLegacy />
-              <ExportMarkdown />
-            </section>
+              <section className="sp-card">
+                <h3>{SCREENS_COPY.settings.notifications}</h3>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={c.notifications}
+                    onChange={(e) => set({ notifications: e.target.checked })}
+                  />
+                  {SCREENS_COPY.settings.notify}
+                </label>
+              </section>
 
-            <section className="sp-card" data-testid="settings-wipe">
-              <h3>{VAULT_SCREENS.wipeTitle}</h3>
-              {/* sucesso: o vault.changed (first_run) desmonta o app e o portão mostra o primeiro uso */}
-              <WipeAll
-                embedded
-                onWipe={(confirm) => orThrow(window.turnflow.vaultWipe({ confirm }))}
-              />
-            </section>
-          </>
-        )}
+              <section className="sp-card">
+                <h3>{SCREENS_COPY.settings.draft}</h3>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={c.draftMode}
+                    onChange={(e) => set({ draftMode: e.target.checked })}
+                  />
+                  {SCREENS_COPY.settings.draftHint} <kbd>{'Ctrl+Shift+D'}</kbd>
+                </label>
+              </section>
+
+              <section className="sp-card">
+                <h3>{SCREENS_COPY.settings.statusIcons}</h3>
+                <div className="icon-grid">
+                  {Object.entries(c.statusIcons).map(([name, icon]) => (
+                    <div key={name} className="icon-row">
+                      <button
+                        className="icon-btn"
+                        title={SCREENS_COPY.settings.chooseIcon}
+                        onClick={() => setPicking(picking === name ? null : name)}
+                      >
+                        {icon ? (
+                          <StatusIcon value={icon} size={15} />
+                        ) : (
+                          <span className="dim">—</span>
+                        )}
+                      </button>
+                      {name}
+                      {picking === name && (
+                        <IconPicker
+                          value={icon}
+                          onClose={() => setPicking(null)}
+                          onPick={(v) => {
+                            setPicking(null)
+                            set({ statusIcons: { ...c.statusIcons, [name]: v } })
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="sp-card">
+                <h3>{SCREENS_COPY.settings.files}</h3>
+                <p className="dim">
+                  {SCREENS_COPY.settings.filesIn} <code>{cfg.dir}</code>:{' '}
+                  <code>{'config.json'}</code> {SCREENS_COPY.settings.filesAnd}{' '}
+                  <code>{'themes/*.json'}</code>
+                  {SCREENS_COPY.settings.filesApply}
+                </p>
+                <button onClick={() => window.turnflow.openConfigDir()}>
+                  {SCREENS_COPY.settings.openDir}
+                </button>
+              </section>
+
+              <section className="sp-card" data-testid="settings-import">
+                <h3>{IMPORT_COPY.screen.title}</h3>
+                <ImportBrain brainDir={c.brainDir} />
+                <ImportLegacy />
+                <ExportMarkdown />
+              </section>
+
+              <section className="sp-card" data-testid="settings-wipe">
+                <h3>{VAULT_SCREENS.wipeTitle}</h3>
+                {/* sucesso: o vault.changed (first_run) desmonta o app e o portão mostra o primeiro uso */}
+                <WipeAll
+                  embedded
+                  onWipe={(confirm) => orThrow(window.turnflow.vaultWipe({ confirm }))}
+                />
+              </section>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
