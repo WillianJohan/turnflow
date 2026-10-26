@@ -336,7 +336,10 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
 
     write(ptyId, data) {
       const entry = entries.get(ptyId)
-      if (entry && data === '\x1b' && entry.tool === 'claude-code' && entry.state === 'working')
+      // Esc sozinho interrompe (working) ou recusa a permissão (waiting): o claude volta ao prompt
+      // sem mandar Stop. Default de produto: waiting também vira idle (Decisão 7 estendida).
+      const interrupts = entry?.state === 'working' || entry?.state === 'waiting'
+      if (entry && data === '\x1b' && entry.tool === 'claude-code' && interrupts)
         applyState(ptyId, entry, 'idle', { hook_event_name: 'esc' })
       pool.write(ptyId, data)
     },

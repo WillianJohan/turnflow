@@ -610,7 +610,7 @@ describe('session host', () => {
     b.db.close()
   })
 
-  it('Esc sozinho em working grava idle; Esc em idle não escreve', async () => {
+  it('Esc sozinho em working ou waiting grava idle; Esc em idle não escreve', async () => {
     const b = await boot()
     const t = task(b, '/w')
     await spawn(b, { task: t.id })
@@ -626,6 +626,14 @@ describe('session host', () => {
     b.host.write('p1', '\x1b[A')
     expect(getSession(b.d!, sid)?.state).toBe('working')
     expect(changes(b.db)).toBe(n2)
+    // em waiting (pedido de permissão) o Esc recusa e o claude volta ao prompt: idle também
+    await post(b, 'tok-1', {
+      hook_event_name: 'Notification',
+      notification_type: 'permission_prompt'
+    })
+    expect(getSession(b.d!, sid)?.state).toBe('waiting')
+    b.host.write('p1', '\x1b')
+    expect(getSession(b.d!, sid)?.state).toBe('idle')
     await b.close()
     b.db.close()
   })
