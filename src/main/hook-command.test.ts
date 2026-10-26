@@ -6,22 +6,32 @@ import { BRAND } from '../shared/brand'
 import { HOOK_CMD, startHookServer, type HookBody } from './hooks'
 
 // O tempo é medido dentro do bash, só em volta do HOOK_CMD: o spawn do bash (lento num CI
-// carregado) fica fora do teto.
-const TIMED = `s=$EPOCHREALTIME; ${HOOK_CMD}; rc=$?; echo "__T $s $EPOCHREALTIME" >&2; exit $rc`
+// carregado) fica fora do teto. Relógio: $EPOCHREALTIME (bash ≥ 5); no bash 3.2 do macOS cai no
+// `date +%s%N`; sem nenhum dos dois (date BSD não tem %N) sai "none" e o teste pula, dizendo por quê.
+const CLOCK =
+  'now() { if [ -n "$EPOCHREALTIME" ]; then echo "$EPOCHREALTIME"; return; fi; ' +
+  't=$(date +%s%N 2>/dev/null); case "$t" in ""|*[!0-9]*) echo none ;; ' +
+  '*) n=${#t}; echo "${t:0:n-9}.${t:n-9:6}" ;; esac; }'
+const TIMED = `${CLOCK}; s=$(now); ${HOOK_CMD}; rc=$?; echo "__T $s $(now)" >&2; exit $rc`
+const NO_CLOCK = 'sem relógio sub-segundo no bash (bash < 5 e date sem %N): teto não mede'
 
 function runHook(
   env: Record<string, string>,
-  input: string
-): Promise<{ code: number; ms: number }> {
+  input: string,
+  o: { noEpoch?: boolean } = {}
+): Promise<{ code: number; ms: number | null }> {
+  const script = (o.noEpoch ? 'unset EPOCHREALTIME; ' : '') + TIMED
   return new Promise((resolve, reject) => {
-    const child = execFile('bash', ['-c', TIMED], { env, timeout: 5000 }, (err, _out, errOut) => {
-      const m = /__T (\d+)[.,](\d+) (\d+)[.,](\d+)/.exec(String(errOut))
-      if (!m) {
-        reject(err ?? new Error(`sem marca de tempo: ${errOut}`))
+    const child = execFile('bash', ['-c', script], { env, timeout: 5000 }, (err, _out, errOut) => {
+      const text = String(errOut)
+      const m = /__T (\d+)[.,](\d+) (\d+)[.,](\d+)/.exec(text)
+      if (!m && !/__T none none/.test(text)) {
+        reject(err ?? new Error(`sem marca de tempo: ${text}`))
         return
       }
-      const us = (sec: string, frac: string): number => Number(sec) * 1e6 + Number(frac)
-      const ms = (us(m[3], m[4]) - us(m[1], m[2])) / 1000
+      const us = (sec: string, frac: string): number =>
+        Number(sec) * 1e6 + Number(frac.padEnd(6, '0').slice(0, 6))
+      const ms = m ? (us(m[3], m[4]) - us(m[1], m[2])) / 1000 : null
       if (!err) {
         resolve({ code: 0, ms })
         return
@@ -45,13 +55,22 @@ const envFor = (port: string, token: string): Record<string, string> => ({
 })
 
 describe('HOOK_CMD', () => {
-  it('porta fechada sai em ≤200 ms com código 0', async () => {
+  it('porta fechada sai em ≤200 ms com código 0', async (ctx) => {
     const r = await runHook(envFor('1', 'x'), '{}')
     expect(r.code).toBe(0)
+    if (r.ms === null) return ctx.skip(NO_CLOCK)
     expect(r.ms).toBeLessThanOrEqual(200)
   })
 
-  it('servidor mudo sai em ≤1,2 s com código 0', async () => {
+  it('sem $EPOCHREALTIME (bash 3.2 do macOS) o tempo sai do date +%s%N', async (ctx) => {
+    const r = await runHook(envFor('1', 'x'), '{}', { noEpoch: true })
+    expect(r.code).toBe(0)
+    if (r.ms === null) return ctx.skip(NO_CLOCK)
+    expect(r.ms).toBeGreaterThanOrEqual(0)
+    expect(r.ms).toBeLessThanOrEqual(200)
+  })
+
+  it('servidor mudo sai em ≤1,2 s com código 0', async (ctx) => {
     const sockets = new Set<net.Socket>()
     const server = net.createServer((socket) => {
       sockets.add(socket)
@@ -62,6 +81,7 @@ describe('HOOK_CMD', () => {
     try {
       const r = await runHook(envFor(String(port), 'x'), '{}')
       expect(r.code).toBe(0)
+      if (r.ms === null) return ctx.skip(NO_CLOCK)
       expect(r.ms).toBeGreaterThanOrEqual(800)
       expect(r.ms).toBeLessThanOrEqual(1200)
     } finally {
