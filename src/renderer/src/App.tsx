@@ -25,7 +25,8 @@ import { applyTheme } from './theme'
 import { isTextField } from './focus'
 import { notifyText, shouldNotify, type HookInfo } from './notify'
 import { Icon } from './Icon'
-import { appCommand, setCommandBindings } from './shortcuts'
+import { appCommand, commandId, setCommandBindings } from './shortcuts'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import { unwrap } from './ipc'
 import { createUiSaver } from './uiSave'
 
@@ -241,7 +242,8 @@ function App(): React.JSX.Element {
     if (cfg) applyTheme(cfg.theme, cfg.config)
   }, [cfg])
 
-  const [searching, setSearching] = useState(false)
+  // paleta aberta: `search` acha primeiro; `new` (+ Novo > Task) cria primeiro
+  const [searching, setSearching] = useState<false | 'search' | 'new'>(false)
   const [newTabPanel, setNewTabPanel] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [projectName, setProjectName] = useState<string | null>(null)
@@ -275,7 +277,7 @@ function App(): React.JSX.Element {
   const newTab = useCallback(
     (kind: NewAction, panel: number) => {
       if (layout.panels[panel]) dispatch({ t: 'focusAt', panel })
-      if (kind === 'task') setSearching(true)
+      if (kind === 'task') setSearching('new')
       else if (kind === 'project') setProjectName('')
       else
         dispatch({
@@ -326,6 +328,51 @@ function App(): React.JSX.Element {
     if (activeId && hasTerm(activeId)) requestAnimationFrame(() => getTerm(activeId).term.focus())
   }, [activeId])
 
+  // Um executor só para teclado e paleta (E6.5): o comando faz a mesma coisa venha de onde vier.
+  const runCommand = (id: string): void => {
+    const term = activeId && hasTerm(activeId) ? getTerm(activeId).term : null
+    const tab = /^tab-(\d)$/.exec(id)
+    if (id === 'draft') toggleDraft()
+    else if (id === 'newTab') setNewTabPanel(layout.panels.length ? layout.focused : null)
+    else if (id === 'search') setSearching('search')
+    else if (id === 'new') setCreating(true)
+    else if (id === 'sync') setNotice(SHELL_COPY.syncOff)
+    else if (id === 'shortcuts') setShortcutOpen(true)
+    else if (id === 'split') {
+      act({ t: 'split' })
+      setSearching('search')
+    } else if (id === 'closeTab') {
+      if (activeId) act({ t: 'close', taskId: activeId })
+      else if (layout.panels.length) act({ t: 'dropPanel', panel: layout.focused })
+    } else if (id === 'sidebar') {
+      // igual Ctrl+B do VS Code: mostra/esconde a lista; ao mostrar, o foco vai pra ela
+      setSb((x) => ({ ...x, folded: !x.folded }))
+      if (sb.folded)
+        requestAnimationFrame(() =>
+          document
+            .getElementById('sidebar')
+            ?.querySelector<HTMLElement>(
+              '[role="option"][tabindex="0"], .open-main.is-open, .item.is-open, .open-main, .item'
+            )
+            ?.focus()
+        )
+      else focusActive()
+    } else if (id === 'copy') {
+      const sel = term?.getSelection()
+      if (sel) window.turnflow.writeClipboard({ text: sel })
+    } else if (id === 'paste') {
+      unwrap(window.turnflow.readClipboard()).then((c) => c?.text && term?.paste(c.text))
+    } else if (tab) act({ t: 'focusTab', n: Number(tab[1]) })
+    else if (id === 'panel-prev' || id === 'panel-next')
+      act({ t: 'focusPanel', dir: id === 'panel-prev' ? -1 : 1 })
+    else if (id === 'cycle-prev' || id === 'cycle-next')
+      act({ t: 'cycleTab', dir: id === 'cycle-prev' ? -1 : 1 })
+  }
+  const runRef = useRef(runCommand)
+  useEffect(() => {
+    runRef.current = runCommand
+  })
+
   // Atalhos do app: só Ctrl+Shift. Capture na window pra rodar antes do xterm.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -334,7 +381,6 @@ function App(): React.JSX.Element {
       if (!cmd) return
       e.preventDefault()
       e.stopPropagation()
-      const term = activeId && hasTerm(activeId) ? getTerm(activeId).term : null
       const typing = isTextField(document.activeElement as HTMLElement | null)
       // copiar/colar com foco num campo de texto (busca, rascunho): deixa o nativo agir
       if ((cmd === 'copy' || cmd === 'paste') && typing) {
@@ -345,41 +391,16 @@ function App(): React.JSX.Element {
           )
         return
       }
-      if (cmd === 'draft') toggleDraft()
-      else if (cmd === 'newTab') setNewTabPanel(layout.panels.length ? layout.focused : null)
-      else if (cmd === 'search') setSearching(true)
-      else if (cmd === 'new') setCreating(true)
-      else if (cmd === 'sync') setNotice('Sync is not connected yet.')
-      else if (cmd === 'shortcuts') setShortcutOpen(true)
-      else if (cmd === 'split') {
-        act({ t: 'split' })
-        setSearching(true)
-      } else if (cmd === 'closeTab') {
-        if (activeId) act({ t: 'close', taskId: activeId })
-        else if (layout.panels.length) act({ t: 'dropPanel', panel: layout.focused })
-      } else if (cmd === 'sidebar') {
-        // igual Ctrl+B do VS Code: mostra/esconde a lista; ao mostrar, o foco vai pra ela
-        setSb((x) => ({ ...x, folded: !x.folded }))
-        if (sb.folded)
-          requestAnimationFrame(() =>
-            document
-              .getElementById('sidebar')
-              ?.querySelector<HTMLElement>('.open-main.is-open, .item.is-open, .open-main, .item')
-              ?.focus()
-          )
-        else focusActive()
-      } else if (cmd === 'copy') {
-        const sel = term?.getSelection()
-        if (sel) window.turnflow.writeClipboard({ text: sel })
-      } else if (cmd === 'paste') {
-        unwrap(window.turnflow.readClipboard()).then((c) => c?.text && term?.paste(c.text))
-      } else if ('tab' in cmd) act({ t: 'focusTab', n: cmd.tab })
-      else if ('panel' in cmd) act({ t: 'focusPanel', dir: cmd.panel })
-      else act({ t: 'cycleTab', dir: cmd.cycle })
+      runRef.current(commandId(cmd))
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [activeId, layout, act, focusActive, toggleDraft, sb.folded, shortcutOpen, extra.shortcuts])
+  }, [shortcutOpen, extra.shortcuts])
+
+  const search = useCallback(
+    async (q: string) => (await unwrap(window.turnflow.searchQuery({ q, limit: 30 }))) ?? [],
+    []
+  )
 
   return (
     <div className="app" data-testid="app-shell">
@@ -390,7 +411,7 @@ function App(): React.JSX.Element {
         onOpen={(id) => act({ t: 'open', taskId: id })}
         onPeek={(id) => act({ t: 'peek', taskId: id })}
         onEnd={endSession}
-        onSearch={() => setSearching(true)}
+        onSearch={() => setSearching('search')}
         root={root}
         folded={sb.folded}
         width={sb.width}
@@ -421,7 +442,11 @@ function App(): React.JSX.Element {
             <button data-nav title="Home" onClick={() => act({ t: 'open', taskId: HOME })}>
               <Icon name="file" />
             </button>
-            <button data-nav title="Buscar task (Ctrl+Shift+K)" onClick={() => setSearching(true)}>
+            <button
+              data-nav
+              title="Buscar task (Ctrl+Shift+K)"
+              onClick={() => setSearching('search')}
+            >
               <Icon name="search" />
             </button>
           </>
@@ -455,38 +480,36 @@ function App(): React.JSX.Element {
       />
       {searching && (
         <Palette
-          tasks={[
-            ...attention.map((row) => ({ id: row.id, title: `${row.key} ${row.title}` })),
-            ...tasks.map((task) => ({ id: task.id, title: `${task.id} ${task.title}` }))
-          ]}
+          mode={searching}
+          brain={tasks}
+          recent={attention.map((row) => ({
+            id: row.id,
+            key: row.key,
+            title: row.title,
+            done: false
+          }))}
+          search={search}
           types={paletteTypes}
           projects={paletteProjects}
           onPickTask={(id) => {
             setSearching(false)
             act({ t: 'open', taskId: id })
           }}
-          onCreate={(item) => {
-            void window.turnflow
-              .taskCreate({
-                title: item.title,
-                type_id: item.typeId,
-                ...(item.projectId ? { project_id: item.projectId } : {})
-              })
-              .then((result) => {
-                if (!result.ok || !result.data.row) return
-                setSearching(false)
-                act({ t: 'open', taskId: result.data.row.id })
-              })
+          onCreate={async (item) => {
+            const result = await window.turnflow.taskCreate({
+              title: item.title,
+              type_id: item.typeId,
+              ...(item.projectId ? { project_id: item.projectId } : {})
+            })
+            if (!result.ok) return result.error.message
+            if (!result.data.row) return SHELL_COPY.palette.createFailed
+            setSearching(false)
+            act({ t: 'open', taskId: result.data.row.id })
+            return null
           }}
           onCommand={(id) => {
             setSearching(false)
-            if (id === 'new') setCreating(true)
-            else if (id === 'shortcuts') setShortcutOpen(true)
-            else if (id === 'sync') setNotice('Sync is not connected yet.')
-            else if (id === 'newTab') setNewTabPanel(layout.panels.length ? layout.focused : null)
-            else if (id === 'split') act({ t: 'split' })
-            else if (id === 'sidebar') setSb((current) => ({ ...current, folded: !current.folded }))
-            else if (id === 'draft') toggleDraft()
+            runCommand(id)
           }}
           onClose={() => {
             setSearching(false)

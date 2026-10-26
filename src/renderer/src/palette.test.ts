@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { COMMANDS, activeBindings, bindCommand, commandFor } from './commands'
-import { NEW_ACTIONS, cycleType, paletteItems } from './palette'
+import { NEW_ACTIONS, cycleType, mergeFound, paletteItems } from './palette'
 import { appCommand } from './shortcuts'
 
 const types = [
@@ -14,8 +14,9 @@ describe('paletteItems', () => {
   it('propõe criar com o tipo adivinhado e o chip do projeto', () => {
     const [create] = paletteItems({
       query: 'corrigir login',
-      tasks: [],
+      found: [],
       types,
+      mode: 'new',
       projects,
       commands: COMMANDS
     })
@@ -36,8 +37,9 @@ describe('paletteItems', () => {
   it('> lista os mesmos comandos do registro', () => {
     const rows = paletteItems({
       query: '> spl',
-      tasks: [],
+      found: [],
       types,
+      mode: 'search',
       projects,
       commands: COMMANDS
     })
@@ -46,6 +48,70 @@ describe('paletteItems', () => {
     expect(rows.map((row) => (row.kind === 'command' ? row.label : ''))).toEqual(
       COMMANDS.filter((command) => command.id === 'split').map((command) => command.label)
     )
+  })
+})
+
+describe('paletteItems: achar antes de criar', () => {
+  const found = [
+    { id: 'u1', key: 'T-1', title: 'login quebrado', done: false },
+    { id: 'u2', key: 'T-2', title: 'login antigo', done: true }
+  ]
+
+  it('busca: tasks encontradas primeiro, Create por último', () => {
+    const rows = paletteItems({
+      query: 'login',
+      found,
+      types,
+      projects,
+      commands: COMMANDS,
+      mode: 'search'
+    })
+    expect(rows.map((r) => r.kind)).toEqual(['task', 'task', 'create'])
+    expect(rows[0]).toMatchObject({ kind: 'task', id: 'u1' })
+  })
+
+  it('+ Novo > Task: Create primeiro, tasks depois', () => {
+    const rows = paletteItems({
+      query: 'login',
+      found,
+      types,
+      projects,
+      commands: COMMANDS,
+      mode: 'new'
+    })
+    expect(rows.map((r) => r.kind)).toEqual(['create', 'task', 'task'])
+  })
+
+  it('comando desligado não aparece no >', () => {
+    const rows = paletteItems({
+      query: '>',
+      found: [],
+      types,
+      projects,
+      commands: COMMANDS,
+      mode: 'search'
+    })
+    const ids = rows.map((r) => (r.kind === 'command' ? r.id : ''))
+    expect(ids).not.toContain('assistant')
+    expect(ids).toContain('closeTab')
+  })
+})
+
+describe('mergeFound', () => {
+  it('uma linha por task: hit do domínio vence a task do brain com a mesma key', () => {
+    const merged = mergeFound(
+      [
+        { kind: 'task', task_id: 'u1', key: 'WF-1', title: 'A', snippet: '' },
+        { kind: 'checkpoint', task_id: 'u1', key: 'WF-1', title: 'A', snippet: '' },
+        { kind: 'checkpoint', task_id: 'u2', key: 'T-2', title: 'B', snippet: '' }
+      ],
+      [
+        { id: 'WF-1', title: 'A (brain)' },
+        { id: 'WF-3', title: 'C (brain)' }
+      ],
+      'a'
+    )
+    expect(merged.map((r) => r.id)).toEqual(['u1', 'u2', 'WF-3'])
   })
 })
 

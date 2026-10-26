@@ -82,9 +82,11 @@ it('a lista tem um único tabstop e o cursor segue a task, não a posição', ()
   const listbox = host.querySelector<HTMLElement>('[role="listbox"]')!
   expect(listbox.tabIndex).toBe(-1)
   act(() => options()[1].focus())
-  expect(options().filter((o) => o.tabIndex === 0).map((o) => o.textContent)).toEqual([
-    expect.stringContaining('T-2')
-  ])
+  expect(
+    options()
+      .filter((o) => o.tabIndex === 0)
+      .map((o) => o.textContent)
+  ).toEqual([expect.stringContaining('T-2')])
   // chega uma task nova no topo: o cursor continua na T-2
   render([row('z', 'T-0'), row('a', 'T-1'), row('b', 'T-2')])
   const selected = options().filter((o) => o.getAttribute('aria-selected') === 'true')

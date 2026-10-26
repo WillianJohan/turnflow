@@ -70,3 +70,74 @@ it('task do domínio aberta pelo Início abre a visão da task', async () => {
   await flush()
   expect(host.querySelector('.task-head')?.textContent).toContain('T-1')
 })
+
+const key = (code: string): void =>
+  act(() => {
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        code,
+        key: code,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true
+      })
+    )
+  })
+const paletteInput = (): HTMLInputElement =>
+  host.querySelector<HTMLInputElement>('[role="dialog"] input')!
+const typeIn = (value: string): void =>
+  act(() => {
+    const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    proto?.set?.call(paletteInput(), value)
+    paletteInput().dispatchEvent(new Event('input', { bubbles: true }))
+  })
+const enter = async (): Promise<void> => {
+  await act(async () => {
+    paletteInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  })
+  await flush()
+}
+const activeTab = (): string =>
+  host.querySelector('[role="tab"].active .tab-label')?.textContent ?? ''
+
+it('comandos da paleta fazem o mesmo que o atalho (fechar aba, aba N, próxima aba)', async () => {
+  await mount({
+    brain: [brainTask('WF-1'), brainTask('WF-2'), brainTask('WF-3')],
+    ui: withLayout(['WF-1', 'WF-2', 'WF-3'])
+  })
+  key('KeyK')
+  typeIn('> Tab 3')
+  await enter()
+  expect(activeTab()).toContain('WF-3')
+  key('KeyK')
+  typeIn('> Next tab')
+  await enter()
+  expect(activeTab()).toContain('WF-1')
+  key('KeyK')
+  typeIn('> Close tab')
+  await enter()
+  expect(tabs()).toEqual([expect.stringContaining('WF-2'), expect.stringContaining('WF-3')])
+})
+
+it('task do domínio achada pela paleta abre e a aba vai pro ui.json', async () => {
+  const fake = fakeApi(
+    { brain: [], rows: [taskRow(ULID, 'T-1')] },
+    {
+      searchQuery: (async () => ({
+        ok: true,
+        data: [{ kind: 'task', task_id: ULID, key: 'T-1', title: 'title T-1', snippet: '' }]
+      })) as never
+    }
+  )
+  ;(window as unknown as { turnflow: unknown }).turnflow = fake.api
+  act(() => root.render(<App />))
+  await flush()
+  key('KeyK')
+  typeIn('title')
+  await act(async () => await new Promise((r) => setTimeout(r, 250)))
+  await enter()
+  expect(host.querySelector('.task-head')?.textContent).toContain('T-1')
+  await act(async () => await new Promise((r) => setTimeout(r, 600)))
+  const saved = fake.calls.filter((c) => c.name === 'uiSet').at(-1)?.args[0] as UiFile
+  expect(saved.layout.panels[0].tabs).toEqual([ULID])
+})

@@ -63,6 +63,14 @@ export function appCommand(
   return id ? asAppCmd(id) : null
 }
 
+/** Volta do formato do teclado para o id do registro (`commands.ts`). */
+export function commandId(cmd: AppCmd): string {
+  if (typeof cmd === 'string') return cmd
+  if ('tab' in cmd) return `tab-${cmd.tab}`
+  if ('panel' in cmd) return cmd.panel === -1 ? 'panel-prev' : 'panel-next'
+  return cmd.cycle === -1 ? 'cycle-prev' : 'cycle-next'
+}
+
 export type TermCmd = 'copy' | 'paste' | 'newline'
 
 // Teclas que o app trata dentro do terminal, sem Shift+Ctrl (esses são do appCommand).
