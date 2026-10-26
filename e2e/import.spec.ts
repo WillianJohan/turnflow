@@ -32,7 +32,7 @@ async function openImport(launch: Launch, brain: string): Promise<Launched> {
   await page.getByTestId('words-saved').check()
   await page.getByTestId('words-continue').click()
   await expect(page.getByTestId('app-shell')).toBeVisible()
-  await page.getByTitle('Configurações: tema e fonte').click()
+  await page.getByTitle('Settings: theme and font').click()
   await expect(page.getByTestId('settings-import')).toBeVisible()
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [path] })) as never
@@ -153,7 +153,7 @@ test('import do app legado: temas na lista de Ajustes, sem duplicar na segunda v
   await page.getByTestId('words-saved').check()
   await page.getByTestId('words-continue').click()
   await expect(page.getByTestId('app-shell')).toBeVisible()
-  await page.getByTitle('Configurações: tema e fonte').click()
+  await page.getByTitle('Settings: theme and font').click()
 
   await page.getByTestId('legacy-preview').click()
   await expect(page.getByTestId('legacy-plan')).toContainText('Night Owl')

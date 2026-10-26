@@ -63,7 +63,7 @@ test('keyring real: apagar tudo nos Ajustes volta ao primeiro uso com palavras n
   const old = await readWords(page)
   await confirmWords(page)
 
-  await page.getByTitle('Configurações: tema e fonte').click()
+  await page.getByTitle('Settings: theme and font').click()
   const section = page.getByTestId('settings-wipe')
   await section.getByTestId('wipe-input').fill('APAGAR')
   await section.getByTestId('wipe-submit').click()
