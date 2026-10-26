@@ -40,6 +40,12 @@ describe('fronteiras de módulo', () => {
     expect(r.file).toContain('bad-feature.ts')
     expect(r.messages[0]).toContain('no-restricted-imports')
   })
+  it('shared não importa core (o renderer importa shared)', async () => {
+    const r = await lint('src/shared/bad-shared-core.ts')
+    expect(r.errors).toBe(1)
+    expect(r.file).toContain('bad-shared-core.ts')
+    expect(r.messages[0]).toContain('shared não importa core')
+  })
   it('renderer não importa core', async () => {
     const r = await lint('src/renderer/src/bad-core-import.ts')
     expect(r.errors).toBe(1)

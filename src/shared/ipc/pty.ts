@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { SESSION_TOOLS } from '../../core/domain/session'
+import { SESSION_TOOLS } from '../contracts'
 import { defineChannel } from './define'
 import { Cells, Id, MAX_PTY_DATA } from './common'
 

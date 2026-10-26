@@ -37,6 +37,22 @@ const boundaries = [
     }
   },
   {
+    files: ['**/src/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/core', '**/core/**', '**/main/**', '**/renderer/**', '**/preload/**'],
+              message: 'shared não importa core nem main/renderer: o renderer importa shared.'
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
     files: ['**/src/renderer/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [noCoreFromRenderer] }]

@@ -17,6 +17,9 @@ export const Reason = z.enum([
 ])
 export type Reason = z.infer<typeof Reason>
 
+export const SESSION_TOOLS = ['claude-code', 'codex', 'cursor', 'other'] as const
+export type SessionTool = (typeof SESSION_TOOLS)[number]
+
 export const SessionState = z.enum(['working', 'waiting', 'idle', 'unknown'])
 export type SessionState = z.infer<typeof SessionState>
 

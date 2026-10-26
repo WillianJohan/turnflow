@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ProjectRow, SessionRow, TaskDetail } from '../../shared/contracts'
+import {
+  SESSION_TOOLS,
+  type ProjectRow,
+  type SessionRow,
+  type SessionTool,
+  type TaskDetail
+} from '../../shared/contracts'
 import { SESSION_COPY } from '../../shared/copy/session'
 import type { Task } from '../../shared/types'
 import type { Live } from './App'
@@ -22,10 +28,8 @@ import {
 import { TimelineView } from './TimelineView'
 import { attachTerm, disposeTerm, getTerm, hasTerm } from './terms'
 
-type SessionTool = 'claude-code' | 'codex' | 'cursor' | 'other'
-const TOOLS: SessionTool[] = ['claude-code', 'codex', 'cursor', 'other']
 const toolOf = (value: string): SessionTool =>
-  TOOLS.includes(value as SessionTool) ? (value as SessionTool) : 'claude-code'
+  (SESSION_TOOLS as readonly string[]).includes(value) ? (value as SessionTool) : 'claude-code'
 
 type Props = {
   task: Task

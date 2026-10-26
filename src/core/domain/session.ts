@@ -1,4 +1,9 @@
-import type { SessionRow, SessionState } from '../../shared/contracts'
+import {
+  SESSION_TOOLS,
+  type SessionRow,
+  type SessionState,
+  type SessionTool
+} from '../../shared/contracts'
 import { SESSION_COPY } from '../../shared/copy/session'
 import type { Db } from '../db/open'
 import { recordActivity } from './activity'
@@ -7,8 +12,7 @@ import { DomainError, notFound } from './errors'
 import { liveTask, taskRow } from './rows'
 import type { TaskCommandResult } from './task'
 
-export const SESSION_TOOLS = ['claude-code', 'codex', 'cursor', 'other'] as const
-export type SessionTool = (typeof SESSION_TOOLS)[number]
+export { SESSION_TOOLS, type SessionTool }
 
 export type SessionErrorReason = keyof typeof SESSION_COPY.errors
 

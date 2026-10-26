@@ -1,6 +1,4 @@
-import type { SessionState } from '../../shared/contracts'
-
-type SessionTool = 'claude-code' | 'codex' | 'cursor' | 'other'
+import type { SessionState, SessionTool } from '../../shared/contracts'
 
 type Api = Pick<Window['turnflow'], 'ptySpawn' | 'sessionPickWorkdir' | 'taskSetWorkdir' | 'onExit'>
 type Spawned = Awaited<ReturnType<Window['turnflow']['ptySpawn']>>
