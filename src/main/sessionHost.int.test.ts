@@ -377,6 +377,27 @@ describe('session host', () => {
     b.db.close()
   })
 
+  it('pty_id ocupado é recusado antes de escrever: nem abre nem desfaz sessão', async () => {
+    const b = await boot({ workdir: '/w' })
+    const t = task(b)
+    const old = await spawn(b, { pty_id: 'p0', task: t.id })
+    await post(b, 'tok-1', { hook_event_name: 'SessionStart', session_id: U, cwd: '/w' })
+    b.host.kill('p0')
+    b.procs[0].emitExit(0)
+    await spawn(b, { task: t.id })
+    b.host.kill('p1')
+    const n = changes(b.db)
+    for (const over of [{}, { resume: old.session_id! }])
+      await expect(spawn(b, { task: t.id, ...over })).rejects.toMatchObject({
+        details: { reason: 'pty_busy' }
+      })
+    // sem o pré-check o spawn abriria (ou reabriria) a sessão e desfaria no catch: escrita à toa
+    expect(changes(b.db)).toBe(n)
+    expect(getSession(b.d!, old.session_id!)?.ended_at).not.toBeNull()
+    await b.close()
+    b.db.close()
+  })
+
   it('processo velho sai durante o start do novo → só a sessão velha encerra', async () => {
     const b = await boot()
     const t = task(b, '/w')
