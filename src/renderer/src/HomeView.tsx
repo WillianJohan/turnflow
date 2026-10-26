@@ -6,6 +6,7 @@ import { Counter } from './ui/Counter'
 import { ListRow } from './ui/ListRow'
 import { Segmented } from './ui/Segmented'
 import { Tag } from './ui/Tag'
+import { SHELL_COPY } from '../../shared/copy/shell'
 
 type Mode = UiFile['home']
 
@@ -17,6 +18,8 @@ type Props = {
   narrow?: boolean
   onMode(mode: Mode): void
   onToggleDone(): void
+  /** Alarga a janela das Concluídas; ausente = já mostra todas. */
+  onOlder?(): void
   onOpen(id: string): void
 }
 
@@ -28,6 +31,7 @@ export function HomeView({
   narrow,
   onMode,
   onToggleDone,
+  onOlder,
   onOpen
 }: Props): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null)
@@ -69,6 +73,13 @@ export function HomeView({
               </button>
             </li>
           ))}
+          {onOlder && (
+            <li>
+              <button type="button" className="home-older" onClick={onOlder}>
+                {SHELL_COPY.home.older}
+              </button>
+            </li>
+          )}
         </ul>
       ) : (
         <div className="home-cols">

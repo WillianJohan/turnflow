@@ -240,3 +240,48 @@ it('toast de Desfazer tem texto e continua vivo depois de sair da aba', async ()
   ])
   expect(host.querySelector('.toast')).toBeNull()
 })
+
+it('rajada de domain.changed vira poucas recargas da atenção', async () => {
+  const fake = await mount({ brain: [], rows: [taskRow(ULID, 'T-1')] })
+  const count = (): number =>
+    fake.calls.filter(
+      (c) => c.name === 'taskList' && (c.args[0] as { scope: unknown }).scope === 'attention'
+    ).length
+  const before = count()
+  act(() => {
+    for (let i = 0; i < 20; i++)
+      fake.emit('onDomainChanged', { entity: 'task', ids: [ULID], op: 'upsert' })
+  })
+  await act(async () => await new Promise((r) => setTimeout(r, 400)))
+  expect(count() - before).toBeGreaterThanOrEqual(1)
+  expect(count() - before).toBeLessThanOrEqual(2)
+})
+
+it('Concluídas vêm por janela de tempo e "Show older" alarga', async () => {
+  const fake = await mount({ brain: [], rows: [], ui: withLayout(['~home']) })
+  const doneScopes = (): unknown[] =>
+    fake.calls
+      .filter((c) => c.name === 'taskList')
+      .map((c) => (c.args[0] as { scope: unknown }).scope)
+      .filter((s) => typeof s === 'object' && s !== null && 'done_since' in s)
+  const btn = (text: string): HTMLButtonElement =>
+    [...host.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent?.trim() === text
+    )!
+  act(() => btn('Done').click())
+  await flush()
+  const first = doneScopes().at(-1) as { done_since: string }
+  const days = (iso: string): number => Math.round((Date.now() - Date.parse(iso)) / 86_400_000)
+  expect(days(first.done_since)).toBe(30)
+  act(() => btn('Show older').click())
+  await flush()
+  const second = doneScopes().at(-1) as { done_since: string }
+  expect(days(second.done_since)).toBeGreaterThan(30)
+  // mudança no domínio com a lista fechada não recarrega concluídas
+  act(() => btn('Done').click())
+  await flush()
+  const n = doneScopes().length
+  act(() => fake.emit('onDomainChanged', { entity: 'task', ids: [ULID], op: 'upsert' }))
+  await act(async () => await new Promise((r) => setTimeout(r, 400)))
+  expect(doneScopes().length).toBe(n)
+})

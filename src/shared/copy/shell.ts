@@ -72,6 +72,9 @@ export const SHELL_COPY = {
     running: 'A session is running.',
     toTerminal: 'Go to terminal'
   },
+  home: {
+    older: 'Show older'
+  },
   undo: 'Undo',
   syncOff: 'Sync is not connected yet.'
 } as const

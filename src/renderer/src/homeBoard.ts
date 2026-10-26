@@ -44,3 +44,13 @@ export function homeLine(
     tag: blocked ? 'Bloq.' : null
   }
 }
+
+const DAY = 86_400_000
+/** Janelas das Concluídas, em dias; depois da última vêm todas. */
+export const DONE_WINDOWS = [30, 90, 365] as const
+
+/** `done_since` da janela `n` (0 = 30 dias), ou `null` = todas. */
+export function doneSince(n: number, now: number): string | null {
+  const days = DONE_WINDOWS[n]
+  return days === undefined ? null : new Date(now - days * DAY).toISOString()
+}

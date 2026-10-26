@@ -31,6 +31,8 @@ import { appCommand, commandId, setCommandBindings } from './shortcuts'
 import { SHELL_COPY } from '../../shared/copy/shell'
 import { unwrap } from './ipc'
 import { createUiSaver } from './uiSave'
+import { coalesce } from './coalesce'
+import { DONE_WINDOWS, doneSince } from './homeBoard'
 import { TOAST_MS } from './taskFace'
 import { Toast } from './ui/Toast'
 
@@ -39,6 +41,9 @@ export type Live = {
   alive: Set<string>
   exited: Record<string, number>
 }
+
+const RELOAD_MS = 100
+const ATTENTION_ENTITIES = new Set(['task', 'session', 'project', 'flow'])
 
 /** Nome curto de uma aba de task: key e título, venha ela do brain ou do domínio. */
 export type TabName = { key: string; title: string }
@@ -60,6 +65,7 @@ function App(): React.JSX.Element {
   const [attention, setAttention] = useState<TaskRow[]>([])
   const [showDone, setShowDone] = useState(false)
   const [doneRows, setDoneRows] = useState<TaskRow[]>([])
+  const [doneWindow, setDoneWindow] = useState(0)
   const [sb, setSb] = useState<{ folded: boolean; width: number }>({
     folded: false,
     width: SIDEBAR_DEFAULT
@@ -122,34 +128,51 @@ function App(): React.JSX.Element {
     return () => offs.forEach((f) => f())
   }, [])
 
+  // Rajada de domain.changed (import, sync, a IA mexendo) vira poucas recargas: uma por janela de
+  // 100 ms, nunca duas no ar ao mesmo tempo.
   useEffect(() => {
     let cancel = false
-    const load = (): void => {
-      void unwrap(window.turnflow.taskList({ scope: 'attention' })).then((rows) => {
-        if (!cancel && rows) setAttention(rows)
-      })
-    }
-    load()
-    const off = window.turnflow.onDomainChanged(() => {
-      load()
+    const loader = coalesce(async () => {
+      const rows = await unwrap(window.turnflow.taskList({ scope: 'attention' }))
+      if (!cancel && rows) setAttention(rows)
+    }, RELOAD_MS)
+    void unwrap(window.turnflow.taskList({ scope: 'attention' })).then((rows) => {
+      if (!cancel && rows) setAttention(rows)
+    })
+    const off = window.turnflow.onDomainChanged((change) => {
+      if (!ATTENTION_ENTITIES.has(change.entity)) return
+      loader.trigger()
       setDomainTick((n) => n + 1)
     })
     return () => {
       cancel = true
+      loader.cancel()
       off()
     }
   }, [])
 
+  // Concluídas: só com o filtro aberto e por janela de tempo (§7 `done_since`); "Show older" alarga.
   useEffect(() => {
     if (!showDone) return
     let cancel = false
-    void unwrap(window.turnflow.taskList({ scope: {} })).then((rows) => {
+    const load = async (): Promise<void> => {
+      const since = doneSince(doneWindow, Date.now())
+      const rows = await unwrap(
+        window.turnflow.taskList({ scope: since ? { done_since: since } : {} })
+      )
       if (!cancel && rows) setDoneRows(rows)
+    }
+    void load()
+    const loader = coalesce(load, RELOAD_MS)
+    const off = window.turnflow.onDomainChanged((change) => {
+      if (change.entity === 'task') loader.trigger()
     })
     return () => {
       cancel = true
+      loader.cancel()
+      off()
     }
-  }, [showDone, attention])
+  }, [showDone, doneWindow])
 
   useEffect(() => {
     let cancel = false
@@ -498,6 +521,9 @@ function App(): React.JSX.Element {
             showDone={showDone}
             onMode={(home) => setExtra((x) => ({ ...x, home }))}
             onToggleDone={() => setShowDone((v) => !v)}
+            onOlder={
+              doneWindow < DONE_WINDOWS.length ? () => setDoneWindow((w) => w + 1) : undefined
+            }
             onOpen={(id) => act({ t: 'open', taskId: id })}
           />
         }
