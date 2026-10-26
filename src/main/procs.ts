@@ -54,15 +54,30 @@ function splitQuoted(command: string): string[] {
 
 const basename = (arg: string): string => {
   const name = arg.split(/[/\\]/).pop() ?? arg
-  return name.replace(/\.exe$/i, '')
+  return name.replace(/\.(exe|cmd|bat)$/i, '')
 }
 
-const claudeMatch = (args: string[]): boolean => args.some((a) => basename(a) === 'claude')
+// O claude do npm no Windows aparece como `node.exe …\@anthropic-ai\claude-code\cli.js` ou
+// `cmd.exe /c "…\claude.cmd"`; o codex como `node.exe …\@openai\codex\bin\codex.js`.
+const CLAUDE_JS = /[/\\]@anthropic-ai[/\\]claude-code[/\\]cli\.m?js$/i
+const CODEX_JS = /[/\\]@openai[/\\]codex[/\\]bin[/\\]codex\.m?js$/i
+
+const claudeMatch = (args: string[]): boolean =>
+  args.some((a) => basename(a) === 'claude' || CLAUDE_JS.test(a))
 
 export function binMatch(tool: SessionTool): (args: string[]) => boolean {
-  if (tool === 'codex') return (args) => args.some((a) => basename(a) === 'codex')
+  if (tool === 'codex')
+    return (args) => args.some((a) => basename(a) === 'codex' || CODEX_JS.test(a))
   return claudeMatch
 }
+
+// `cmd.exe /s /c ""…\claude.cmd" --resume U"`: as aspas do cmd juntam vários argumentos num
+// item só. No Windows a busca olha também cada palavra, sem aspas.
+const winTokens = (args: string[]): string[] =>
+  args
+    .flatMap((a) => [a, ...a.split(/\s+/)])
+    .map((a) => a.replace(/"/g, ''))
+    .filter(Boolean)
 
 const PS_ARGS = ['-axww', '-o', 'pid=,args=']
 const WIN_CMD =
@@ -99,7 +114,8 @@ export async function findProcessByArg(
   }
   for (const line of lines) {
     if (o.ownPids.has(line.pid)) continue
-    if (line.args.includes(arg) && match(line.args)) return line.pid
+    const args = o.platform === 'win32' ? winTokens(line.args) : line.args
+    if (args.includes(arg) && match(args)) return line.pid
   }
   return null
 }

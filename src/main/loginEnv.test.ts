@@ -19,11 +19,27 @@ it('claude ausente dá mensagem legível', async () => {
   ).rejects.toThrow('claude não encontrado')
 })
 
-it('win32 usa where.exe', async () => {
+it('win32 usa where.exe e prefere o .exe ao .cmd e ao script sem extensão', async () => {
   resetLoginEnv()
-  const env = await loginEnv(async () => 'C:\\x\\claude.cmd\r\nC:\\y\\claude.exe\r\n', 'win32')
-  expect(env.claude).toBe('C:\\x\\claude.cmd')
+  // saída real do where.exe com o claude do npm: o script sh sem extensão vem primeiro
+  const out =
+    'C:\\Users\\me\\AppData\\Roaming\\npm\\claude\r\n' +
+    'C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd\r\n' +
+    'C:\\Users\\me\\.local\\bin\\claude.exe\r\n'
+  const env = await loginEnv(async () => out, 'win32')
+  expect(env.claude).toBe('C:\\Users\\me\\.local\\bin\\claude.exe')
   expect(env.PATH).toBe(process.env.PATH ?? '')
+  resetLoginEnv()
+  const npm = await loginEnv(
+    async () =>
+      'C:\\Users\\me\\AppData\\Roaming\\npm\\claude\r\nC:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd\r\n',
+    'win32'
+  )
+  expect(npm.claude).toBe('C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd')
+  resetLoginEnv()
+  await expect(
+    loginEnv(async () => 'C:\\Users\\me\\AppData\\Roaming\\npm\\claude\r\n', 'win32')
+  ).rejects.toThrow('claude não encontrado')
 })
 
 it('win32 sem claude no where.exe dá mensagem legível', async () => {

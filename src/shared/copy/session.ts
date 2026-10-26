@@ -12,7 +12,8 @@ export const SESSION_COPY = {
     running_elsewhere: 'This conversation is open outside the app',
     not_resumable: 'This agent cannot resume a session',
     agent_not_configured: 'That agent is not configured',
-    pty_busy: 'The previous process is still shutting down'
+    pty_busy: 'The previous process is still shutting down',
+    unsafe_batch_arg: 'This launch argument cannot be passed safely to a .cmd launcher'
   },
   activity: {
     adopt: 'Session adopted',
@@ -22,6 +23,11 @@ export const SESSION_COPY = {
     `session ${tool}${key ? ` · ${key}` : ''}`,
   initialPrompt: (key: string, title: string, server: string): string =>
     `We're working on task ${key}: ${title}\n\n` +
+    `Before anything else, call the guidelines_get and task_get tools from the ${server} MCP server.`,
+  // Lançador .cmd/.bat (Windows): o cmd.exe reinterpreta o argv, então vai só a key, sem título
+  // nem descrição; o task_get entrega o resto.
+  initialPromptBatch: (key: string, server: string): string =>
+    `We're working on task ${key}. ` +
     `Before anything else, call the guidelines_get and task_get tools from the ${server} MCP server.`,
   descriptionIntro: '\n\nTask description:\n',
   descriptionCut: '\n\n[Description truncated. Read the rest with task_get.]',

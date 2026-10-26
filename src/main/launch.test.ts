@@ -181,6 +181,66 @@ describe('agentArgv', () => {
     ).toThrow(expect.objectContaining({ code: 'VALIDATION', details: { reason: 'not_resumable' } }))
   })
 
+  it('.cmd no Windows: título e descrição nunca passam pelo argv do cmd.exe', () => {
+    const task = launchTask({
+      title: 'x" & calc.exe & "%PATH%^!',
+      description: 'line\n| del *',
+      first_session: true
+    })
+    const claude = 'C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd'
+    const argv = agentArgv({
+      tool: 'claude-code',
+      bin: bins({ claude }),
+      task,
+      resume: null,
+      settingsPath: 'C:\\run\\hooks.json'
+    })
+    expect(argv).toEqual([
+      claude,
+      SESSION_COPY.initialPromptBatch('T-7', BRAND.id),
+      '--name',
+      'T-7',
+      '--settings',
+      'C:\\run\\hooks.json'
+    ])
+    for (const a of argv.slice(1)) expect(a).not.toMatch(/[%^&|<>"!\r\n]/)
+    const codex = agentArgv({
+      tool: 'codex',
+      bin: bins({ codex: ['C:\\npm\\codex.CMD'] }),
+      task,
+      resume: null,
+      settingsPath: settings
+    })
+    expect(codex).toEqual(['C:\\npm\\codex.CMD', SESSION_COPY.initialPromptBatch('T-7', BRAND.id)])
+  })
+
+  it('.cmd com argumento que o cmd.exe interpretaria → VALIDATION, nunca lança', () => {
+    expect(() =>
+      agentArgv({
+        tool: 'claude-code',
+        bin: bins({ claude: 'C:\\npm\\claude.cmd' }),
+        task: null,
+        resume: null,
+        settingsPath: 'C:\\a&b\\hooks.json'
+      })
+    ).toThrow(
+      expect.objectContaining({ code: 'VALIDATION', details: { reason: 'unsafe_batch_arg' } })
+    )
+  })
+
+  it('.exe no Windows segue com o prompt inteiro', () => {
+    const task = launchTask({ first_session: false, description: '' })
+    expect(
+      agentArgv({
+        tool: 'claude-code',
+        bin: bins({ claude: 'C:\\x\\claude.exe' }),
+        task,
+        resume: null,
+        settingsPath: settings
+      })[1]
+    ).toBe(initialPrompt(task))
+  })
+
   it('splitCommand', () => {
     expect(splitCommand('  my-ai  --flag x ')).toEqual(['my-ai', '--flag', 'x'])
   })

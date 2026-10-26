@@ -77,4 +77,37 @@ describe('findProcessByArg', () => {
       })
     ).resolves.toBe(9)
   })
+
+  it('win32: claude do npm via node.exe …cli.js e via cmd.exe /c claude.cmd', async () => {
+    const node =
+      `7\t"C:\\Program Files\\nodejs\\node.exe" ` +
+      `"C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js" --resume ${U}\r\n`
+    await expect(
+      findProcessByArg(U, {
+        ownPids: new Set(),
+        platform: 'win32',
+        exec: async () => node,
+        match: binMatch('claude-code')
+      })
+    ).resolves.toBe(7)
+    const cmd = `8\tC:\\WINDOWS\\system32\\cmd.exe /d /s /c ""C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd" --resume ${U}"\r\n`
+    await expect(
+      findProcessByArg(U, {
+        ownPids: new Set(),
+        platform: 'win32',
+        exec: async () => cmd,
+        match: binMatch('claude-code')
+      })
+    ).resolves.toBe(8)
+    // node de outro pacote com o mesmo uuid não é o claude
+    const other = `9\t"C:\\nodejs\\node.exe" "C:\\x\\tool.js" --resume ${U}\r\n`
+    await expect(
+      findProcessByArg(U, {
+        ownPids: new Set(),
+        platform: 'win32',
+        exec: async () => other,
+        match: binMatch('claude-code')
+      })
+    ).resolves.toBeNull()
+  })
 })

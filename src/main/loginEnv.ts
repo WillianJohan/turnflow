@@ -34,21 +34,32 @@ let cachedPlatform: NodeJS.Platform | null = null
 const marker = (out: string, k: string): string =>
   out.match(new RegExp(`^${MARK}${k}=(.*)$`, 'm'))?.[1]?.trim() ?? ''
 
-// No Windows não há bash -ic. O PATH é o do processo; o claude sai da primeira linha do where.exe.
+// No Windows não há bash -ic. O PATH é o do processo; o claude sai do where.exe (código 1 = não
+// achou, que vira claude ausente, não falha do shell).
 const whereClaude: Exec = () =>
-  promisify(execFile)('where.exe', ['claude'], { timeout: 15000 }).then((r) => r.stdout)
+  promisify(execFile)('where.exe', ['claude'], { timeout: 15000 }).then(
+    (r) => r.stdout,
+    (e: { code?: unknown }) => {
+      if (e.code === 1) return ''
+      throw e
+    }
+  )
 
 const fromBash = (out: string): ShellEnv => ({
   PATH: marker(out, 'PATH'),
   claude: marker(out, 'CLAUDE') || null
 })
 
+// O where.exe lista na ordem do PATH, e o npm instala três: `claude` (script sh, que o Windows
+// não executa), `claude.cmd` e às vezes o `claude.exe` nativo. Prefere .exe, depois .cmd/.bat.
 const fromWhere = (out: string): ShellEnv => {
-  const claude = out
+  const lines = out
     .split(/\r?\n/)
     .map((s) => s.trim())
-    .find((s) => s.length > 0)
-  return { PATH: process.env.PATH ?? '', claude: claude ?? null }
+    .filter((s) => s.length > 0)
+  const claude =
+    lines.find((l) => /\.exe$/i.test(l)) ?? lines.find((l) => /\.(cmd|bat)$/i.test(l)) ?? null
+  return { PATH: process.env.PATH ?? '', claude }
 }
 
 /**

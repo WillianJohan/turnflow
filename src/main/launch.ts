@@ -70,6 +70,18 @@ export type AgentCommands = {
   other: string[] | null
 }
 
+// No Windows um .cmd/.bat roda dentro do cmd.exe, que reinterpreta a linha de comando (%VAR%,
+// &, |, ^, aspas): texto livre no argv vira comando (BatBadBut). Para eles o prompt leva só a
+// key, o --name só a key, e qualquer argumento com metacaractere do cmd é recusado.
+const isBatch = (bin: string | undefined): boolean => !!bin && /\.(cmd|bat)$/i.test(bin)
+const CMD_META = /[%^&|<>"!\r\n]/
+
+function batchSafe(argv: string[]): string[] {
+  if (isBatch(argv[0]) && argv.slice(1).some((a) => CMD_META.test(a)))
+    throw sessionError('VALIDATION', 'unsafe_batch_arg')
+  return argv
+}
+
 export function agentArgv(i: {
   tool: SessionTool
   bin: AgentCommands
@@ -77,32 +89,39 @@ export function agentArgv(i: {
   resume: string | null
   settingsPath: string
 }): string[] {
-  const prompt = i.task ? initialPrompt(i.task) : ''
-  const name = i.task ? `${i.task.key} ${i.task.title}` : null
+  const t = i.task
+  const prompt = (bin: string | undefined): string =>
+    !t ? '' : isBatch(bin) ? SESSION_COPY.initialPromptBatch(t.key, BRAND.id) : initialPrompt(t)
+  const name = (bin: string): string | null =>
+    !t ? null : isBatch(bin) ? t.key : `${t.key} ${t.title}`
   if (i.tool === 'claude-code') {
     const claude = i.bin.claude
     if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
+    const label = name(claude)
     if (i.resume) {
       const argv = [claude, '--resume', i.resume, '--settings', i.settingsPath]
-      if (name) argv.push('--name', name)
-      return argv
+      if (label) argv.push('--name', label)
+      return batchSafe(argv)
     }
-    if (i.task && name) return [claude, prompt, '--name', name, '--settings', i.settingsPath]
-    return [claude, '--settings', i.settingsPath]
+    if (t && label)
+      return batchSafe([claude, prompt(claude), '--name', label, '--settings', i.settingsPath])
+    return batchSafe([claude, '--settings', i.settingsPath])
   }
   if (i.tool === 'codex') {
-    if (i.resume) return [...i.bin.codex, 'resume', i.resume]
-    if (i.task) return [...i.bin.codex, prompt]
-    return [...i.bin.codex]
+    const bin = i.bin.codex
+    if (i.resume) return batchSafe([...bin, 'resume', i.resume])
+    if (t) return batchSafe([...bin, prompt(bin[0])])
+    return batchSafe([...bin])
   }
   if (i.tool === 'cursor') {
+    const bin = i.bin.cursor
     if (i.resume) throw sessionError('VALIDATION', 'not_resumable')
-    if (i.task) return [...i.bin.cursor, prompt]
-    return [...i.bin.cursor]
+    if (t) return batchSafe([...bin, prompt(bin[0])])
+    return batchSafe([...bin])
   }
   if (!i.bin.other) throw sessionError('VALIDATION', 'agent_not_configured')
   if (i.resume) throw sessionError('VALIDATION', 'not_resumable')
-  return [...i.bin.other]
+  return batchSafe([...i.bin.other])
 }
 
 export function shellArgv(
