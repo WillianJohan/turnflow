@@ -4,6 +4,7 @@ import { EMOJIS, ICON_WORDS } from './emojiSet'
 import { ICONS } from './iconSet'
 import { COLOR_INPUT_FALLBACK, ICON_SWATCHES } from '../../shared/theme/swatches'
 import { formatIcon, parseIcon } from './statusIcon'
+import { Dialog } from './ui/Dialog'
 
 // hex null = acompanha a cor do texto do tema.
 const COLORS: { hex: string | null; label: string }[] = [
@@ -49,12 +50,13 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
   )
 
   return (
-    <div
+    <Dialog
+      title={SCREENS_COPY.iconPicker.title}
+      showTitle={false}
+      backdrop={false}
       className={`icon-picker ${up ? 'up' : ''}`}
-      ref={ref}
-      role="dialog"
-      aria-label={SCREENS_COPY.iconPicker.title}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+      boxRef={ref}
+      onClose={onClose}
     >
       <div className="ip-tabs">
         <button className={tab === 'emoji' ? 'on' : ''} onClick={() => setTab('emoji')}>
@@ -125,6 +127,6 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
           <p className="dim">{SCREENS_COPY.iconPicker.none}</p>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }

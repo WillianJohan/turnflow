@@ -3,6 +3,7 @@ import { SHELL_COPY } from '../../shared/copy/shell'
 import type { SearchHit } from '../../shared/ipc/search'
 import { COMMANDS, type CommandDef } from './commands'
 import { cycleType, mergeFound, paletteItems, type Found, type PaletteItem } from './palette'
+import { Dialog } from './ui/Dialog'
 
 const T = SHELL_COPY.palette
 const SEARCH_DELAY = 120
@@ -108,87 +109,78 @@ export function Palette({
   }, [waiting, searchPending])
 
   return (
-    <div className="overlay" onMouseDown={onClose}>
-      <div
-        className="search"
-        role="dialog"
+    <Dialog title={T.label} showTitle={false} className="search" busy={busy} onClose={onClose}>
+      <input
+        autoFocus
+        value={query}
+        role="combobox"
         aria-label={T.label}
-        aria-busy={busy}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <input
-          autoFocus
-          value={query}
-          role="combobox"
-          aria-label={T.label}
-          aria-expanded={items.length > 0}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-activedescendant={current ? optionId(at) : undefined}
-          placeholder={T.placeholder}
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setTypeId(undefined)
-            setSel(0)
-            setError('')
-            setWaiting(false)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') onClose()
-            else if (event.key === 'ArrowDown') setSel(Math.min(at + 1, items.length - 1))
-            else if (event.key === 'ArrowUp') setSel(Math.max(at - 1, 0))
-            else if (event.key === 'Tab' && current?.kind === 'create') {
-              const next = cycleType(types, current.typeId)
-              if (next) setTypeId(next)
-            } else if (event.key === 'Enter') {
-              if (searchPending && mode === 'search') setWaiting(true)
-              else run(current)
-            } else return
-            event.preventDefault()
-          }}
-        />
-        {error && (
-          <p className="palette-error" role="alert">
-            {error}
-          </p>
+        aria-expanded={items.length > 0}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={current ? optionId(at) : undefined}
+        placeholder={T.placeholder}
+        onChange={(event) => {
+          setQuery(event.target.value)
+          setTypeId(undefined)
+          setSel(0)
+          setError('')
+          setWaiting(false)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') setSel(Math.min(at + 1, items.length - 1))
+          else if (event.key === 'ArrowUp') setSel(Math.max(at - 1, 0))
+          else if (event.key === 'Tab' && current?.kind === 'create') {
+            const next = cycleType(types, current.typeId)
+            if (next) setTypeId(next)
+          } else if (event.key === 'Enter') {
+            if (searchPending && mode === 'search') setWaiting(true)
+            else run(current)
+          } else return
+          event.preventDefault()
+        }}
+      />
+      {error && (
+        <p className="palette-error" role="alert">
+          {error}
+        </p>
+      )}
+      <ul id={listId} role="listbox" aria-label={T.results}>
+        {items.map((item, index) => (
+          <li
+            key={item.kind === 'create' ? 'create' : `${item.kind}:${item.id}`}
+            id={optionId(index)}
+            role="option"
+            aria-selected={index === at}
+            aria-disabled={item.kind === 'create' && busy ? true : undefined}
+            className={index === at ? 'sel' : ''}
+            // mouseMove, não mouseEnter: a lista nasce embaixo do ponteiro parado e roubaria a seleção
+            onMouseMove={() => index !== at && setSel(index)}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(item)}
+          >
+            {item.kind === 'create' && (
+              <>
+                <span>{busy ? T.creating : T.create}</span> {item.title}{' '}
+                <span className="palette-chip">{item.typeName}</span>{' '}
+                <span className="palette-chip">{item.projectName ?? T.noProject}</span>
+              </>
+            )}
+            {item.kind === 'task' && (
+              <>
+                <span className="palette-key">{item.key}</span> {item.title}
+                {item.done && <span className="palette-chip">{T.done}</span>}
+              </>
+            )}
+            {item.kind === 'command' && item.label}
+          </li>
+        ))}
+        {!items.length && (
+          <li className="empty" role="presentation">
+            {T.empty}
+          </li>
         )}
-        <ul id={listId} role="listbox" aria-label={T.results}>
-          {items.map((item, index) => (
-            <li
-              key={item.kind === 'create' ? 'create' : `${item.kind}:${item.id}`}
-              id={optionId(index)}
-              role="option"
-              aria-selected={index === at}
-              aria-disabled={item.kind === 'create' && busy ? true : undefined}
-              className={index === at ? 'sel' : ''}
-              // mouseMove, não mouseEnter: a lista nasce embaixo do ponteiro parado e roubaria a seleção
-              onMouseMove={() => index !== at && setSel(index)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => run(item)}
-            >
-              {item.kind === 'create' && (
-                <>
-                  <span>{busy ? T.creating : T.create}</span> {item.title}{' '}
-                  <span className="palette-chip">{item.typeName}</span>{' '}
-                  <span className="palette-chip">{item.projectName ?? T.noProject}</span>
-                </>
-              )}
-              {item.kind === 'task' && (
-                <>
-                  <span className="palette-key">{item.key}</span> {item.title}
-                  {item.done && <span className="palette-chip">{T.done}</span>}
-                </>
-              )}
-              {item.kind === 'command' && item.label}
-            </li>
-          ))}
-          {!items.length && (
-            <li className="empty" role="presentation">
-              {T.empty}
-            </li>
-          )}
-        </ul>
-      </div>
-    </div>
+      </ul>
+    </Dialog>
   )
 }

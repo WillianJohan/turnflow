@@ -429,16 +429,14 @@ export function TaskView({
     </button>
   )
   const confirmDialog = confirm && (
-    <div className="overlay">
-      <ConfirmDialog
-        title={T.confirmTitle}
-        body={confirm.body}
-        confirm={confirm.confirm}
-        cancel={T.cancel}
-        onConfirm={confirm.run}
-        onClose={() => setConfirm(null)}
-      />
-    </div>
+    <ConfirmDialog
+      title={T.confirmTitle}
+      body={confirm.body}
+      confirm={confirm.confirm}
+      cancel={T.cancel}
+      onConfirm={confirm.run}
+      onClose={() => setConfirm(null)}
+    />
   )
 
   if (mode === 'loading') {
