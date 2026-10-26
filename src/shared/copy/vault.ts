@@ -1,0 +1,70 @@
+import { BRAND } from '../brand'
+
+/** Palavra que o usuário digita para confirmar o Apagar tudo (o contrato `vault.wipe` exige esta). */
+export const WIPE_WORD = 'APAGAR'
+
+// Mensagens do cofre/banco mostradas ao usuário. Sem segredo, chave ou caminho pessoal aqui.
+export const VAULT_COPY = {
+  migrationFailed: (version: number, name: string, detail: string): string =>
+    `A atualização do banco falhou na migration ${version} (${name}): ${detail}. Seus dados não foram alterados.`,
+  newerSchema: (found: number, supported: number): string =>
+    `Este banco foi criado por uma versão mais nova (esquema ${found}; esta versão entende até ${supported}). Atualize o app.`,
+
+  /** `failure` do vault quando existe `key.enc` mas o banco sumiu. */
+  dbNotFound:
+    'Banco não encontrado. Recoloque o arquivo do banco na pasta de configuração ou use Apagar tudo.',
+  /** `failure` quando o Apagar tudo não terminou; o próximo boot (Tentar de novo) continua de onde parou. */
+  wipeFailed:
+    'Apagar tudo não terminou. Feche o que estiver usando a pasta de configuração e tente de novo.',
+  /** Validação do `vault.wipe` quando a palavra de confirmação não confere. */
+  wipeConfirm: `Digite ${WIPE_WORD} para confirmar`,
+  /** Aviso da tela de apagar task de vez (E3/E6). */
+  purgeNotice:
+    'Ela continua nos backups diários por até 7 dias de uso e nos backups de atualização por até 7 dias. Cópias de resgate (orphan-*) ficam até você apagá-las ou usar Apagar tudo.',
+  /** Texto de cada `VaultErrorCode`. Nunca interpolar senha, palavra ou DEK. */
+  errors: {
+    PASSWORD_REQUIRED: 'Defina uma senha mestra',
+    PASSWORD_TOO_SHORT: 'A senha precisa de pelo menos 12 caracteres',
+    WRONG_PASSWORD: 'Senha incorreta. Esqueceu? Use a chave de recuperação.',
+    WORDS_COUNT: 'A chave de recuperação tem 24 palavras',
+    WORDS_UNKNOWN: 'Uma das palavras não existe na lista',
+    WORDS_CHECKSUM: 'Alguma palavra está errada ou fora de ordem',
+    WRONG_KEY: 'Essas palavras não abrem este banco',
+    KEYRING_UNAVAILABLE:
+      'Não consegui ler a chave no chaveiro do sistema. Use a chave de recuperação.',
+    KEYFILE_CORRUPT: 'O arquivo da chave está corrompido. Use a chave de recuperação.',
+    NOT_A_BACKUP: `Esse arquivo não é um backup do ${BRAND.name}`,
+    BACKUP_NEWER: `Esse backup é de uma versão mais nova do ${BRAND.name}`,
+    NEWER_SCHEMA: `Este banco foi criado por uma versão mais nova do ${BRAND.name}. Atualize o app.`,
+    MIGRATION_FAILED: 'Falha na migração do banco',
+    OPEN_FAILED: 'Não consegui abrir o banco',
+    LOCKED: `${BRAND.name} está bloqueado`,
+    BAD_STATE: 'Operação inválida neste estado',
+    INTERNAL: 'Erro interno. Tente de novo; se persistir, veja o log do app.'
+  },
+  /** Validação de senha no contrato IPC (o mínimo usa `errors.PASSWORD_TOO_SHORT`). */
+  passwordTooLong: (max: number): string => `A senha pode ter até ${max} caracteres`,
+  passwordEmpty: 'Digite a senha',
+  /** Por que o vault está bloqueado (`lockReason`). */
+  lockReason: {
+    password: 'Digite a senha mestra para abrir',
+    keyring_unavailable:
+      'Não consegui ler a chave no chaveiro do sistema. Use a chave de recuperação.',
+    keyfile_corrupt: 'O arquivo da chave está corrompido. Use a chave de recuperação.'
+  },
+  /** `details.message` dos `BAD_STATE` do módulo de chave. */
+  badState: {
+    keyringNotReal: 'O chaveiro do sistema não protege a chave; use uma senha mestra',
+    notPasswordMode: 'A chave não está protegida por senha',
+    notKeyringMode: 'A chave não está no chaveiro do sistema',
+    kdfOutOfRange: 'Parâmetros de derivação da chave fora do permitido'
+  },
+  /** Filtro do diálogo de escolher backup. */
+  backupFilter: `Backup do ${BRAND.name}`,
+  /** `WORDS_UNKNOWN` com a posição (1-based) da primeira palavra desconhecida. */
+  wordUnknown: (position: number): string => `A palavra ${position} não existe na lista`,
+
+  recoveryTitle: `${BRAND.name} — chave de recuperação`,
+  recoveryGenerated: (ymd: string): string =>
+    `Gerada em ${ymd}. Guarde fora deste computador. Quem tiver estas palavras e um backup consegue ler seus dados.`
+}
