@@ -24,13 +24,22 @@ export function NewMenu({
   onClose(): void
 }): React.JSX.Element {
   const ref = useRef<HTMLUListElement>(null)
+  const previous = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    previous.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
     return () => {
-      if (previous?.isConnected) previous.focus()
+      // a escolha pode ter levado o foco adiante (a paleta do + Novo > Task): só devolve se ele
+      // ficou sem dono quando o menu sumiu
+      const now = document.activeElement
+      const lost = !now || now === document.body || !now.isConnected
+      if (lost && previous.current?.isConnected) previous.current.focus()
     }
   }, [])
+  const dismiss = (): void => {
+    onClose()
+    if (previous.current?.isConnected) previous.current.focus()
+  }
   return (
     <ul
       ref={ref}
@@ -41,12 +50,12 @@ export function NewMenu({
         const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')]
         const i = items.indexOf(document.activeElement as HTMLElement)
         const go = (n: number): void => items[(n + items.length) % items.length]?.focus()
-        if (e.key === 'Escape') onClose()
+        if (e.key === 'Escape') dismiss()
         else if (e.key === 'ArrowDown') go(i + 1)
         else if (e.key === 'ArrowUp') go(i - 1)
         else if (e.key === 'Home') go(0)
         else if (e.key === 'End') go(items.length - 1)
-        else if (e.key === 'Tab') onClose()
+        else if (e.key === 'Tab') dismiss()
         else return
         if (e.key !== 'Tab') e.preventDefault()
         e.stopPropagation()

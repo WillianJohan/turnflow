@@ -314,3 +314,26 @@ it('fechar a janela grava o ui.json na hora (sem esperar o debounce)', async () 
   expect(saves.length).toBe(before + 1)
   expect((saves.at(-1)!.args[0] as UiFile).layout.panels).toEqual([])
 })
+
+it('+ Novo > Task deixa o foco na paleta, não volta pra quem abriu o menu', async () => {
+  await mount({ brain: [brainTask('WF-9')], ui: withLayout(['WF-9']) })
+  const plus = host.querySelector<HTMLElement>('.tab-plus')!
+  act(() => plus.focus())
+  act(() => plus.click())
+  const task = [...host.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((b) =>
+    b.textContent?.includes('Task')
+  )!
+  act(() => task.click())
+  await flush()
+  expect(document.activeElement?.getAttribute('role')).toBe('combobox')
+})
+
+it('+ Novo fechado no Esc devolve o foco pra quem abriu', async () => {
+  await mount({ brain: [brainTask('WF-9')], ui: withLayout(['WF-9']) })
+  const plus = host.querySelector<HTMLElement>('.tab-plus')!
+  act(() => plus.focus())
+  act(() => plus.click())
+  pressOn('Escape')
+  await flush()
+  expect(document.activeElement).toBe(plus)
+})
