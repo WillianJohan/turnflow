@@ -92,29 +92,32 @@ function App(): React.JSX.Element {
     names: new Map<string, TabName>()
   })
   const lastNotified = useRef(new Map<string, number>())
-  const notifyPending = (id: string, st: TaskState, info: HookInfo): void => {
-    const { layout: l, cfg: c, names: ns } = now.current
-    const visible = l.panels.some((p) => p.tabs[p.active] === id)
-    const ok = shouldNotify({
-      state: st,
-      enabled: c?.config.notifications ?? true,
-      watching: document.hasFocus() && visible,
-      lastAt: lastNotified.current.get(id) ?? 0,
-      now: Date.now()
-    })
-    const text = notifyText(id.startsWith('~') ? tabLabel(id) : (ns.get(id)?.key ?? id), info)
-    if (!ok || !text) return
-    lastNotified.current.set(id, Date.now())
-    const title = ns.get(id)?.title
-    const n = new Notification(text.title, {
-      body: title ? `${title}\n${text.body}` : text.body,
-      silent: false
-    })
-    n.onclick = () => {
-      window.turnflow.focusWindow()
-      act({ t: 'open', taskId: id })
-    }
-  }
+  const notifyPending = useCallback(
+    (id: string, st: TaskState, info: HookInfo): void => {
+      const { layout: l, cfg: c, names: ns } = now.current
+      const visible = l.panels.some((p) => p.tabs[p.active] === id)
+      const ok = shouldNotify({
+        state: st,
+        enabled: c?.config.notifications ?? true,
+        watching: document.hasFocus() && visible,
+        lastAt: lastNotified.current.get(id) ?? 0,
+        now: Date.now()
+      })
+      const text = notifyText(id.startsWith('~') ? tabLabel(id) : (ns.get(id)?.key ?? id), info)
+      if (!ok || !text) return
+      lastNotified.current.set(id, Date.now())
+      const title = ns.get(id)?.title
+      const n = new Notification(text.title, {
+        body: title ? `${title}\n${text.body}` : text.body,
+        silent: false
+      })
+      n.onclick = () => {
+        window.turnflow.focusWindow()
+        act({ t: 'open', taskId: id })
+      }
+    },
+    [act]
+  )
 
   useEffect(() => {
     unwrap(window.turnflow.listTasks()).then((t) => {
@@ -137,7 +140,7 @@ function App(): React.JSX.Element {
       )
     ]
     return () => offs.forEach((f) => f())
-  }, [])
+  }, [notifyPending])
 
   // Rajada de domain.changed (import, sync, a IA mexendo) vira poucas recargas: uma por janela de
   // 100 ms, nunca duas no ar ao mesmo tempo.
@@ -358,7 +361,7 @@ function App(): React.JSX.Element {
           )
         })
     },
-    [layout, live.alive]
+    [layout, live.alive, act]
   )
   // título da janela = aba ativa de cada painel (ex.: "T-5030 │ T-4802 — <nome do app>")
   useEffect(() => {
