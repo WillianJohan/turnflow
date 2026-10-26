@@ -103,20 +103,20 @@ export function createPtyPool(o: {
     p.kill()
     // claude que ignora SIGHUP vira processo invisível; sem exit em `grace` vai no SIGKILL.
     // No Windows (conpty) matar por pid não existe: só `p.kill()` e esperar o exit.
-    if (platform !== 'win32')
-      l.timer = setTimeout(() => {
-        hardKill(p.pid)
-        // nem o SIGKILL trouxe o onExit (o node-pty perdeu o evento): libera o id com log, senão
-        // a aba ficaria em pty_busy para sempre
-        l.timer = setTimeout(() => {
-          l.timer = null
-          if (leaving.get(id) !== l) return
-          released.add(p)
-          settle(id, l)
-          o.log?.(`pty ${id}: no exit ${stuck} ms after SIGKILL (pid ${p.pid}); id released`)
-          o.events.exit(id, -1, gen)
-        }, stuck)
-      }, grace)
+    // Nos dois, se nem assim o onExit chegar (o node-pty perdeu o evento), o id é liberado com
+    // log depois do teto; senão a aba ficaria em pty_busy para sempre.
+    const release = (): void => {
+      l.timer = null
+      if (leaving.get(id) !== l) return
+      released.add(p)
+      settle(id, l)
+      o.log?.(`pty ${id}: no exit ${grace + stuck} ms after kill (pid ${p.pid}); id released`)
+      o.events.exit(id, -1, gen)
+    }
+    l.timer = setTimeout(() => {
+      if (platform !== 'win32') hardKill(p.pid)
+      l.timer = setTimeout(release, stuck)
+    }, grace)
   }
 
   const waitExit = (id: string, ms: number): Promise<void> => {

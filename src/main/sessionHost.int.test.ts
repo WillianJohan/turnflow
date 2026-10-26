@@ -415,6 +415,24 @@ describe('session host', () => {
     b.db.close()
   })
 
+  it('processo que nunca dá exit: o pool libera o id, a sessão encerra e o log do host recebe', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    const first = await spawn(b, { task: t.id })
+    vi.useFakeTimers()
+    try {
+      b.host.kill('p1')
+      await vi.advanceTimersByTimeAsync(10_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(b.logs.some((l) => l.includes('released'))).toBe(true)
+    expect(getSession(b.d!, first.session_id!)?.ended_at).not.toBeNull()
+    expect(await post(b, 'tok-1', { hook_event_name: 'Stop' })).toBe(401)
+    await b.close()
+    b.db.close()
+  })
+
   it('outro start do mesmo pty_id durante o await não apaga a entrada que subiu', async () => {
     const b = await boot()
     const t = task(b, '/w')

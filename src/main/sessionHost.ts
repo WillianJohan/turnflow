@@ -132,6 +132,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
   const pool = createPtyPool({
     spawner: o.spawner,
     platform: o.platform,
+    log: o.log,
     events: {
       data: (id, d) => {
         bumpCodex(id)

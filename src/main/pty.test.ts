@@ -186,6 +186,21 @@ describe('createPtyPool', () => {
     expect(killSpy).not.toHaveBeenCalled()
   })
 
+  it('win32: sem onExit depois do teto o id é liberado com log, sem process.kill', () => {
+    vi.useFakeTimers()
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true)
+    const { pool, events, log } = setup('win32')
+    pool.start('a', ['sh'], '/w', {}, size)
+    pool.kill('a')
+    vi.advanceTimersByTime(3000 + 1999)
+    expect(pool.busy('a')).toBe(true)
+    vi.advanceTimersByTime(1)
+    expect(pool.busy('a')).toBe(false)
+    expect(events.exit).toHaveBeenCalledWith('a', -1, 1)
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('released'))
+    expect(killSpy).not.toHaveBeenCalled()
+  })
+
   it('killAndWait resolve no exit', async () => {
     vi.useFakeTimers()
     const { pool, procs } = setup()
