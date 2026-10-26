@@ -6,7 +6,7 @@ import { attachTerm, getTerm, hasTerm } from './terms'
 import { Composer } from './Composer'
 import { Icon } from './Icon'
 import { orThrow } from './ipc'
-import { spawnWhenFree } from './sessionStart'
+import { adoptFromPty, needsEndConfirm, spawnWhenFree } from './sessionStart'
 
 type Props = {
   id: string
@@ -107,11 +107,8 @@ export function ScratchView({
                 />
                 <button
                   onClick={() =>
-                    void orThrow(
-                      window.turnflow.sessionAdopt({ session_id: sessionId, task: adoptKey })
-                    ).then(
-                      () => setErr(''),
-                      (x) => setErr(String(x?.message ?? x))
+                    void adoptFromPty(window.turnflow, id, adoptKey).then((r) =>
+                      setErr(r.ok ? '' : r.message)
                     )
                   }
                 >
@@ -120,7 +117,18 @@ export function ScratchView({
               </span>
             )}
             {alive && (
-              <button onClick={() => onEnd(id)} title="Mata o processo">
+              <button
+                onClick={() => {
+                  // Decisão 35: com a IA em working, encerrar confirma (igual à aba de task)
+                  if (
+                    needsEndConfirm(live.states[id]) &&
+                    !window.confirm(SESSION_COPY.endWhileWorking)
+                  )
+                    return
+                  onEnd(id)
+                }}
+                title="Mata o processo"
+              >
                 Encerrar
               </button>
             )}

@@ -66,5 +66,9 @@ export function registerSessionIpc(
     }
   })
 
+  handle(S.sessionOfPty, ({ pty_id }, e) => ({
+    session_id: deps.guard.canWrite(pty_id, e.sender.id) ? deps.host.sessionOf(pty_id) : null
+  }))
+
   handle(S.sessionPickWorkdir, () => deps.pickFolder())
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { needsEndConfirm, spawnWhenFree, startSessionFlow } from './sessionStart'
+import { SESSION_COPY } from '../../shared/copy/session'
+import { adoptFromPty, needsEndConfirm, spawnWhenFree, startSessionFlow } from './sessionStart'
 
 const conflict = {
   ok: false as const,
@@ -153,6 +154,36 @@ describe('spawnWhenFree', () => {
     const spawn = vi.fn(async () => conflict)
     await expect(spawnWhenFree(spawn, bus.onExit, 'p')).resolves.toEqual(conflict)
     expect(spawn).toHaveBeenCalledOnce()
+  })
+})
+
+describe('adoptFromPty', () => {
+  it('adota a sessão atual do pty, não a do spawn (que pode ter sumido numa fusão)', async () => {
+    const api = {
+      sessionOfPty: vi.fn(async () => ({
+        ok: true as const,
+        data: { session_id: 'sobrevivente' }
+      })),
+      sessionAdopt: vi.fn(async () => ({
+        ok: true as const,
+        data: { row: null, activity_id: 'a' }
+      }))
+    }
+    await expect(adoptFromPty(api, 'p1', 'T-1')).resolves.toEqual({ ok: true })
+    expect(api.sessionOfPty).toHaveBeenCalledWith({ pty_id: 'p1' })
+    expect(api.sessionAdopt).toHaveBeenCalledWith({ session_id: 'sobrevivente', task: 'T-1' })
+  })
+
+  it('pty sem sessão não chama o adopt', async () => {
+    const api = {
+      sessionOfPty: vi.fn(async () => ({ ok: true as const, data: { session_id: null } })),
+      sessionAdopt: vi.fn()
+    }
+    await expect(adoptFromPty(api, 'p1', 'T-1')).resolves.toEqual({
+      ok: false,
+      message: SESSION_COPY.noSession
+    })
+    expect(api.sessionAdopt).not.toHaveBeenCalled()
   })
 })
 

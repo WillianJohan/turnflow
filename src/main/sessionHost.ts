@@ -80,6 +80,8 @@ export type SessionHost = {
   accept(token: string): boolean
   onHook(token: string, b: HookBody): void
   stateOf(ptyId: string): SessionState | null
+  /** Sessão atual do pty (muda numa fusão); `null` sem sessão. */
+  sessionOf(ptyId: string): string | null
   alive(): string[]
   onVaultReady(d: DomainDeps): void
   onVaultLeft(): void
@@ -383,6 +385,10 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
 
     stateOf(ptyId) {
       return entries.get(ptyId)?.state ?? null
+    },
+
+    sessionOf(ptyId) {
+      return entries.get(ptyId)?.session_id ?? null
     },
 
     alive() {

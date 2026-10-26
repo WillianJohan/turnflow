@@ -5,7 +5,7 @@ import type { Actor, DomainDeps } from '../../core/domain/context'
 import { getSession } from '../../core/domain/session'
 import { vaultPaths } from '../../core/key/paths'
 import { createVault, type Vault } from '../../core/key/vault'
-import { tmpDir } from '../../core/testing/db'
+import { insertSession, tmpDir } from '../../core/testing/db'
 import { fakeKeyBackend } from '../../core/testing/fakeKeyBackend'
 import { CHANNELS } from '../../shared/ipc/registry'
 import type { PtyProc, PtySpawner } from '../pty'
@@ -129,6 +129,45 @@ const domainForOf = (): ((db: Db) => DomainDeps) =>
   })
 
 describe('canais de sessão', () => {
+  it('session.ofPty devolve a sessão atual do pty depois da fusão; de outra janela, null', async () => {
+    const dir = tmpDir()
+    const vault = await readyVault(dir)
+    const forDb = domainForOf()
+    const { invoke, host } = harness(vault, forDb)
+    const d = forDb(vault.db())
+    const U = '00000000-0000-4000-8000-000000000009'
+    const old = insertSession(vault.db(), {
+      task_id: null,
+      state: 'idle',
+      state_at: '2026-01-01T00:00:00.000Z',
+      started_at: '2026-01-01T00:00:00.000Z',
+      ended_at: '2026-01-02T00:00:00.000Z',
+      external_id: U,
+      tool: 'claude-code'
+    })
+    const spawned = (await invoke(CHANNELS.ptySpawn.name, {
+      kind: 'agent',
+      pty_id: 'p1',
+      tool: 'claude-code',
+      task: null,
+      cols: 80,
+      rows: 24
+    })) as { ok: true; data: { session_id: string } }
+    expect(spawned.ok).toBe(true)
+    host.onHook('tok-1', { hook_event_name: 'SessionStart', session_id: U, cwd: '/w' })
+    // a sessão que o spawn devolveu sumiu na fusão: quem pergunta pelo pty recebe a sobrevivente
+    expect(getSession(d, spawned.data.session_id)).toBeNull()
+    await expect(invoke(CHANNELS.sessionOfPty.name, { pty_id: 'p1' })).resolves.toEqual({
+      ok: true,
+      data: { session_id: old }
+    })
+    await expect(invoke(CHANNELS.sessionOfPty.name, { pty_id: 'p1' }, 2)).resolves.toEqual({
+      ok: true,
+      data: { session_id: null }
+    })
+    vault.close()
+  })
+
   it('pty.spawn com input inválido → VALIDATION', async () => {
     const dir = tmpDir()
     const vault = await readyVault(dir)

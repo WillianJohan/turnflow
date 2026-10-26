@@ -38,5 +38,6 @@ export const SESSION_COPY = {
   adopt: 'Adopt into task',
   resume: 'Resume',
   newSession: 'New session',
-  sessionOpen: 'session open'
+  sessionOpen: 'session open',
+  noSession: 'This tab has no session to adopt'
 } as const

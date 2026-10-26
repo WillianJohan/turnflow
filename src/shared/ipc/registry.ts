@@ -21,6 +21,7 @@ export const CHANNELS = {
   ptySpawn: pty.ptySpawn,
   sessionList: session.sessionList,
   sessionAdopt: session.sessionAdopt,
+  sessionOfPty: session.sessionOfPty,
   sessionPickWorkdir: session.sessionPickWorkdir,
   write: pty.ptyWrite,
   send: pty.ptySend,

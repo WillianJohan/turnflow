@@ -1,4 +1,5 @@
 import type { SessionState, SessionTool } from '../../shared/contracts'
+import { SESSION_COPY } from '../../shared/copy/session'
 
 type Api = Pick<Window['turnflow'], 'ptySpawn' | 'sessionPickWorkdir' | 'taskSetWorkdir' | 'onExit'>
 type Spawned = Awaited<ReturnType<Window['turnflow']['ptySpawn']>>
@@ -92,6 +93,19 @@ export async function startSessionFlow(
   const second = await spawn()
   if (second.ok) return { ok: true, session_id: second.data.session_id }
   return { ok: false, message: second.error.message }
+}
+
+/** Adota a sessão atual do pty: a que o spawn devolveu some se uma fusão a absorver. */
+export async function adoptFromPty(
+  api: Pick<Window['turnflow'], 'sessionOfPty' | 'sessionAdopt'>,
+  ptyId: string,
+  task: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const cur = await api.sessionOfPty({ pty_id: ptyId })
+  if (!cur.ok) return { ok: false, message: cur.error.message }
+  if (!cur.data.session_id) return { ok: false, message: SESSION_COPY.noSession }
+  const done = await api.sessionAdopt({ session_id: cur.data.session_id, task })
+  return done.ok ? { ok: true } : { ok: false, message: done.error.message }
 }
 
 export function needsEndConfirm(state: SessionState | undefined): boolean {

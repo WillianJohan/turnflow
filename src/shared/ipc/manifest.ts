@@ -9,6 +9,7 @@ export const MANIFEST = {
   ptySpawn: ['pty.spawn', 'invoke'],
   sessionList: ['session.list', 'invoke'],
   sessionAdopt: ['session.adopt', 'invoke'],
+  sessionOfPty: ['session.ofPty', 'invoke'],
   sessionPickWorkdir: ['session.pickWorkdir', 'invoke'],
   write: ['pty:write', 'send'],
   send: ['pty:send', 'invoke'],
