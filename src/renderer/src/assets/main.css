@@ -1623,3 +1623,24 @@ body.resizing .settings-page {
     transition-duration: 0s;
   }
 }
+
+/* + Novo aberto pelo atalho: o menu fica no meio da tela, fora de uma barra de abas */
+.menu.new-overlay {
+  position: static;
+}
+.palette-error,
+.form-error {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--err-fg);
+  background: var(--err-bg);
+}
+.palette-key {
+  color: var(--fg-dim);
+}
+.project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: min(360px, 80vw);
+}

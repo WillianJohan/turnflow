@@ -141,3 +141,69 @@ it('task do domínio achada pela paleta abre e a aba vai pro ui.json', async () 
   const saved = fake.calls.filter((c) => c.name === 'uiSet').at(-1)?.args[0] as UiFile
   expect(saved.layout.panels[0].tabs).toEqual([ULID])
 })
+
+const focusedText = (): string => {
+  const el = document.activeElement as HTMLElement | null
+  return el?.getAttribute('role') === 'menuitem' ? (el.textContent ?? '') : '(no menu item focused)'
+}
+const pressOn = (key: string): void =>
+  act(() => {
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+  })
+
+it('+ Novo pelo teclado: foco no primeiro item, setas andam, Esc fecha', async () => {
+  await mount({ brain: [] })
+  key('KeyN')
+  expect(host.querySelector('[role="menu"]')).not.toBeNull()
+  expect(focusedText()).toContain('Task')
+  pressOn('ArrowDown')
+  expect(focusedText()).toContain('Project')
+  pressOn('ArrowUp')
+  pressOn('ArrowUp')
+  expect(focusedText()).toContain('Terminal')
+  pressOn('Escape')
+  expect(host.querySelector('[role="menu"]')).toBeNull()
+})
+
+it('Nome do projeto: Enter cria, erro aparece, sucesso avisa e Esc cancela', async () => {
+  let fail = true
+  const fake = fakeApi(
+    { brain: [] },
+    {
+      projectCreate: (async ({ name }: { name: string }) =>
+        fail
+          ? { ok: false, error: { code: 'CONFLICT', message: 'Name already in use' } }
+          : { ok: true, data: { id: 'p1', name } }) as never
+    }
+  )
+  ;(window as unknown as { turnflow: unknown }).turnflow = fake.api
+  act(() => root.render(<App />))
+  await flush()
+  key('KeyN')
+  pressOn('ArrowDown')
+  // no navegador o Enter num botão vira clique; o jsdom não faz isso sozinho
+  act(() => (document.activeElement as HTMLElement).click())
+  await flush()
+  const field = document.activeElement as HTMLInputElement
+  expect(field.tagName).toBe('INPUT')
+  act(() => {
+    const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    proto?.set?.call(field, 'Login')
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => field.form!.requestSubmit())
+  await flush()
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Name already in use')
+  fail = false
+  await act(async () => field.form!.requestSubmit())
+  await flush()
+  expect(host.querySelector('form input')).toBeNull()
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Login')
+  key('KeyN')
+  pressOn('ArrowDown')
+  // no navegador o Enter num botão vira clique; o jsdom não faz isso sozinho
+  act(() => (document.activeElement as HTMLElement).click())
+  await flush()
+  pressOn('Escape')
+  expect(host.querySelector('form input')).toBeNull()
+})

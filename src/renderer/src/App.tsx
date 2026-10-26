@@ -19,7 +19,9 @@ import { disposeTerm, getTerm, hasTerm, liveTerms } from './terms'
 import { Palette } from './Palette'
 import { ShortcutDialog } from './ShortcutDialog'
 import { activeBindings, bindCommand, shortcutOverrides } from './commands'
-import { NEW_ACTIONS, type NewAction } from './palette'
+import { type NewAction } from './palette'
+import { NewMenu } from './NewMenu'
+import { ProjectDialog } from './ProjectDialog'
 import { termsToDispose } from './live'
 import { applyTheme } from './theme'
 import { isTextField } from './focus'
@@ -519,49 +521,29 @@ function App(): React.JSX.Element {
       )}
       {creating && (
         <div className="overlay" onMouseDown={() => setCreating(false)}>
-          <div
-            className="search"
-            role="menu"
-            aria-label="New"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            {NEW_ACTIONS.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setCreating(false)
-                  newTab(item.id, layout.focused)
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
+          <div onMouseDown={(event) => event.stopPropagation()}>
+            <NewMenu
+              className="new-overlay"
+              onClose={() => setCreating(false)}
+              onPick={(kind) => {
+                setCreating(false)
+                newTab(kind, layout.focused)
+              }}
+            />
           </div>
         </div>
       )}
       {projectName !== null && (
-        <form
-          className="overlay"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const name = projectName.trim()
-            if (!name) return
-            void window.turnflow.projectCreate({ name }).then((result) => {
-              if (result.ok) setProjectName(null)
-            })
+        <ProjectDialog
+          onClose={() => setProjectName(null)}
+          onCreate={async (name) => {
+            const result = await window.turnflow.projectCreate({ name })
+            if (!result.ok) return result.error.message
+            setProjectName(null)
+            setNotice(SHELL_COPY.project.created(result.data.name))
+            return null
           }}
-          onMouseDown={() => setProjectName(null)}
-        >
-          <div className="search" onMouseDown={(event) => event.stopPropagation()}>
-            <input
-              autoFocus
-              value={projectName}
-              placeholder="Project name"
-              onChange={(event) => setProjectName(event.target.value)}
-            />
-            <button type="submit">Create project</button>
-          </div>
-        </form>
+        />
       )}
       {shortcutOpen && (
         <ShortcutDialog

@@ -22,5 +22,14 @@ export const SHELL_COPY = {
     empty: 'Nothing matches',
     createFailed: 'The task was not created'
   },
+  project: {
+    title: 'New project',
+    name: 'Project name',
+    required: 'Type a name for the project',
+    create: 'Create project',
+    creating: 'Creating…',
+    cancel: 'Cancel',
+    created: (name: string): string => `Project ${name} created`
+  },
   syncOff: 'Sync is not connected yet.'
 } as const

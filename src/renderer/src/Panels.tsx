@@ -4,6 +4,7 @@ import { SettingsView } from './SettingsView'
 import type { Live, TabName } from './App'
 import { type Action, type Layout, scratchKind, HOME, SETTINGS, tabLabel } from './layout'
 import { NEW_ACTIONS, type NewAction } from './palette'
+import { NewMenu } from './NewMenu'
 import { Dot } from './ui/Dot'
 import { Icon } from './Icon'
 import { ScratchView } from './ScratchView'
@@ -37,44 +38,6 @@ function zoneOf(e: React.DragEvent<HTMLElement>, panel: number): Zone {
   const r = e.currentTarget.getBoundingClientRect()
   const x = (e.clientX - r.left) / r.width
   return { panel, side: x < 0.3 ? -1 : x > 0.7 ? 1 : 0 }
-}
-
-function NewTabMenu({
-  onPick,
-  onClose
-}: {
-  onPick(k: NewAction): void
-  onClose(): void
-}): React.JSX.Element {
-  const icon: Record<NewAction, 'pencil' | 'terminal' | 'search' | 'file'> = {
-    task: 'search',
-    project: 'file',
-    claude: 'pencil',
-    terminal: 'terminal'
-  }
-  return (
-    <ul
-      className="menu newtab"
-      role="menu"
-      onMouseLeave={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-        const bs = [...e.currentTarget.querySelectorAll('button')]
-        const i = bs.indexOf(document.activeElement as HTMLButtonElement)
-        bs[(i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length]?.focus()
-        e.preventDefault()
-      }}
-    >
-      {NEW_ACTIONS.map((item, i) => (
-        <li key={item.id}>
-          <button role="menuitem" autoFocus={i === 0} onClick={() => onPick(item.id)}>
-            <Icon name={icon[item.id]} size={13} /> {item.label}
-          </button>
-        </li>
-      ))}
-    </ul>
-  )
 }
 
 export function Panels(props: Props): React.JSX.Element {
@@ -132,7 +95,7 @@ export function Panels(props: Props): React.JSX.Element {
         <Icon name="plus" size={14} />
       </button>
       {newTabPanel === pi && (
-        <NewTabMenu
+        <NewMenu
           onClose={() => setNewTabPanel(null)}
           onPick={(k) => {
             setNewTabPanel(null)
