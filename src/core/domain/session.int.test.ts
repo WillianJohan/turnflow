@@ -287,6 +287,35 @@ describe('sessão', () => {
     expect(sessionRow(h.db, liveA).external_id).toBe('U3')
   })
 
+  it('fusão preserva o label das duas e o id bifurcado da perdedora', () => {
+    const h = setup()
+    const t = task(h)
+    const old = insertSession(h.db, {
+      task_id: t.id,
+      state: 'idle',
+      state_at: '2026-01-01T00:00:00.000Z',
+      started_at: '2026-01-01T00:00:00.000Z',
+      ended_at: '2026-02-01T00:00:00.000Z',
+      external_id: U,
+      label: 'design',
+      tool: 'claude-code'
+    })
+    const cur = insertSession(h.db, {
+      task_id: t.id,
+      state: 'working',
+      state_at: '2026-06-01T00:00:00.000Z',
+      started_at: '2026-06-01T00:00:00.000Z',
+      external_id: 'FORKED',
+      label: 'review',
+      tool: 'claude-code'
+    })
+    expect(recordSessionStart(h.d, cur, { external_id: U, cwd: '/w' }).session_id).toBe(old)
+    expect(sessionRow(h.db, old)).toMatchObject({
+      external_id: U,
+      label: 'design · review · FORKED'
+    })
+  })
+
   it('estado só escreve quando muda', () => {
     const h = setup()
     const t = task(h)

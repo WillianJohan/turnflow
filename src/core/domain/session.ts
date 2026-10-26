@@ -199,6 +199,10 @@ export function recordSessionStart(
       const survivor = byStart(cur, other)
       const loser = survivor.id === cur.id ? other : cur
       const task_id = cur.task_id ?? other.task_id
+      // nada se perde na fusão: o label das duas e o id de onde a atual bifurcou
+      const forked = cur.external_id && cur.external_id !== i.external_id ? cur.external_id : null
+      const parts = [survivor.label, loser.label, forked].filter((p): p is string => !!p)
+      const label = parts.length ? [...new Set(parts)].join(' · ') : null
       d.db
         .prepare('update mcp_client set ai_session_id = ? where ai_session_id = ?')
         .run(survivor.id, loser.id)
@@ -206,10 +210,11 @@ export function recordSessionStart(
       d.db
         .prepare(
           `update ai_session
-           set task_id = ?, external_id = ?, cwd = ?, state = ?, state_at = ?, ended_at = null
+           set task_id = ?, external_id = ?, cwd = ?, state = ?, state_at = ?, ended_at = null,
+               label = ?
            where id = ?`
         )
-        .run(task_id, i.external_id, i.cwd, cur.state, cur.state_at, survivor.id)
+        .run(task_id, i.external_id, i.cwd, cur.state, cur.state_at, label, survivor.id)
       d.db.prepare('delete from ai_session where id = ?').run(loser.id)
       emit({ entity: 'session', ids: [loser.id], op: 'delete' })
       emit({ entity: 'session', ids: [survivor.id], op: 'upsert' })
