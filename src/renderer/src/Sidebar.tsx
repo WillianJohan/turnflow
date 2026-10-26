@@ -1,4 +1,5 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import type { TaskRow } from '../../shared/contracts'
 import { clampSidebar, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
 import type { Task } from '../../shared/types'
@@ -33,10 +34,11 @@ type Props = {
   domainKeys?: Set<string>
 }
 
+// nomes de bucket do brain do usuário (dado, não texto da UI): começam recolhidos
 const COLLAPSED = new Set(['Concluído', 'Arquivada'])
 const FILTER_KEY = 'turnflow.sidebarFilter'
 
-const STATE_LABEL = { waiting: 'esperando você', working: 'trabalhando', idle: 'parado' }
+const S = SHELL_COPY.sidebar
 
 function loadFilter(): Set<string> {
   try {
@@ -177,7 +179,7 @@ export function Sidebar({
             data-nav
             className={`item-kids ${isExp ? 'on' : ''}`}
             aria-expanded={isExp}
-            title={`${isExp ? 'Esconder' : 'Mostrar'} ${kids} ${kids === 1 ? 'subtarefa' : 'subtarefas'}`}
+            title={S.kids(isExp, kids)}
             onClick={() => toggleKids(t.id)}
           >
             {kids}
@@ -208,11 +210,11 @@ export function Sidebar({
           <span className="item-meta">
             <Dot state={state} />
             <span className="item-id">{t.id}</span>
-            <span>· {state ? STATE_LABEL[state] : 'sem sessão'}</span>
+            <span>· {state ? S.states[state] : S.noSession}</span>
           </span>
         </button>
         {alive && (
-          <button data-nav className="item-end" title="Encerrar sessão" onClick={() => onEnd(t.id)}>
+          <button data-nav className="item-end" title={S.endSession} onClick={() => onEnd(t.id)}>
             <Icon name="power" size={15} />
           </button>
         )}
@@ -221,12 +223,7 @@ export function Sidebar({
   }
 
   const foldBtn = (
-    <button
-      data-nav
-      className="sb-toggle"
-      title={folded ? 'Mostrar lista (Ctrl+Shift+B)' : 'Esconder lista (Ctrl+Shift+B)'}
-      onClick={onToggle}
-    >
+    <button data-nav className="sb-toggle" title={S.toggle(!!folded)} onClick={onToggle}>
       <Icon name="sidebar" />
     </button>
   )
@@ -280,7 +277,7 @@ export function Sidebar({
         className="sb-resize"
         onMouseDown={startResize}
         onDoubleClick={() => onWidth?.(SIDEBAR_DEFAULT)}
-        title="Arraste pra mudar a largura. Duplo clique volta ao padrão."
+        title={S.resize}
       />
       <div className="sb-head">
         <Logo />
@@ -290,9 +287,9 @@ export function Sidebar({
         </span>
       </div>
       <div className="sb-tools">
-        <button data-nav className="sb-find" onClick={onSearch} title="Buscar task (Ctrl+Shift+K)">
+        <button data-nav className="sb-find" onClick={onSearch} title={S.search}>
           <Icon name="search" size={14} />
-          <span>Buscar card ou título</span>
+          <span>{S.searchLabel}</span>
         </button>
         <div
           className="filter"
@@ -312,8 +309,8 @@ export function Sidebar({
             className={`filter-btn ${filter.size || filterOpen ? 'on' : ''}`}
             aria-haspopup="dialog"
             aria-expanded={filterOpen}
-            aria-label="Filtrar por categoria"
-            title="Filtrar por categoria"
+            aria-label={S.filter}
+            title={S.filter}
             onClick={() => setFilterOpen((o) => !o)}
           >
             <Icon name="filter" size={14} />
@@ -323,13 +320,13 @@ export function Sidebar({
             <div
               className="filter-pop"
               role="dialog"
-              aria-label="Filtrar por categoria"
+              aria-label={S.filter}
               tabIndex={-1}
               onKeyDown={(e) => e.key !== 'Escape' && e.stopPropagation()}
             >
               <div className="filter-head">
-                Mostrar categorias
-                <button onClick={() => setFilter(new Set())}>Todas</button>
+                {S.filterHead}
+                <button onClick={() => setFilter(new Set())}>{S.filterAll}</button>
               </div>
               {groups.map((g, i) => (
                 <label className="filter-opt" key={g.name} style={groupStyle(icons[g.name])}>
@@ -355,7 +352,7 @@ export function Sidebar({
               key={name}
               className="chip"
               style={groupStyle(icons[name])}
-              aria-label={`Remover filtro ${name}`}
+              aria-label={S.removeFilter(name)}
               onClick={() => toggleFilter(name)}
             >
               {name}
@@ -365,12 +362,12 @@ export function Sidebar({
         </div>
       )}
       <div className="sb-scroll">
-        <div className="attn-switch" role="group" aria-label="Density">
+        <div className="attn-switch" role="group" aria-label={S.density}>
           {(
             [
-              ['compact', 'Compact'],
-              ['normal', 'Normal'],
-              ['wide', 'Wide']
+              ['compact', S.densities.compact],
+              ['normal', S.densities.normal],
+              ['wide', S.densities.wide]
             ] as const
           ).map(([id, label]) => (
             <button
@@ -384,24 +381,16 @@ export function Sidebar({
           ))}
         </div>
         <AttentionList rows={attention} density={density} onOpen={onOpen} onPeek={onPeek} />
-        {!tasks.length && (
-          <p className="sb-empty">
-            {root
-              ? `Nenhuma task encontrada em ${root}.`
-              : 'No brain folder yet: import one in Settings'}
-          </p>
-        )}
+        {!tasks.length && <p className="sb-empty">{root ? S.noTasksIn(root) : S.noBrain}</p>}
         {open.length > 0 && (
           <section className="open-list">
             <h5 className="open-head">
-              Abertas <span className="count">{open.length}</span>
+              {S.open} <span className="count">{open.length}</span>
             </h5>
             {open.map(card)}
           </section>
         )}
-        {tasks.length > 0 && !shown.length && (
-          <p className="sb-empty">Nenhuma task nas categorias filtradas.</p>
-        )}
+        {tasks.length > 0 && !shown.length && <p className="sb-empty">{S.noneFiltered}</p>}
         {shown.map((g) => {
           const isOpen = !collapsed.has(g.name)
           return (

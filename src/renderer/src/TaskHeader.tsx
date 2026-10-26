@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import { headerFace, menuItems, summaryPatch, type MenuId } from './taskFace'
 import { StageBar } from './ui/StageBar'
 import { TextField } from './ui/TextField'
@@ -60,7 +61,7 @@ export function TaskHeader({
           <button
             onClick={() => setMenu((open) => !open)}
             aria-expanded={menu}
-            aria-label="Task menu"
+            aria-label={SHELL_COPY.header.menu}
           >
             ⋯
           </button>
@@ -92,9 +93,9 @@ export function TaskHeader({
             setEditing(false)
           }}
         >
-          <TextField label="Stopped at" value={what} onChange={setWhat} />
-          <TextField label="Next" value={next} onChange={setNext} />
-          <button type="submit">Save</button>
+          <TextField label={SHELL_COPY.header.stoppedAt} value={what} onChange={setWhat} />
+          <TextField label={SHELL_COPY.header.next} value={next} onChange={setNext} />
+          <button type="submit">{SHELL_COPY.header.save}</button>
         </form>
       ) : (
         <div className="task-summary">
@@ -116,7 +117,7 @@ export function TaskHeader({
           </button>
         </div>
       )}
-      {showUndo && <Toast action="Undo" onAction={onUndo} />}
+      {showUndo && <Toast action={SHELL_COPY.undo} onAction={onUndo} />}
     </div>
   )
 }

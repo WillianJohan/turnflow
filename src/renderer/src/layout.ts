@@ -1,4 +1,5 @@
 import { BRAND } from '../../shared/brand'
+import { SHELL_COPY } from '../../shared/copy/shell'
 // tabs = taskIds; preview = aba aberta com um clique (itálico), substituída pelo próximo clique
 // size = peso na largura (flex-grow); ausente = 1
 export type Panel = { tabs: string[]; active: number; preview?: string; size?: number }
@@ -216,10 +217,11 @@ export function scratchId(kind: ScratchKind, l: Layout, busy: Set<string> = new 
 
 // Rótulo curto da aba: id da task, ou "Claude N" / "Terminal N" pras avulsas.
 export function tabLabel(id: string): string {
-  if (id === SETTINGS) return 'Configurações'
-  if (id === HOME) return 'Home'
+  if (id === SETTINGS) return SHELL_COPY.tabs.settings
+  if (id === HOME) return SHELL_COPY.tabs.home
   const k = scratchKind(id)
-  return k ? `${k === 'claude' ? 'Claude' : 'Terminal'} ${id.split('-')[1]}` : id
+  const n = id.split('-')[1]
+  return k ? (k === 'claude' ? SHELL_COPY.tabs.claude(n) : SHELL_COPY.tabs.terminal(n)) : id
 }
 
 // Título da janela reflete o que está na tela: aba ativa de cada painel. `keyOf` troca o id de

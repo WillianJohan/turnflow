@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import type { ConfigState, Task } from '../../shared/types'
 import { SettingsView } from './SettingsView'
 import type { Live, TabName } from './App'
@@ -88,7 +89,7 @@ export function Panels(props: Props): React.JSX.Element {
     <span className="menu-wrap">
       <button
         className="tab-plus"
-        title="Nova aba (Ctrl+Shift+T)"
+        title={SHELL_COPY.tabs.newTab}
         onClick={(e) => {
           e.stopPropagation()
           setNewTabPanel(newTabPanel === pi ? null : pi)
@@ -132,7 +133,7 @@ export function Panels(props: Props): React.JSX.Element {
             <div
               key={`d${pi}`}
               className="divider"
-              title="Arraste pra redimensionar · clique duplo iguala"
+              title={SHELL_COPY.tabs.divider}
               onMouseDown={(e) => startDrag(e, pi - 1)}
               onDoubleClick={() => act({ t: 'equalize' })}
             />
@@ -207,11 +208,7 @@ export function Panels(props: Props): React.JSX.Element {
                     </span>
                     <button
                       className="tab-x"
-                      title={
-                        scratch
-                          ? 'Fechar aba (encerra o processo)'
-                          : 'Fechar aba (a sessão continua)'
-                      }
+                      title={scratch ? SHELL_COPY.tabs.closeScratch : SHELL_COPY.tabs.closeTask}
                       onClick={(e) => {
                         e.stopPropagation()
                         if (scratch) onEnd(id) // aba avulsa não tem lista onde voltar: fechar encerra
@@ -227,7 +224,7 @@ export function Panels(props: Props): React.JSX.Element {
               {!p.tabs.length && (
                 <button
                   className="tab-x"
-                  title="Fechar painel"
+                  title={SHELL_COPY.tabs.closePanel}
                   onClick={() => act({ t: 'dropPanel', panel: pi })}
                 >
                   <Icon name="x" size={12} />
@@ -264,10 +261,7 @@ export function Panels(props: Props): React.JSX.Element {
                 onUndoable={onUndoable}
               />
             ) : (
-              <div className="notice">
-                Painel vazio. Use o <b>+</b> acima, <kbd>Ctrl+Shift+K</kbd> ou clique numa task na
-                lista.
-              </div>
+              <div className="notice">{SHELL_COPY.tabs.empty}</div>
             )}
           </section>
         ]

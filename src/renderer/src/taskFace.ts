@@ -1,4 +1,5 @@
 // Cabeçalho, registro e menu da visão da task (E6.4). Textos em inglês até o E6.9.
+import { SHELL_COPY } from '../../shared/copy/shell'
 
 export const TOAST_MS = 8000
 
@@ -22,7 +23,7 @@ export function headerFace(input: {
   const what = textOf(input.sum_what)
   const where = textOf(input.sum_where)
   const next: HeaderLine = {
-    label: 'Next',
+    label: SHELL_COPY.header.next,
     text: nextText ?? '',
     placeholder: nextText === null
   }
@@ -32,20 +33,20 @@ export function headerFace(input: {
     return {
       lines: [
         last
-          ? { label: 'Last record', text: last.text, placeholder: true }
-          : { label: 'No summary', text: '', placeholder: true },
+          ? { label: SHELL_COPY.header.lastRecord, text: last.text, placeholder: true }
+          : { label: SHELL_COPY.header.noSummary, text: '', placeholder: true },
         next
       ],
-      edit: 'Edit'
+      edit: SHELL_COPY.header.edit
     }
   }
   const stopped = what ?? where ?? ''
   return {
     lines: [
-      { label: 'Stopped at', text: stopped, placeholder: false },
+      { label: SHELL_COPY.header.stoppedAt, text: stopped, placeholder: false },
       { ...next, placeholder: false }
     ],
-    edit: 'Edit'
+    edit: SHELL_COPY.header.edit
   }
 }
 
@@ -93,14 +94,18 @@ export type MenuId =
 export type MenuItem = { id: MenuId; label: string; undo: boolean }
 
 const MENU: Record<MenuId, MenuItem> = {
-  record: { id: 'record', label: 'Record', undo: false },
-  sessions: { id: 'sessions', label: 'Sessions', undo: false },
-  workdir: { id: 'workdir', label: 'Working folder', undo: false },
-  'previous-stage': { id: 'previous-stage', label: 'Previous stage', undo: true },
-  move: { id: 'move', label: 'Move', undo: true },
-  block: { id: 'block', label: 'Block', undo: true },
-  unblock: { id: 'unblock', label: 'Unblock', undo: true },
-  close: { id: 'close', label: 'Close', undo: true }
+  record: { id: 'record', label: SHELL_COPY.menu.record, undo: false },
+  sessions: { id: 'sessions', label: SHELL_COPY.menu.sessions, undo: false },
+  workdir: { id: 'workdir', label: SHELL_COPY.menu.workdir, undo: false },
+  'previous-stage': {
+    id: 'previous-stage',
+    label: SHELL_COPY.menu['previous-stage'],
+    undo: true
+  },
+  move: { id: 'move', label: SHELL_COPY.menu.move, undo: true },
+  block: { id: 'block', label: SHELL_COPY.menu.block, undo: true },
+  unblock: { id: 'unblock', label: SHELL_COPY.menu.unblock, undo: true },
+  close: { id: 'close', label: SHELL_COPY.menu.close, undo: true }
 }
 
 export function menuItems(blocked: boolean): MenuItem[] {
@@ -140,7 +145,7 @@ export function undoToast(
   return { activityId, until: now + TOAST_MS }
 }
 
-export const CLOSE_WHILE_WORKING = 'The AI is working. Close the task anyway?'
+export const CLOSE_WHILE_WORKING = SHELL_COPY.header.closeWhileWorking
 
 /** Par sugerido para a etapa atual. Sem sugestão, o adopt não tem para onde ir. */
 export function suggestedMapping(

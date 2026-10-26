@@ -378,7 +378,7 @@ describe('aba de configurações', () => {
     })
     expect(l.panels[0].tabs).toEqual([SETTINGS])
     expect(reduce(l, { t: 'retain', ids: new Set() }).panels[0].tabs).toEqual([SETTINGS])
-    expect(tabLabel(SETTINGS)).toBe('Configurações')
+    expect(tabLabel(SETTINGS)).toBe('Settings')
     expect(
       reduce(reduce(EMPTY, { t: 'open', taskId: HOME }), { t: 'retain', ids: new Set() }).panels[0]
         .tabs

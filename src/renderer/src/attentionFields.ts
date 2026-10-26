@@ -1,4 +1,5 @@
 import type { Reason, SessionState, TaskRow } from '../../shared/contracts'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import type { Density } from '../../shared/uiFile'
 
 export type AttentionFields = {
@@ -11,15 +12,7 @@ export type AttentionFields = {
   age: string | null
 }
 
-const MOTIVE: Record<Reason, string> = {
-  sessao_aguardando: 'AI waiting',
-  voltou: 'Back',
-  desbloqueada: 'Unblocked',
-  atribuida: 'Assigned',
-  bloqueada: 'Blocked',
-  aguardando_outro: 'Waiting on someone',
-  parada_no_projeto: 'Stalled in a project'
-}
+const MOTIVE: Record<Reason, string> = SHELL_COPY.attention.motives
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -37,7 +30,7 @@ export function relativeAge(iso: string, now: number): string {
 }
 
 export function rowMotive(row: TaskRow): string | null {
-  if (row.blocked_reason !== null) return 'Bloq.'
+  if (row.blocked_reason !== null) return SHELL_COPY.attention.blocked
   return row.reason ? MOTIVE[row.reason.kind] : null
 }
 
@@ -55,9 +48,9 @@ export function attentionFields(row: TaskRow, density: Density, now: number): At
 }
 
 export const ATTENTION_SECTIONS = [
-  ['sua_vez', 'Your turn'],
-  ['pendente', 'Pending'],
-  ['encaminhado', 'Forwarded']
+  ['sua_vez', SHELL_COPY.attention.sections.sua_vez],
+  ['pendente', SHELL_COPY.attention.sections.pendente],
+  ['encaminhado', SHELL_COPY.attention.sections.encaminhado]
 ] as const
 
 /** Mantém a ordem do core. `fila_projeto` e `concluida` ficam fora destas seções. */

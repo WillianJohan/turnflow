@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import { isModifierCode } from '../../shared/uiFile'
 import { COMMANDS } from './commands'
 
@@ -35,20 +36,20 @@ export function ShortcutDialog({ bindings, onBind, onClose }: Props): React.JSX.
       <div
         className="search shortcut-dialog"
         role="dialog"
-        aria-label="Shortcuts"
+        aria-label={SHELL_COPY.shortcuts.title}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <p>{capture ? 'Press Ctrl+Shift and the new key' : 'Shortcuts'}</p>
+        <p>{capture ? SHELL_COPY.shortcuts.capture : SHELL_COPY.shortcuts.title}</p>
         <ul>
           {COMMANDS.map((command) => (
             <li key={command.id}>
               <button disabled={!command.enabled} onClick={() => setCapture(command.id)}>
-                {command.label} <kbd>{bindings[command.id] ?? '—'}</kbd>
+                {command.label} <kbd>{bindings[command.id] ?? SHELL_COPY.shortcuts.unbound}</kbd>
               </button>
             </li>
           ))}
         </ul>
-        <button onClick={onClose}>Close</button>
+        <button onClick={onClose}>{SHELL_COPY.shortcuts.close}</button>
       </div>
     </div>
   )

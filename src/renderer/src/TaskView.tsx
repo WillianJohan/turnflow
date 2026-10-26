@@ -182,7 +182,7 @@ export function TaskView({
   const switchTo = (sessionId: string): void => {
     const row = sessions.find((s) => s.id === sessionId)
     if (alive) window.turnflow.kill({ id })
-    getTerm(id).term.write('\r\n\x1b[2m── trocando de sessão ──\x1b[0m\r\n')
+    getTerm(id).term.write(`\r\n\x1b[2m── ${T.switching} ──\x1b[0m\r\n`)
     start({ tool: toolOf(row?.tool ?? 'claude-code'), resume: sessionId })
   }
 
@@ -448,17 +448,17 @@ export function TaskView({
     const toggle = hasSession && (
       <button
         onClick={() => setView((v) => (v === 'term' ? 'readme' : 'term'))}
-        title="Alterna entre o README e o terminal"
+        title={SHELL_COPY.brainView.toggle}
       >
         <Icon name={view === 'term' ? 'file' : 'terminal'} size={13} />{' '}
-        {view === 'term' ? 'README' : 'Terminal'}
+        {view === 'term' ? SHELL_COPY.brainView.readme : SHELL_COPY.brainView.terminal}
       </button>
     )
     const actions = hasSession ? (
       <div className="readme-actions">
-        <span>Sessão {alive ? 'rodando' : 'encerrada'}.</span>
+        <span>{SHELL_COPY.brainView.session(alive)}</span>
         <button className="primary" onClick={() => setView('term')}>
-          <Icon name="terminal" size={13} /> Ir pro terminal
+          <Icon name="terminal" size={13} /> {SHELL_COPY.brainView.toTerminal}
         </button>
       </div>
     ) : (
@@ -478,7 +478,7 @@ export function TaskView({
             </button>
             <button onClick={() => start({ tool: 'codex' })}>Codex</button>
             <button onClick={() => start({ tool: 'cursor' })}>Cursor</button>
-            <button onClick={() => start({ tool: 'other' })}>Other</button>
+            <button onClick={() => start({ tool: 'other' })}>{T.other}</button>
           </>
         )}
       </div>
@@ -488,7 +488,7 @@ export function TaskView({
         <Header task={task} alive={alive} onEnd={askEnd} onSwitch={switchTo} extra={toggle} />
         {exitCode !== undefined && !alive && !starting && view === 'term' && (
           <div className="banner">
-            Processo saiu (código {exitCode}). <button onClick={reopen}>Reabrir</button>{' '}
+            {T.exited(exitCode)} <button onClick={reopen}>{T.reopen}</button>{' '}
             <button onClick={() => start({ tool: 'claude-code' })}>
               {SESSION_COPY.newSession}
             </button>

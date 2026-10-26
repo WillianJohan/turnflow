@@ -499,24 +499,28 @@ function App(): React.JSX.Element {
             <button
               data-nav
               className={cfg?.config.draftMode ? 'on' : ''}
-              title={`Draft mode ${cfg?.config.draftMode ? 'ligado' : 'desligado'} (Ctrl+Shift+D)`}
+              title={SHELL_COPY.sidebar.draft(!!cfg?.config.draftMode)}
               onClick={toggleDraft}
             >
               <Icon name="pencil" />
             </button>
             <button
               data-nav
-              title="Configurações: tema e fonte"
+              title={SHELL_COPY.sidebar.settings}
               onClick={() => act({ t: 'open', taskId: SETTINGS })}
             >
               <Icon name="settings" />
             </button>
-            <button data-nav title="Home" onClick={() => act({ t: 'open', taskId: HOME })}>
+            <button
+              data-nav
+              title={SHELL_COPY.sidebar.home}
+              onClick={() => act({ t: 'open', taskId: HOME })}
+            >
               <Icon name="file" />
             </button>
             <button
               data-nav
-              title="Buscar task (Ctrl+Shift+K)"
+              title={SHELL_COPY.sidebar.search}
               onClick={() => setSearching('search')}
             >
               <Icon name="search" />

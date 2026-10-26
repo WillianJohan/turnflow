@@ -1,4 +1,5 @@
 import type { TaskRow } from '../../shared/contracts'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import { rowMotive } from './attentionFields'
 
 export type HomeColumn = {
@@ -10,11 +11,7 @@ export type HomeColumn = {
   stalledRows: TaskRow[]
 }
 
-const LABELS = {
-  sua_vez: 'Your turn',
-  pendente: 'Pending',
-  encaminhado: 'Forwarded'
-} as const
+const LABELS = SHELL_COPY.attention.sections
 
 /** Três colunas de atenção. Paradas em projeto não entram nas colunas; a contagem fica no Pendente. */
 export function homeColumns(rows: TaskRow[]): HomeColumn[] {
@@ -30,7 +27,7 @@ export function homeColumns(rows: TaskRow[]): HomeColumn[] {
 
 export function stalledLabel(n: number): string | null {
   if (n <= 0) return null
-  return n === 1 ? '1 stalled in projects' : `${n} stalled in projects`
+  return SHELL_COPY.homeView.stalled(n)
 }
 
 /** Painel estreito esconde key e motivo. A tag Bloq. fica. */
@@ -39,12 +36,12 @@ export function homeLine(
   narrow: boolean
 ): { title: string; key: string | null; motive: string | null; tag: string | null } {
   const motive = rowMotive(row)
-  const blocked = motive === 'Bloq.'
+  const blocked = motive === SHELL_COPY.attention.blocked
   return {
     title: row.title,
     key: narrow ? null : row.key,
     motive: narrow || blocked ? null : motive,
-    tag: blocked ? 'Bloq.' : null
+    tag: blocked ? SHELL_COPY.attention.blocked : null
   }
 }
 

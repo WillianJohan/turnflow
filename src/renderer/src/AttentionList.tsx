@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import type { TaskRow } from '../../shared/contracts'
 import type { Density } from '../../shared/uiFile'
 import { attentionFields, attentionSections } from './attentionFields'
@@ -40,7 +41,7 @@ export function AttentionList({
     <div
       className="attn"
       role="listbox"
-      aria-label="Attention"
+      aria-label={SHELL_COPY.attention.label}
       data-density={density}
       tabIndex={-1}
       onKeyDown={(e) => {

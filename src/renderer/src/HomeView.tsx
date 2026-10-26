@@ -67,16 +67,16 @@ export function HomeView({
     <div ref={host} className={`home ${mode}`} data-narrow={tight ? '1' : '0'}>
       <div className="home-bar">
         <Segmented
-          label="Home layout"
+          label={SHELL_COPY.homeView.layout}
           value={mode}
           options={[
-            { id: 'list', label: 'List' },
-            { id: 'kanban', label: 'Kanban' }
+            { id: 'list', label: SHELL_COPY.homeView.list },
+            { id: 'kanban', label: SHELL_COPY.homeView.kanban }
           ]}
           onChange={onMode}
         />
         <button type="button" aria-pressed={showDone} onClick={onToggleDone}>
-          Done
+          {SHELL_COPY.homeView.done}
         </button>
       </div>
       {showDone ? (

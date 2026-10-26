@@ -1,3 +1,4 @@
+import { SHELL_COPY } from '../../shared/copy/shell'
 import { isShortcutCode } from '../../shared/uiFile'
 
 // Registro único da paleta, do modal de atalhos e do teclado (E6.5).
@@ -38,33 +39,35 @@ export type CommandDef = {
   enabled: boolean
 }
 
+const C = SHELL_COPY.commands
+
 const tab = (n: number): CommandDef => ({
   id: `tab-${n}` as CommandId,
-  label: `Tab ${n}`,
+  label: C.tab(n),
   code: `Digit${n}`,
   enabled: true
 })
 
 export const COMMANDS: CommandDef[] = [
-  { id: 'search', label: 'Search', code: 'KeyK', enabled: true },
-  { id: 'new', label: 'New', code: 'KeyN', enabled: true },
-  { id: 'newTab', label: 'New tab', code: 'KeyT', enabled: true },
-  { id: 'split', label: 'Split', code: 'Backslash', enabled: true },
-  { id: 'closeTab', label: 'Close tab', code: 'KeyW', enabled: true },
-  { id: 'sidebar', label: 'Sidebar', code: 'KeyB', enabled: true },
-  { id: 'copy', label: 'Copy', code: 'KeyC', enabled: true },
-  { id: 'paste', label: 'Paste', code: 'KeyV', enabled: true },
-  { id: 'draft', label: 'Draft', code: 'KeyD', enabled: true },
-  { id: 'sync', label: 'Sync', code: 'KeyU', enabled: true },
-  { id: 'shortcuts', label: 'Shortcuts', code: null, enabled: true },
-  { id: 'panel-prev', label: 'Previous panel', code: 'ArrowLeft', enabled: true },
-  { id: 'panel-next', label: 'Next panel', code: 'ArrowRight', enabled: true },
-  { id: 'cycle-prev', label: 'Previous tab', code: 'PageUp', enabled: true },
-  { id: 'cycle-next', label: 'Next tab', code: 'PageDown', enabled: true },
+  { id: 'search', label: C.search, code: 'KeyK', enabled: true },
+  { id: 'new', label: C.new, code: 'KeyN', enabled: true },
+  { id: 'newTab', label: C.newTab, code: 'KeyT', enabled: true },
+  { id: 'split', label: C.split, code: 'Backslash', enabled: true },
+  { id: 'closeTab', label: C.closeTab, code: 'KeyW', enabled: true },
+  { id: 'sidebar', label: C.sidebar, code: 'KeyB', enabled: true },
+  { id: 'copy', label: C.copy, code: 'KeyC', enabled: true },
+  { id: 'paste', label: C.paste, code: 'KeyV', enabled: true },
+  { id: 'draft', label: C.draft, code: 'KeyD', enabled: true },
+  { id: 'sync', label: C.sync, code: 'KeyU', enabled: true },
+  { id: 'shortcuts', label: C.shortcuts, code: null, enabled: true },
+  { id: 'panel-prev', label: C['panel-prev'], code: 'ArrowLeft', enabled: true },
+  { id: 'panel-next', label: C['panel-next'], code: 'ArrowRight', enabled: true },
+  { id: 'cycle-prev', label: C['cycle-prev'], code: 'PageUp', enabled: true },
+  { id: 'cycle-next', label: C['cycle-next'], code: 'PageDown', enabled: true },
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map(tab),
-  { id: 'assistant', label: 'Assistant', code: 'KeyA', enabled: false },
-  { id: 'hub', label: 'Hub', code: 'KeyM', enabled: false },
-  { id: 'talk', label: 'Talk', code: 'Space', enabled: false }
+  { id: 'assistant', label: C.assistant, code: 'KeyA', enabled: false },
+  { id: 'hub', label: C.hub, code: 'KeyM', enabled: false },
+  { id: 'talk', label: C.talk, code: 'Space', enabled: false }
 ]
 
 export function defaultBindings(): Record<string, string> {
