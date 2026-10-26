@@ -207,3 +207,36 @@ it('Nome do projeto: Enter cria, erro aparece, sucesso avisa e Esc cancela', asy
   pressOn('Escape')
   expect(host.querySelector('form input')).toBeNull()
 })
+
+it('toast de Desfazer tem texto e continua vivo depois de sair da aba', async () => {
+  const row = taskRow(ULID, 'T-1', { blocked_reason: 'waiting' })
+  const fake = fakeApi(
+    { brain: [], rows: [row], ui: withLayout([ULID, '~home']) },
+    {
+      taskUnblock: (async () => ({ ok: true, data: { row: null, activity_id: 'act-9' } })) as never,
+      activityUndo: (async () => ({ ok: true, data: { row: null, activity_id: null } })) as never
+    }
+  )
+  ;(window as unknown as { turnflow: unknown }).turnflow = fake.api
+  act(() => root.render(<App />))
+  await flush()
+  const btn = (text: string): HTMLButtonElement | undefined =>
+    [...host.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent?.trim() === text
+    )
+  act(() => btn('⋯')!.click())
+  act(() => btn('Unblock')!.click())
+  await flush()
+  // sai da aba da task: o toast fica
+  act(() => [...host.querySelectorAll<HTMLElement>('[role="tab"]')][1].click())
+  await flush()
+  expect(host.querySelector('.task-head')).toBeNull()
+  const toast = host.querySelector('.toast')
+  expect(toast?.textContent).toContain('Task unblocked')
+  act(() => btn('Undo')!.click())
+  await flush()
+  expect(fake.calls.filter((c) => c.name === 'activityUndo').map((c) => c.args[0])).toEqual([
+    { activity_id: 'act-9' }
+  ])
+  expect(host.querySelector('.toast')).toBeNull()
+})

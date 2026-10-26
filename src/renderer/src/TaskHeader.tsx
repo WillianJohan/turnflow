@@ -106,8 +106,9 @@ export function TaskHeader({
           </p>
           <button
             onClick={() => {
-              setWhat(face.lines[0].text)
-              setNext(face.lines[1].text)
+              // "último registro" é só a cara do cabeçalho: não vira resumo ao salvar
+              setWhat(face.lines[0].placeholder ? '' : face.lines[0].text)
+              setNext(face.lines[1].placeholder ? '' : face.lines[1].text)
               setEditing(true)
             }}
           >

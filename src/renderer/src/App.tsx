@@ -31,6 +31,8 @@ import { appCommand, commandId, setCommandBindings } from './shortcuts'
 import { SHELL_COPY } from '../../shared/copy/shell'
 import { unwrap } from './ipc'
 import { createUiSaver } from './uiSave'
+import { TOAST_MS } from './taskFace'
+import { Toast } from './ui/Toast'
 
 export type Live = {
   states: Record<string, TaskState>
@@ -251,6 +253,25 @@ function App(): React.JSX.Element {
   const [projectName, setProjectName] = useState<string | null>(null)
   const [shortcutOpen, setShortcutOpen] = useState(false)
   const [notice, setNotice] = useState('')
+  // Desfazer da última ação (§4): mora aqui para sobreviver a trocar ou fechar a aba da task
+  const [undo, setUndo] = useState<{ activityId: string; text: string } | null>(null)
+  useEffect(() => {
+    if (!undo) return
+    const timer = setTimeout(() => setUndo(null), TOAST_MS)
+    return () => clearTimeout(timer)
+  }, [undo])
+  const onUndoable = useCallback(
+    (activityId: string, text: string) => setUndo({ activityId, text }),
+    []
+  )
+  const runUndo = (): void => {
+    if (!undo) return
+    const { activityId } = undo
+    setUndo(null)
+    void window.turnflow.activityUndo({ activity_id: activityId }).then((r) => {
+      if (!r.ok) setNotice(r.error.message)
+    })
+  }
   const [paletteTypes, setPaletteTypes] = useState<{ id: string; name: string }[]>([])
   const [paletteProjects, setPaletteProjects] = useState<{ id: string; name: string }[]>([])
   useEffect(() => {
@@ -462,6 +483,7 @@ function App(): React.JSX.Element {
         act={act}
         onStarted={markStarted}
         onEnd={endSession}
+        onUndoable={onUndoable}
         draft={!!cfg?.config.draftMode}
         newTabPanel={newTabPanel}
         setNewTabPanel={setNewTabPanel}
@@ -551,6 +573,13 @@ function App(): React.JSX.Element {
           onBind={onBind}
           onClose={() => setShortcutOpen(false)}
         />
+      )}
+      {undo && (
+        <div className="app-toast">
+          <Toast action={SHELL_COPY.undo} onAction={runUndo}>
+            {undo.text}
+          </Toast>
+        </div>
       )}
       {notice && (
         <div className="app-notice" role="status">

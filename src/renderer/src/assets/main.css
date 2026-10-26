@@ -1644,3 +1644,24 @@ body.resizing .settings-page {
   gap: 8px;
   min-width: min(360px, 80vw);
 }
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+.app-toast .toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.timeline-filter {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0;
+}

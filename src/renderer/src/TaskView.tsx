@@ -23,10 +23,10 @@ import {
   previousStageId,
   suggestedMapping,
   timelineItems,
-  undoToast,
   type MenuId
 } from './taskFace'
 import { TimelineView } from './TimelineView'
+import { ConfirmDialog } from './ui/ConfirmDialog'
 import { attachTerm, disposeTerm, getTerm, hasTerm } from './terms'
 
 const toolOf = (value: string): SessionTool =>
@@ -43,6 +43,8 @@ type Props = {
   onStarted(id: string): void
   onPin(): void // retomar/criar sessão fixa a aba prévia
   onEnd(id: string): void
+  /** Ação com Desfazer: o toast mora no app, então sobrevive a trocar ou fechar a aba. */
+  onUndoable?(activityId: string, text: string): void
 }
 
 type Ask =
@@ -50,6 +52,17 @@ type Ask =
   | { kind: 'workdir'; value: string }
   | { kind: 'block'; value: string }
   | { kind: 'move'; projectId: string | null; pending: boolean }
+  | {
+      kind: 'remap'
+      projectId: string | null
+      mapping: Record<string, string>
+      from: string
+      to: string
+    }
+
+type Confirm = { body: string; confirm: string; run(): void } | null
+
+const T = SHELL_COPY.taskView
 
 const reasonOf = (details: unknown): string | undefined =>
   details &&
@@ -82,7 +95,8 @@ export function TaskView({
   draft,
   onStarted,
   onEnd,
-  onPin
+  onPin,
+  onUndoable
 }: Props): React.JSX.Element {
   const alive = live.alive.has(id)
   const exitCode = live.exited[id]
@@ -100,20 +114,32 @@ export function TaskView({
   )
   const [readme, setReadme] = useState('')
   const [reloadTick, setReloadTick] = useState(0)
-  const [toast, setToast] = useState<{ activityId: string; until: number } | null>(null)
-  const [now, setNow] = useState(() => Date.now())
   const [ask, setAsk] = useState<Ask>(null)
+  const [confirm, setConfirm] = useState<Confirm>(null)
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [only, setOnly] = useState<'all' | 'checkpoint' | 'session'>('all')
   const showTerm = view === 'term' && (alive || starting || hasTerm(id))
 
   const launching = useRef(false)
+  const aliveRef = useRef(alive)
+  useEffect(() => {
+    aliveRef.current = alive
+  }, [alive])
   const reload = (): void => setReloadTick((n) => n + 1)
-  const remember = (activityId: string | null): void => {
-    const next = undoToast(activityId, Date.now())
-    if (!next) return
-    setNow(Date.now())
-    setToast(next)
+  const remember = (activityId: string | null, text: string): void => {
+    if (activityId) onUndoable?.(activityId, text)
+  }
+  // a IA trabalhando conta venha de onde vier: PTY deste app ou sessão de fora (ai_session)
+  const working = (): boolean =>
+    closeNeedsConfirm(live.states[id]) || closeNeedsConfirm(detail?.session?.state)
+  const askEnd = (): void => {
+    if (!needsEndConfirm(live.states[id])) onEnd(id)
+    else
+      setConfirm({
+        body: SESSION_COPY.endWhileWorking,
+        confirm: T.endSession,
+        run: () => onEnd(id)
+      })
   }
 
   const launch = (how: { tool: SessionTool; resume?: string }): void => {
@@ -132,7 +158,8 @@ export function TaskView({
       .then((r) => {
         if (r.ok) onStarted(id)
         else if (!('cancelled' in r)) {
-          disposeTerm(id)
+          // pty_busy: o processo velho ainda é dono do xterm; derrubar aqui apagaria a tela dele
+          if (!aliveRef.current && r.reason !== 'pty_busy') disposeTerm(id)
           setErr(r.message)
         }
       })
@@ -192,22 +219,18 @@ export function TaskView({
   useEffect(() => {
     const off = window.turnflow.onDomainChanged((change) => {
       if (change.entity !== 'task' && change.entity !== 'session') return
-      if (domainId && change.ids.length && !change.ids.includes(domainId)) return
+      // `ids` de evento de sessão são ids de sessão: não dá pra filtrar pela task
+      if (
+        change.entity === 'task' &&
+        domainId &&
+        change.ids.length &&
+        !change.ids.includes(domainId)
+      )
+        return
       setReloadTick((n) => n + 1)
     })
     return () => off()
   }, [domainId])
-
-  useEffect(() => {
-    if (!toast) return
-    const tick = (): void => {
-      const at = Date.now()
-      setNow(at)
-      if (at >= toast.until) setToast(null)
-    }
-    const timer = setInterval(tick, 500)
-    return () => clearInterval(timer)
-  }, [toast])
 
   useEffect(() => {
     if (mode !== 'brain') return
@@ -251,13 +274,17 @@ export function TaskView({
   }
 
   const runStage = (stageId: string): void => {
-    if (!detail) return
+    if (!detail || stageId === detail.stage.id) return
+    const stage = detail.flow_stages.find((s) => s.id === stageId)
     void window.turnflow.taskSetStage({ id: detail.id, stage_id: stageId }).then((r) => {
       if (!r.ok) {
         setErr(r.error.message)
         return
       }
-      remember(r.data.activity_id)
+      remember(
+        r.data.activity_id,
+        T.undo.stage(stage?.short_name ?? '', r.data.outbox === 'queued')
+      )
       reload()
     })
   }
@@ -277,7 +304,7 @@ export function TaskView({
       })
       .then((r) => {
         if (r.ok) {
-          remember(r.data.activity_id)
+          remember(r.data.activity_id, T.undo.moved)
           setAsk(null)
           reload()
           return
@@ -297,7 +324,18 @@ export function TaskView({
             setErr(r.error.message)
             return
           }
-          runMove(projectId, 'adopt', next)
+          // mostra o par sugerido antes de aplicar: a etapa da task muda junto com o fluxo
+          const toId = next[detail.stage.id]
+          void unwrap(window.turnflow.flowList()).then((flows) => {
+            const to = flows?.flatMap((f) => f.stages).find((st) => st.id === toId)
+            setAsk({
+              kind: 'remap',
+              projectId,
+              mapping: next,
+              from: detail.stage.short_name,
+              to: to?.short_name ?? to?.name ?? toId
+            })
+          })
           return
         }
         setErr(r.error.message)
@@ -342,35 +380,50 @@ export function TaskView({
           setErr(r.error.message)
           return
         }
-        remember(r.data.activity_id)
+        remember(r.data.activity_id, T.undo.unblocked)
         reload()
       })
       return
     }
     if (action === 'close') {
-      if (closeNeedsConfirm(live.states[id]) && !window.confirm(CLOSE_WHILE_WORKING)) return
-      void window.turnflow.taskClose({ id: detail.id }).then((r) => {
-        if (!r.ok) {
-          setErr(r.error.message)
-          return
-        }
-        remember(r.data.activity_id)
-        reload()
-      })
+      const close = (): void => {
+        void window.turnflow.taskClose({ id: detail.id }).then((r) => {
+          if (!r.ok) {
+            setErr(r.error.message)
+            return
+          }
+          remember(r.data.activity_id, T.undo.closed)
+          reload()
+        })
+      }
+      if (working()) setConfirm({ body: CLOSE_WHILE_WORKING, confirm: T.closeTask, run: close })
+      else close()
     }
   }
 
-  const undo = (): void => {
-    if (!toast) return
-    void window.turnflow.activityUndo({ activity_id: toast.activityId }).then((r) => {
-      if (!r.ok) {
-        setErr(r.error.message)
-        return
-      }
-      setToast(null)
-      reload()
-    })
+  // Esc ou Cancelar fecham o formulário da task sem gravar
+  const askKeys = (event: React.KeyboardEvent): void => {
+    if (event.key !== 'Escape') return
+    event.stopPropagation()
+    setAsk(null)
   }
+  const cancelAsk = (
+    <button type="button" onClick={() => setAsk(null)}>
+      {T.cancel}
+    </button>
+  )
+  const confirmDialog = confirm && (
+    <div className="overlay">
+      <ConfirmDialog
+        title={T.confirmTitle}
+        body={confirm.body}
+        confirm={confirm.confirm}
+        cancel={T.cancel}
+        onConfirm={confirm.run}
+        onClose={() => setConfirm(null)}
+      />
+    </div>
+  )
 
   if (mode === 'loading') {
     return (
@@ -432,17 +485,7 @@ export function TaskView({
     )
     return (
       <div className="taskview">
-        <Header
-          task={task}
-          alive={alive}
-          onEnd={() => {
-            if (needsEndConfirm(live.states[id]) && !window.confirm(SESSION_COPY.endWhileWorking))
-              return
-            onEnd(id)
-          }}
-          onSwitch={switchTo}
-          extra={toggle}
-        />
+        <Header task={task} alive={alive} onEnd={askEnd} onSwitch={switchTo} extra={toggle} />
         {exitCode !== undefined && !alive && !starting && view === 'term' && (
           <div className="banner">
             Processo saiu (código {exitCode}). <button onClick={reopen}>Reabrir</button>{' '}
@@ -452,6 +495,7 @@ export function TaskView({
           </div>
         )}
         {err && <div className="banner error">{err}</div>}
+        {confirmDialog}
         {showTerm ? (
           <>
             <div className="term term-plain" ref={host} />
@@ -475,8 +519,12 @@ export function TaskView({
   }
 
   const marks = timelineItems({ checkpoints: detail.checkpoints, sessions })
-  const shown = only === 'all' ? marks : marks.filter((item) => item.kind === only)
   const moveProject = ask?.kind === 'move' ? projects : []
+  const termToggle = (alive || hasTerm(id)) && (
+    <button onClick={() => setView((v) => (v === 'term' ? 'readme' : 'term'))}>
+      {view === 'term' ? T.record : T.terminal}
+    </button>
+  )
 
   return (
     <div className="taskview">
@@ -487,8 +535,8 @@ export function TaskView({
         stages={detail.flow_stages}
         stageId={detail.stage.id}
         blocked={detail.blocked_reason !== null}
-        toast={toast}
-        now={now}
+        toast={null}
+        now={0}
         onSave={(patch) => {
           void window.turnflow.taskUpdate({ id: detail.id, patch }).then((r) => {
             if (!r.ok) {
@@ -500,31 +548,18 @@ export function TaskView({
         }}
         onStage={runStage}
         onAction={onAction}
-        onUndo={undo}
+        onUndo={() => undefined}
         trailing={
-          alive ? (
-            <button
-              onClick={() => {
-                if (
-                  needsEndConfirm(live.states[id]) &&
-                  !window.confirm(SESSION_COPY.endWhileWorking)
-                )
-                  return
-                onEnd(id)
-              }}
-            >
-              End session
-            </button>
-          ) : hasTerm(id) ? (
-            <button onClick={() => setView((v) => (v === 'term' ? 'readme' : 'term'))}>
-              {view === 'term' ? 'Record' : 'Terminal'}
-            </button>
-          ) : null
+          <>
+            {termToggle}
+            {alive && <button onClick={askEnd}>{T.endSession}</button>}
+          </>
         }
       />
       {ask?.kind === 'workdir' && (
         <form
           className="task-ask"
+          onKeyDown={askKeys}
           onSubmit={(event) => {
             event.preventDefault()
             const value = ask.value.trim()
@@ -541,18 +576,21 @@ export function TaskView({
           }}
         >
           <label>
-            Working folder
+            {T.workdir}
             <input
+              autoFocus
               value={ask.value}
               onChange={(event) => setAsk({ kind: 'workdir', value: event.target.value })}
             />
           </label>
-          <button type="submit">Save</button>
+          <button type="submit">{T.save}</button>
+          {cancelAsk}
         </form>
       )}
       {ask?.kind === 'block' && (
         <form
           className="task-ask"
+          onKeyDown={askKeys}
           onSubmit={(event) => {
             event.preventDefault()
             const reason = ask.value.trim()
@@ -562,33 +600,39 @@ export function TaskView({
                 setErr(r.error.message)
                 return
               }
-              remember(r.data.activity_id)
+              remember(r.data.activity_id, T.undo.blocked)
               setAsk(null)
               reload()
             })
           }}
         >
           <label>
-            Block
+            {T.block}
             <input
+              autoFocus
               value={ask.value}
               onChange={(event) => setAsk({ kind: 'block', value: event.target.value })}
             />
           </label>
-          <button type="submit">Block</button>
+          <button type="submit">{T.block}</button>
+          {cancelAsk}
         </form>
       )}
       {ask?.kind === 'move' && (
-        <div className="task-ask">
+        <div className="task-ask" onKeyDown={askKeys}>
           {ask.pending ? (
             <>
-              <p>Keep the current flow, or adopt the project flow?</p>
-              <button onClick={() => runMove(ask.projectId, 'keep')}>Keep</button>
-              <button onClick={() => runMove(ask.projectId, 'adopt')}>Adopt</button>
+              <p>{T.keepOrAdopt}</p>
+              <button autoFocus onClick={() => runMove(ask.projectId, 'keep')}>
+                {T.keep}
+              </button>
+              <button onClick={() => runMove(ask.projectId, 'adopt')}>{T.adopt}</button>
             </>
           ) : (
             <>
-              <button onClick={() => runMove(null)}>No project</button>
+              <button autoFocus onClick={() => runMove(null)}>
+                {T.noProject}
+              </button>
               {moveProject.map((project) => (
                 <button key={project.id} onClick={() => runMove(project.id)}>
                   {project.name}
@@ -596,15 +640,26 @@ export function TaskView({
               ))}
             </>
           )}
+          {cancelAsk}
+        </div>
+      )}
+      {ask?.kind === 'remap' && (
+        <div className="task-ask" onKeyDown={askKeys}>
+          <p>{T.remap(ask.from, ask.to)}</p>
+          <button autoFocus onClick={() => runMove(ask.projectId, 'adopt', ask.mapping)}>
+            {T.apply}
+          </button>
+          {cancelAsk}
         </div>
       )}
       {exitCode !== undefined && !alive && !starting && view === 'term' && (
         <div className="banner">
-          Processo saiu (código {exitCode}). <button onClick={reopen}>Reabrir</button>{' '}
+          {T.exited(exitCode)} <button onClick={reopen}>{T.reopen}</button>{' '}
           <button onClick={() => start({ tool: 'claude-code' })}>{SESSION_COPY.newSession}</button>
         </div>
       )}
       {err && <div className="banner error">{err}</div>}
+      {confirmDialog}
       {showTerm ? (
         <>
           <div className="term term-plain" ref={host} />
@@ -612,18 +667,24 @@ export function TaskView({
         </>
       ) : (
         <div className="timeline-wrap">
-          <div className="timeline-actions">
-            <button onClick={() => start({ tool: 'codex' })}>Codex</button>
-            <button onClick={() => start({ tool: 'cursor' })}>Cursor</button>
-            <button onClick={() => start({ tool: 'other' })}>Other</button>
-          </div>
           <TimelineView
-            items={shown}
+            items={marks}
+            live={alive}
+            onTerminal={() => setView('term')}
+            filter={only}
+            onFilter={setOnly}
             onNew={() => start({ tool: 'claude-code' })}
             onResume={(sessionId) => {
               const row = sessions.find((s) => s.id === sessionId)
               start({ tool: toolOf(row?.tool ?? 'claude-code'), resume: sessionId })
             }}
+            extra={
+              <>
+                <button onClick={() => start({ tool: 'codex' })}>Codex</button>
+                <button onClick={() => start({ tool: 'cursor' })}>Cursor</button>
+                <button onClick={() => start({ tool: 'other' })}>{T.other}</button>
+              </>
+            }
           />
         </div>
       )}

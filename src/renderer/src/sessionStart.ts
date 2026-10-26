@@ -7,6 +7,11 @@ type Spawned = Awaited<ReturnType<Window['turnflow']['ptySpawn']>>
 const reasonOf = (details: unknown): unknown =>
   details && typeof details === 'object' && 'reason' in details ? details.reason : undefined
 
+const why = (details: unknown): { reason?: string } => {
+  const reason = reasonOf(details)
+  return typeof reason === 'string' ? { reason } : {}
+}
+
 /** Teto da espera pelo `pty:exit`: passa do SIGKILL do pool (3 s), caso o evento se perca. */
 export const BUSY_WAIT_MS = 4000
 
@@ -64,7 +69,7 @@ export async function startSessionFlow(
 ): Promise<
   | { ok: true; session_id: string | null }
   | { ok: false; cancelled: true }
-  | { ok: false; message: string }
+  | { ok: false; message: string; reason?: string }
 > {
   const spawn = (): Promise<Spawned> =>
     spawnWhenFree(
@@ -84,7 +89,7 @@ export async function startSessionFlow(
   const first = await spawn()
   if (first.ok) return { ok: true, session_id: first.data.session_id }
   if (reasonOf(first.error.details) !== 'workdir_required' || !i.task_id)
-    return { ok: false, message: first.error.message }
+    return { ok: false, message: first.error.message, ...why(first.error.details) }
   const picked = await api.sessionPickWorkdir()
   if (!picked.ok) return { ok: false, message: picked.error.message }
   if (picked.data === null) return { ok: false, cancelled: true }
@@ -92,7 +97,7 @@ export async function startSessionFlow(
   if (!saved.ok) return { ok: false, message: saved.error.message }
   const second = await spawn()
   if (second.ok) return { ok: true, session_id: second.data.session_id }
-  return { ok: false, message: second.error.message }
+  return { ok: false, message: second.error.message, ...why(second.error.details) }
 }
 
 /** Adota a sessão atual do pty: a que o spawn devolveu some se uma fusão a absorver. */
