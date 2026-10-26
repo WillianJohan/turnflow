@@ -27,6 +27,9 @@ import {
 } from './taskFace'
 import { TimelineView } from './TimelineView'
 import { ConfirmDialog } from './ui/ConfirmDialog'
+import { coalesce } from './coalesce'
+
+const RELOAD_MS = 100
 import { attachTerm, disposeTerm, getTerm, hasTerm } from './terms'
 
 const toolOf = (value: string): SessionTool =>
@@ -224,7 +227,9 @@ export function TaskView({
     }
   }, [id, reloadTick])
 
+  // rajada de eventos (a IA mexendo, hooks da sessão) vira uma recarga (taskGet + sessionList)
   useEffect(() => {
+    const again = coalesce(async () => setReloadTick((n) => n + 1), RELOAD_MS)
     const off = window.turnflow.onDomainChanged((change) => {
       if (change.entity !== 'task' && change.entity !== 'session') return
       // `ids` de evento de sessão são ids de sessão: não dá pra filtrar pela task
@@ -235,9 +240,12 @@ export function TaskView({
         !change.ids.includes(domainId)
       )
         return
-      setReloadTick((n) => n + 1)
+      again.trigger()
     })
-    return () => off()
+    return () => {
+      again.cancel()
+      off()
+    }
   }, [domainId])
 
   useEffect(() => {

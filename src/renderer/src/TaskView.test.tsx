@@ -168,7 +168,7 @@ it('evento de sessão (ids de sessão, não da task) recarrega a visão', async 
   const view = await mount()
   const before = view.calls.filter((c) => c.name === 'taskGet').length
   act(() => view.emit('onDomainChanged', { entity: 'session', ids: ['sess-x'], op: 'upsert' }))
-  await flush()
+  await act(async () => await new Promise((r) => setTimeout(r, 300)))
   expect(view.calls.filter((c) => c.name === 'taskGet').length).toBeGreaterThan(before)
 })
 
@@ -294,4 +294,21 @@ it('aba pelo id do brain com processo vivo só vira a do domínio quando ele sai
   act(() => root.render(view({ states: {}, alive: new Set(), exited: { 'WF-7': 0 } })))
   await flush()
   expect(canon).toEqual([['WF-7', ID]])
+})
+
+it('rajada de eventos recarrega a visão poucas vezes', async () => {
+  const view = await mount()
+  const count = (name: string): number => view.calls.filter((c) => c.name === name).length
+  const get0 = count('taskGet')
+  const list0 = count('sessionList')
+  // eventos chegam um a um pelo IPC (cada um no seu tick), não num lote só do React
+  for (let i = 0; i < 20; i++)
+    await act(async () => {
+      view.emit('onDomainChanged', { entity: i % 2 ? 'session' : 'task', ids: [ID], op: 'upsert' })
+      await new Promise((r) => setTimeout(r, 2))
+    })
+  await act(async () => await new Promise((r) => setTimeout(r, 400)))
+  expect(count('taskGet') - get0).toBeGreaterThanOrEqual(1)
+  expect(count('taskGet') - get0).toBeLessThanOrEqual(2)
+  expect(count('sessionList') - list0).toBeLessThanOrEqual(2)
 })

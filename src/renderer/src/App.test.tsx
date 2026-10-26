@@ -371,3 +371,33 @@ it('concluída importada aberta pela árvore do brain abre no id do domínio', a
   expect(tabs()).toEqual([expect.stringContaining('WF-2')])
   expect(savedTabs(fake)).toEqual([X])
 })
+
+it('retain só refaz com evento de task, e a rajada vira uma consulta', async () => {
+  const fake = await mount({
+    brain: [brainTask('WF-9')],
+    rows: [taskRow(ULID, 'T-1')],
+    ui: withLayout([ULID])
+  })
+  const byIds = (): number =>
+    fake.calls.filter(
+      (c) =>
+        c.name === 'taskList' &&
+        typeof (c.args[0] as { scope: unknown }).scope === 'object' &&
+        'ids' in (c.args[0] as { scope: object }).scope
+    ).length
+  const before = byIds()
+  act(() => {
+    for (let i = 0; i < 20; i++)
+      fake.emit('onDomainChanged', { entity: 'session', ids: ['s'], op: 'upsert' })
+  })
+  await act(async () => await new Promise((r) => setTimeout(r, 400)))
+  expect(byIds()).toBe(before)
+  for (let i = 0; i < 20; i++)
+    await act(async () => {
+      fake.emit('onDomainChanged', { entity: 'task', ids: [ULID], op: 'upsert' })
+      await new Promise((r) => setTimeout(r, 2))
+    })
+  await act(async () => await new Promise((r) => setTimeout(r, 400)))
+  expect(byIds() - before).toBeGreaterThanOrEqual(1)
+  expect(byIds() - before).toBeLessThanOrEqual(2)
+})

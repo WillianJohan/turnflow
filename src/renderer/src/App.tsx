@@ -153,14 +153,17 @@ function App(): React.JSX.Element {
     void unwrap(window.turnflow.taskList({ scope: 'attention' })).then((rows) => {
       if (!cancel && rows) setAttention(rows)
     })
+    // o retain (abas que existem) só muda com task criada/apagada: sessão e fluxo não contam
+    const retain = coalesce(async () => setDomainTick((n) => n + 1), RELOAD_MS)
     const off = window.turnflow.onDomainChanged((change) => {
       if (!ATTENTION_ENTITIES.has(change.entity)) return
       loader.trigger()
-      setDomainTick((n) => n + 1)
+      if (change.entity === 'task') retain.trigger()
     })
     return () => {
       cancel = true
       loader.cancel()
+      retain.cancel()
       off()
     }
   }, [])
