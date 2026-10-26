@@ -1,26 +1,24 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { DEFAULT_UI, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
+import type { TaskRow } from '../../shared/contracts'
 import type { ConfigState, Task, TaskState } from '../../shared/types'
-import { Action, loadLayout, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
+import { Action, HOME, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
+import { HomeView } from './HomeView'
 import { Sidebar } from './Sidebar'
 import { Panels } from './Panels'
 import { disposeTerm, getTerm, hasTerm, liveTerms } from './terms'
-import { Search } from './Search'
+import { Palette } from './Palette'
+import { ShortcutDialog } from './ShortcutDialog'
+import { activeBindings, bindCommand, shortcutOverrides } from './commands'
+import { NEW_ACTIONS, type NewAction } from './palette'
 import { termsToDispose } from './live'
 import { applyTheme } from './theme'
 import { isTextField } from './focus'
 import { notifyText, shouldNotify, type HookInfo } from './notify'
 import { Icon } from './Icon'
-import { appCommand } from './shortcuts'
+import { appCommand, setCommandBindings } from './shortcuts'
 import { unwrap } from './ipc'
-
-const LAYOUT_KEY = 'turnflow.layout'
-const readLayout = (): string | null => {
-  try {
-    return localStorage.getItem(LAYOUT_KEY)
-  } catch {
-    return null
-  }
-}
+import { createUiSaver } from './uiSave'
 
 export type Live = {
   states: Record<string, TaskState>
@@ -30,7 +28,22 @@ export type Live = {
 
 function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [layout, dispatch] = useReducer(reduce, null, () => loadLayout(readLayout()))
+  const [layout, dispatch] = useReducer(reduce, { panels: [], focused: 0 })
+  const [hydrated, setHydrated] = useState(false)
+  const [extra, setExtra] = useState({
+    home: DEFAULT_UI.home,
+    fab: DEFAULT_UI.fab,
+    density: DEFAULT_UI.density,
+    shortcuts: DEFAULT_UI.shortcuts
+  })
+  const [attention, setAttention] = useState<TaskRow[]>([])
+  const [showDone, setShowDone] = useState(false)
+  const [doneRows, setDoneRows] = useState<TaskRow[]>([])
+  const [sb, setSb] = useState<{ folded: boolean; width: number }>({
+    folded: false,
+    width: SIDEBAR_DEFAULT
+  })
+  const saver = useRef(createUiSaver((file) => void unwrap(window.turnflow.uiSet(file))))
   const [live, setLive] = useState<Live>({ states: {}, alive: new Set(), exited: {} })
 
   // Aviso do sistema (igual Cursor) quando um claude passa a esperar você e você não está vendo a aba.
@@ -81,12 +94,51 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
-    } catch {
-      // sem storage: layout só não persiste
+    let cancel = false
+    const load = (): void => {
+      void unwrap(window.turnflow.taskList({ scope: 'attention' })).then((rows) => {
+        if (!cancel && rows) setAttention(rows)
+      })
     }
-  }, [layout])
+    load()
+    const off = window.turnflow.onDomainChanged(() => load())
+    return () => {
+      cancel = true
+      off()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!showDone) return
+    let cancel = false
+    void unwrap(window.turnflow.taskList({ scope: {} })).then((rows) => {
+      if (!cancel && rows) setDoneRows(rows)
+    })
+    return () => {
+      cancel = true
+    }
+  }, [showDone, attention])
+
+  useEffect(() => {
+    let cancel = false
+    void unwrap(window.turnflow.uiGet()).then((file) => {
+      if (cancel) return
+      if (file) {
+        dispatch({ t: 'restore', layout: file.layout })
+        setSb(file.sidebar)
+        setExtra({
+          home: file.home,
+          fab: file.fab,
+          density: file.density,
+          shortcuts: file.shortcuts
+        })
+      }
+      setHydrated(true)
+    })
+    return () => {
+      cancel = true
+    }
+  }, [])
 
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
   const openIds = useMemo(() => new Set(layout.panels.flatMap((p) => p.tabs)), [layout])
@@ -112,25 +164,19 @@ function App(): React.JSX.Element {
   }, [live.exited, openIds])
 
   const act = useCallback((a: Action) => dispatch(a), [])
-  // lista lateral: recolhida e largura ficam no localStorage
-  const [sb, setSb] = useState<{ folded: boolean; width: number }>(() => {
-    try {
-      return {
-        folded: false,
-        width: 320,
-        ...JSON.parse(localStorage.getItem('turnflow.sidebar') ?? '{}')
-      }
-    } catch {
-      return { folded: false, width: 320 }
-    }
-  })
   useEffect(() => {
-    try {
-      localStorage.setItem('turnflow.sidebar', JSON.stringify(sb))
-    } catch {
-      // sem storage
-    }
-  }, [sb])
+    if (!hydrated) return
+    saver.current.push({
+      version: 1,
+      layout,
+      sidebar: sb,
+      home: extra.home,
+      fab: extra.fab,
+      density: extra.density,
+      shortcuts: extra.shortcuts
+    })
+  }, [hydrated, layout, sb, extra])
+  useEffect(() => () => saver.current.flush(), [])
   const [root, setRoot] = useState('')
   // a pasta muda sem reiniciar (import grava brainDir): relê a cada lista nova
   useEffect(() => {
@@ -150,14 +196,48 @@ function App(): React.JSX.Element {
 
   const [searching, setSearching] = useState(false)
   const [newTabPanel, setNewTabPanel] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [projectName, setProjectName] = useState<string | null>(null)
+  const [shortcutOpen, setShortcutOpen] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [paletteTypes, setPaletteTypes] = useState<{ id: string; name: string }[]>([])
+  const [paletteProjects, setPaletteProjects] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(''), 4000)
+    return () => clearTimeout(timer)
+  }, [notice])
+  useEffect(() => {
+    if (!searching && projectName === null) return
+    void unwrap(window.turnflow.taskTypeList()).then((rows) => {
+      if (rows) setPaletteTypes(rows.map((row) => ({ id: row.id, name: row.name })))
+    })
+    void unwrap(window.turnflow.projectList()).then((rows) => {
+      if (rows) setPaletteProjects(rows.map((row) => ({ id: row.id, name: row.name })))
+    })
+  }, [searching, projectName])
+  useEffect(() => {
+    setCommandBindings(activeBindings(extra.shortcuts))
+  }, [extra.shortcuts])
+  const onBind = useCallback((id: string, code: string) => {
+    setExtra((current) => ({
+      ...current,
+      shortcuts: shortcutOverrides(bindCommand(activeBindings(current.shortcuts), id, code))
+    }))
+  }, [])
   const newTab = useCallback(
-    (kind: 'claude' | 'shell' | 'task', panel: number) => {
+    (kind: NewAction, panel: number) => {
       if (layout.panels[panel]) dispatch({ t: 'focusAt', panel })
       if (kind === 'task') setSearching(true)
+      else if (kind === 'project') setProjectName('')
       else
         dispatch({
           t: 'open',
-          taskId: scratchId(kind, layout, new Set([...live.alive, ...liveTerms()]))
+          taskId: scratchId(
+            kind === 'terminal' ? 'shell' : 'claude',
+            layout,
+            new Set([...live.alive, ...liveTerms()])
+          )
         })
     },
     [layout, live.alive]
@@ -168,8 +248,9 @@ function App(): React.JSX.Element {
   }, [layout])
   // restore: abas de tasks que sumiram do brain saem do layout
   useEffect(() => {
-    if (tasks.length) dispatch({ t: 'retain', ids: new Set(tasks.map((t) => t.id)) })
-  }, [tasks])
+    if (!hydrated || !tasks.length) return
+    dispatch({ t: 'retain', ids: new Set(tasks.map((t) => t.id)) })
+  }, [tasks, hydrated])
   const activeId = layout.panels[layout.focused]?.tabs[layout.panels[layout.focused].active]
 
   const toggleDraft = useCallback(() => {
@@ -186,7 +267,8 @@ function App(): React.JSX.Element {
   // Atalhos do app: só Ctrl+Shift. Capture na window pra rodar antes do xterm.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      const cmd = appCommand(e)
+      if (shortcutOpen) return
+      const cmd = appCommand(e, activeBindings(extra.shortcuts))
       if (!cmd) return
       e.preventDefault()
       e.stopPropagation()
@@ -204,6 +286,9 @@ function App(): React.JSX.Element {
       if (cmd === 'draft') toggleDraft()
       else if (cmd === 'newTab') setNewTabPanel(layout.panels.length ? layout.focused : null)
       else if (cmd === 'search') setSearching(true)
+      else if (cmd === 'new') setCreating(true)
+      else if (cmd === 'sync') setNotice('Sync is not connected yet.')
+      else if (cmd === 'shortcuts') setShortcutOpen(true)
       else if (cmd === 'split') {
         act({ t: 'split' })
         setSearching(true)
@@ -232,7 +317,7 @@ function App(): React.JSX.Element {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [activeId, layout, act, focusActive, toggleDraft, sb.folded])
+  }, [activeId, layout, act, focusActive, toggleDraft, sb.folded, shortcutOpen, extra.shortcuts])
 
   return (
     <div className="app" data-testid="app-shell">
@@ -247,6 +332,9 @@ function App(): React.JSX.Element {
         root={root}
         folded={sb.folded}
         width={sb.width}
+        attention={attention}
+        density={extra.density}
+        onDensity={(density: Density) => setExtra((x) => ({ ...x, density }))}
         onToggle={() => setSb((x) => ({ ...x, folded: !x.folded }))}
         onWidth={(w) => setSb((x) => ({ ...x, width: w }))}
         icons={cfg?.config.statusIcons}
@@ -267,6 +355,9 @@ function App(): React.JSX.Element {
             >
               <Icon name="settings" />
             </button>
+            <button data-nav title="Home" onClick={() => act({ t: 'open', taskId: HOME })}>
+              <Icon name="file" />
+            </button>
             <button data-nav title="Buscar task (Ctrl+Shift+K)" onClick={() => setSearching(true)}>
               <Icon name="search" />
             </button>
@@ -286,19 +377,116 @@ function App(): React.JSX.Element {
         onNewTab={newTab}
         cfg={cfg}
         setCfg={setCfg}
+        home={
+          <HomeView
+            rows={attention}
+            doneRows={doneRows}
+            mode={extra.home}
+            showDone={showDone}
+            onMode={(home) => setExtra((x) => ({ ...x, home }))}
+            onToggleDone={() => setShowDone((v) => !v)}
+            onOpen={(id) => act({ t: 'open', taskId: id })}
+          />
+        }
       />
       {searching && (
-        <Search
-          tasks={tasks}
-          onPick={(id) => {
+        <Palette
+          tasks={[
+            ...attention.map((row) => ({ id: row.id, title: `${row.key} ${row.title}` })),
+            ...tasks.map((task) => ({ id: task.id, title: `${task.id} ${task.title}` }))
+          ]}
+          types={paletteTypes}
+          projects={paletteProjects}
+          onPickTask={(id) => {
             setSearching(false)
             act({ t: 'open', taskId: id })
+          }}
+          onCreate={(item) => {
+            void window.turnflow
+              .taskCreate({
+                title: item.title,
+                type_id: item.typeId,
+                ...(item.projectId ? { project_id: item.projectId } : {})
+              })
+              .then((result) => {
+                if (!result.ok || !result.data.row) return
+                setSearching(false)
+                act({ t: 'open', taskId: result.data.row.id })
+              })
+          }}
+          onCommand={(id) => {
+            setSearching(false)
+            if (id === 'new') setCreating(true)
+            else if (id === 'shortcuts') setShortcutOpen(true)
+            else if (id === 'sync') setNotice('Sync is not connected yet.')
+            else if (id === 'newTab') setNewTabPanel(layout.panels.length ? layout.focused : null)
+            else if (id === 'split') act({ t: 'split' })
+            else if (id === 'sidebar') setSb((current) => ({ ...current, folded: !current.folded }))
+            else if (id === 'draft') toggleDraft()
           }}
           onClose={() => {
             setSearching(false)
             focusActive()
           }}
         />
+      )}
+      {creating && (
+        <div className="overlay" onMouseDown={() => setCreating(false)}>
+          <div
+            className="search"
+            role="menu"
+            aria-label="New"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            {NEW_ACTIONS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setCreating(false)
+                  newTab(item.id, layout.focused)
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {projectName !== null && (
+        <form
+          className="overlay"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const name = projectName.trim()
+            if (!name) return
+            void window.turnflow.projectCreate({ name }).then((result) => {
+              if (result.ok) setProjectName(null)
+            })
+          }}
+          onMouseDown={() => setProjectName(null)}
+        >
+          <div className="search" onMouseDown={(event) => event.stopPropagation()}>
+            <input
+              autoFocus
+              value={projectName}
+              placeholder="Project name"
+              onChange={(event) => setProjectName(event.target.value)}
+            />
+            <button type="submit">Create project</button>
+          </div>
+        </form>
+      )}
+      {shortcutOpen && (
+        <ShortcutDialog
+          bindings={activeBindings(extra.shortcuts)}
+          onBind={onBind}
+          onClose={() => setShortcutOpen(false)}
+        />
+      )}
+      {notice && (
+        <div className="app-notice" role="status">
+          {notice}
+        </div>
       )}
     </div>
   )

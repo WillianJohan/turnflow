@@ -509,6 +509,7 @@ kbd {
 }
 
 .taskview {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1432,4 +1433,201 @@ body.resizing .settings-page {
   gap: 2px;
   padding-top: 6px;
   overflow-y: auto;
+}
+.attn-switch {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+}
+.attn-switch button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px 8px;
+}
+.attn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+.attn-title,
+.attn-next {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.home-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+.home.list .home-cols {
+  grid-template-columns: 1fr;
+}
+.home-cols button,
+.home-done button,
+.home-bar button {
+  min-height: 24px;
+  min-width: 24px;
+}
+.home-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px 0;
+}
+.home-tag {
+  color: var(--red);
+  font-weight: 650;
+}
+.home-stalled {
+  margin: 8px 0 0;
+}
+.home-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-cols button,
+.home-done button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+
+.term-plain {
+  border: 0;
+  background: var(--bg);
+}
+.task-head .th-actions button,
+.task-menu button,
+.stage-bar button,
+.task-summary button,
+.task-ask button,
+.timeline button,
+.toast button {
+  min-height: 24px;
+  min-width: 24px;
+}
+.task-menu {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+}
+.task-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 4px 8px;
+}
+.stage-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.stage-bar button[aria-current='step'] {
+  color: var(--fg);
+  background: var(--bg3);
+  border-radius: 4px;
+}
+.task-summary,
+.task-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.task-summary p,
+.task-ask p {
+  margin: 0;
+}
+.task-summary .k,
+.timeline-kind {
+  color: var(--fg-dim);
+}
+.task-summary input,
+.task-ask input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-height: 24px;
+}
+.timeline-wrap,
+.timeline {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.timeline ol {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px 24px;
+}
+.timeline li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.timeline-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.toast {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.palette-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--fg-dim);
+}
+.app-notice,
+.shortcut-dialog p {
+  margin: 0;
+}
+.app-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.shortcut-dialog button,
+.search button {
+  min-height: 24px;
+  min-width: 24px;
 }

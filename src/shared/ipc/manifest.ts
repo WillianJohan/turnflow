@@ -21,6 +21,8 @@ export const MANIFEST = {
   setConfig: ['config:set', 'invoke'],
   cloneTheme: ['config:cloneTheme', 'invoke'],
   openConfigDir: ['config:openDir', 'send'],
+  uiGet: ['ui.get', 'invoke'],
+  uiSet: ['ui.set', 'invoke'],
   readTheme: ['theme:read', 'invoke'],
   saveTheme: ['theme:save', 'invoke'],
   deleteTheme: ['theme:delete', 'invoke'],
