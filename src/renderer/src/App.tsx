@@ -2,7 +2,16 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { DEFAULT_UI, SIDEBAR_DEFAULT, type Density } from '../../shared/uiFile'
 import type { TaskRow } from '../../shared/contracts'
 import type { ConfigState, Task, TaskState } from '../../shared/types'
-import { Action, HOME, reduce, scratchId, SETTINGS, tabLabel, windowTitle } from './layout'
+import {
+  Action,
+  HOME,
+  isFixedTab,
+  reduce,
+  scratchId,
+  SETTINGS,
+  tabLabel,
+  windowTitle
+} from './layout'
 import { HomeView } from './HomeView'
 import { Sidebar } from './Sidebar'
 import { Panels } from './Panels'
@@ -26,8 +35,15 @@ export type Live = {
   exited: Record<string, number>
 }
 
+/** Nome curto de uma aba de task: key e título, venha ela do brain ou do domínio. */
+export type TabName = { key: string; title: string }
+
 function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [brainLoaded, setBrainLoaded] = useState(false)
+  // linhas do domínio das abas abertas (ULID): rótulo da aba e prova de que a task existe
+  const [tabRows, setTabRows] = useState<Map<string, TaskRow>>(new Map())
+  const [domainTick, setDomainTick] = useState(0)
   const [layout, dispatch] = useReducer(reduce, { panels: [], focused: 0 })
   const [hydrated, setHydrated] = useState(false)
   const [extra, setExtra] = useState({
@@ -48,10 +64,14 @@ function App(): React.JSX.Element {
 
   // Aviso do sistema (igual Cursor) quando um claude passa a esperar você e você não está vendo a aba.
   // Listener registrado uma vez: lê layout/config/tasks atuais por ref.
-  const now = useRef({ layout, cfg: null as ConfigState | null, tasks: [] as Task[] })
+  const now = useRef({
+    layout,
+    cfg: null as ConfigState | null,
+    names: new Map<string, TabName>()
+  })
   const lastNotified = useRef(new Map<string, number>())
   const notifyPending = (id: string, st: TaskState, info: HookInfo): void => {
-    const { layout: l, cfg: c, tasks: ts } = now.current
+    const { layout: l, cfg: c, names: ns } = now.current
     const visible = l.panels.some((p) => p.tabs[p.active] === id)
     const ok = shouldNotify({
       state: st,
@@ -60,10 +80,10 @@ function App(): React.JSX.Element {
       lastAt: lastNotified.current.get(id) ?? 0,
       now: Date.now()
     })
-    const text = notifyText(id.startsWith('~') ? tabLabel(id) : id, info)
+    const text = notifyText(id.startsWith('~') ? tabLabel(id) : (ns.get(id)?.key ?? id), info)
     if (!ok || !text) return
     lastNotified.current.set(id, Date.now())
-    const title = ts.find((t) => t.id === id)?.title
+    const title = ns.get(id)?.title
     const n = new Notification(text.title, {
       body: title ? `${title}\n${text.body}` : text.body,
       silent: false
@@ -75,7 +95,11 @@ function App(): React.JSX.Element {
   }
 
   useEffect(() => {
-    unwrap(window.turnflow.listTasks()).then((t) => t && setTasks(t))
+    unwrap(window.turnflow.listTasks()).then((t) => {
+      if (!t) return
+      setTasks(t)
+      setBrainLoaded(true)
+    })
     const offs = [
       window.turnflow.onTasksChanged(setTasks),
       window.turnflow.onState((id, st, info) => {
@@ -101,7 +125,10 @@ function App(): React.JSX.Element {
       })
     }
     load()
-    const off = window.turnflow.onDomainChanged(() => load())
+    const off = window.turnflow.onDomainChanged(() => {
+      load()
+      setDomainTick((n) => n + 1)
+    })
     return () => {
       cancel = true
       off()
@@ -142,6 +169,26 @@ function App(): React.JSX.Element {
 
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
   const openIds = useMemo(() => new Set(layout.panels.flatMap((p) => p.tabs)), [layout])
+  const names = useMemo(() => {
+    const m = new Map<string, TabName>()
+    for (const t of tasks) m.set(t.id, { key: t.id, title: t.title })
+    for (const r of [...doneRows, ...attention, ...tabRows.values()])
+      m.set(r.id, { key: r.key, title: r.title })
+    return m
+  }, [tasks, doneRows, attention, tabRows])
+  const domainKeys = useMemo(
+    () => new Set([...doneRows, ...attention, ...tabRows.values()].map((r) => r.key)),
+    [doneRows, attention, tabRows]
+  )
+  // abas de task que não são do brain: candidatas a task do domínio (id = ULID)
+  const domainTabs = useMemo(
+    () =>
+      [...openIds]
+        .filter((id) => !isFixedTab(id) && !byId.has(id))
+        .sort()
+        .join('\n'),
+    [openIds, byId]
+  )
 
   const markStarted = useCallback((id: string) => {
     setLive((l) => {
@@ -184,8 +231,8 @@ function App(): React.JSX.Element {
   }, [tasks])
   const [cfg, setCfg] = useState<ConfigState | null>(null)
   useEffect(() => {
-    now.current = { layout, cfg, tasks }
-  }, [layout, cfg, tasks])
+    now.current = { layout, cfg, names }
+  }, [layout, cfg, names])
   useEffect(() => {
     unwrap(window.turnflow.config()).then((c) => c && setCfg(c))
     return window.turnflow.onConfig(setCfg)
@@ -244,13 +291,28 @@ function App(): React.JSX.Element {
   )
   // título da janela = aba ativa de cada painel (ex.: "T-5030 │ T-4802 — <nome do app>")
   useEffect(() => {
-    document.title = windowTitle(layout)
-  }, [layout])
-  // restore: abas de tasks que sumiram do brain saem do layout
+    document.title = windowTitle(layout, (id) => names.get(id)?.key)
+  }, [layout, names])
+  // Restore e mudanças do domínio: aba de task que não existe nem no brain nem no domínio sai do
+  // layout. Sem lista do brain (pasta vazia ou ainda carregando) não dá pra dizer que uma aba
+  // não-domínio sumiu: nesse caso nada sai.
   useEffect(() => {
-    if (!hydrated || !tasks.length) return
-    dispatch({ t: 'retain', ids: new Set(tasks.map((t) => t.id)) })
-  }, [tasks, hydrated])
+    if (!hydrated || !brainLoaded) return
+    const ids = domainTabs ? domainTabs.split('\n') : []
+    let cancel = false
+    void (async () => {
+      const rows = ids.length
+        ? await unwrap(window.turnflow.taskList({ scope: { ids } }))
+        : ([] as TaskRow[])
+      if (cancel || !rows) return
+      setTabRows(new Map(rows.map((r) => [r.id, r])))
+      if (!tasks.length) return
+      dispatch({ t: 'retain', ids: new Set([...tasks.map((t) => t.id), ...rows.map((r) => r.id)]) })
+    })()
+    return () => {
+      cancel = true
+    }
+  }, [tasks, hydrated, brainLoaded, domainTabs, domainTick])
   const activeId = layout.panels[layout.focused]?.tabs[layout.panels[layout.focused].active]
 
   const toggleDraft = useCallback(() => {
@@ -333,6 +395,7 @@ function App(): React.JSX.Element {
         folded={sb.folded}
         width={sb.width}
         attention={attention}
+        domainKeys={domainKeys}
         density={extra.density}
         onDensity={(density: Density) => setExtra((x) => ({ ...x, density }))}
         onToggle={() => setSb((x) => ({ ...x, folded: !x.folded }))}
@@ -367,6 +430,7 @@ function App(): React.JSX.Element {
       <Panels
         layout={layout}
         byId={byId}
+        names={names}
         live={live}
         act={act}
         onStarted={markStarted}

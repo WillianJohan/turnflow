@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import type { ConfigState, Task } from '../../shared/types'
 import { SettingsView } from './SettingsView'
-import type { Live } from './App'
+import type { Live, TabName } from './App'
 import { type Action, type Layout, scratchKind, HOME, SETTINGS, tabLabel } from './layout'
 import { NEW_ACTIONS, type NewAction } from './palette'
 import { Dot } from './ui/Dot'
@@ -13,6 +13,7 @@ import { dragSizes } from './resize'
 type Props = {
   layout: Layout
   byId: Map<string, Task>
+  names: Map<string, TabName>
   live: Live
   act(a: Action): void
   onStarted(id: string): void
@@ -80,6 +81,7 @@ export function Panels(props: Props): React.JSX.Element {
   const {
     layout,
     byId,
+    names,
     live,
     act,
     onStarted,
@@ -172,7 +174,6 @@ export function Panels(props: Props): React.JSX.Element {
           ) : null
         const focused = pi === layout.focused
         const activeId = p.tabs[p.active]
-        const task = activeId ? byId.get(activeId) : undefined
         const z = zone?.panel === pi ? zone : null
         return [
           divider,
@@ -225,7 +226,7 @@ export function Panels(props: Props): React.JSX.Element {
                     onDoubleClick={() => act({ t: 'pin', taskId: id })}
                     onClick={() => act({ t: 'open', taskId: id })}
                     onAuxClick={(e) => e.button === 1 && act({ t: 'close', taskId: id })}
-                    title={byId.get(id)?.title ?? tabLabel(id)}
+                    title={names.get(id)?.title ?? tabLabel(id)}
                   >
                     {id === SETTINGS ? (
                       <Icon name="settings" size={12} />
@@ -237,7 +238,7 @@ export function Panels(props: Props): React.JSX.Element {
                     <span className="tab-label">
                       {scratch || id === SETTINGS
                         ? tabLabel(id)
-                        : `${id} ${byId.get(id)?.title ?? ''}`}
+                        : `${names.get(id)?.key ?? id} ${names.get(id)?.title ?? ''}`}
                     </span>
                     <button
                       className="tab-x"
@@ -283,19 +284,19 @@ export function Panels(props: Props): React.JSX.Element {
                 onStarted={onStarted}
                 onEnd={onEnd}
               />
-            ) : task ? (
+            ) : activeId ? (
               <TaskView
-                key={task.id}
-                task={task}
+                key={activeId}
+                id={activeId}
+                task={byId.get(activeId)}
+                name={names.get(activeId)}
                 live={live}
                 focused={focused}
                 draft={draft}
                 onStarted={onStarted}
                 onEnd={onEnd}
-                onPin={() => act({ t: 'pin', taskId: task.id })}
+                onPin={() => act({ t: 'pin', taskId: activeId })}
               />
-            ) : activeId ? (
-              <div className="notice">{activeId} não existe mais no brain.</div>
             ) : (
               <div className="notice">
                 Painel vazio. Use o <b>+</b> acima, <kbd>Ctrl+Shift+K</kbd> ou clique numa task na

@@ -222,11 +222,20 @@ export function tabLabel(id: string): string {
   return k ? `${k === 'claude' ? 'Claude' : 'Terminal'} ${id.split('-')[1]}` : id
 }
 
-// Título da janela reflete o que está na tela: aba ativa de cada painel.
-export function windowTitle(l: Layout): string {
+// Título da janela reflete o que está na tela: aba ativa de cada painel. `keyOf` troca o id de
+// domínio (ULID) pela key da task.
+export function windowTitle(
+  l: Layout,
+  keyOf: (id: string) => string | undefined = () => undefined
+): string {
   const ids = l.panels.map((p) => p.tabs[p.active]).filter(Boolean)
-  return ids.length ? `${ids.map(tabLabel).join(' │ ')} — ${BRAND.name}` : BRAND.name
+  const label = (id: string): string => keyOf(id) ?? tabLabel(id)
+  return ids.length ? `${ids.map(label).join(' │ ')} — ${BRAND.name}` : BRAND.name
 }
+
+/** Aba que não é de task: Início, Ajustes e as avulsas. */
+export const isFixedTab = (id: string): boolean =>
+  id === HOME || id === SETTINGS || scratchKind(id) !== null
 
 // Aba única de configurações (tema, editor de tema, fontes, ícones...).
 export const SETTINGS = '~settings'

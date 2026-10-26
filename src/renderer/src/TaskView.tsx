@@ -7,8 +7,9 @@ import {
   type TaskDetail
 } from '../../shared/contracts'
 import { SESSION_COPY } from '../../shared/copy/session'
+import { SHELL_COPY } from '../../shared/copy/shell'
 import type { Task } from '../../shared/types'
-import type { Live } from './App'
+import type { Live, TabName } from './App'
 import { Composer } from './Composer'
 import { Header } from './Header'
 import { Icon } from './Icon'
@@ -32,7 +33,10 @@ const toolOf = (value: string): SessionTool =>
   (SESSION_TOOLS as readonly string[]).includes(value) ? (value as SessionTool) : 'claude-code'
 
 type Props = {
-  task: Task
+  /** id da aba: ULID da task do domínio ou id do brain (que é a key quando importada). */
+  id: string
+  task?: Task
+  name?: TabName
   live: Live
   focused: boolean
   draft: boolean
@@ -70,7 +74,9 @@ const previewOf = (details: unknown): { from: { id: string }; to_stage_id: strin
 }
 
 export function TaskView({
+  id,
   task,
+  name,
   live,
   focused,
   draft,
@@ -78,7 +84,6 @@ export function TaskView({
   onEnd,
   onPin
 }: Props): React.JSX.Element {
-  const id = task.id
   const alive = live.alive.has(id)
   const exitCode = live.exited[id]
   const host = useRef<HTMLDivElement>(null)
@@ -372,7 +377,7 @@ export function TaskView({
       <div className="taskview">
         <div className="th">
           <span className="th-title">
-            <b>{id}</b> — {task.title}
+            <b>{name?.key ?? id}</b> — {name?.title ?? task?.title ?? ''}
           </span>
         </div>
       </div>
@@ -380,6 +385,12 @@ export function TaskView({
   }
 
   if (mode === 'brain' || !detail) {
+    if (!task)
+      return (
+        <div className="taskview">
+          <div className="notice">{SHELL_COPY.task.gone(name?.key ?? id)}</div>
+        </div>
+      )
     const hasSession = alive || hasTerm(id)
     const toggle = hasSession && (
       <button
