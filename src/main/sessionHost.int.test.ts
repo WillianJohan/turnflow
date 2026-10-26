@@ -263,7 +263,10 @@ describe('session host', () => {
     const before = row().session?.state
     await post(b, 'tok-1', { hook_event_name: 'Notification' })
     expect(row().session?.state).toBe(before)
-    expect(b.logs).toHaveLength(1)
+    expect(b.logs).toEqual(['hook Notification ignored: type <none>'])
+    b.logs.length = 0
+    await post(b, 'tok-1', { hook_event_name: 'Notification', notification_type: 'auth_success' })
+    expect(b.logs).toEqual(['hook Notification ignored: type auth_success'])
     await b.close()
     b.db.close()
   })
@@ -661,6 +664,26 @@ describe('session host', () => {
     } finally {
       vi.useRealTimers()
     }
+    await b.close()
+    b.db.close()
+  })
+
+  it('Codex ignora hook: Notification não leva a task a Sua vez', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    const opened = await spawn(b, { tool: 'codex', task: t.id })
+    for (const body of [
+      { hook_event_name: 'Notification', notification_type: 'permission_prompt' },
+      { hook_event_name: 'SessionStart', session_id: U, cwd: '/w' },
+      { hook_event_name: 'Stop' }
+    ])
+      expect(await post(b, 'tok-1', body)).toBe(204)
+    expect(b.host.stateOf('p1')).toBeNull()
+    expect(getSession(b.d!, opened.session_id!)).toMatchObject({
+      state: 'unknown',
+      external_id: null
+    })
+    expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
     await b.close()
     b.db.close()
   })

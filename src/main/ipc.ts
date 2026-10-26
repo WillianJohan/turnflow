@@ -233,6 +233,7 @@ export async function registerIpc(
     const { testSpawner } = await import('./testing/pty')
     spawner = testSpawner(process.env, nodePtySpawner, agentBins)
   }
+  const appLog = (line: string): void => (deps.log ? deps.log(line) : console.error(line))
   const portBox = { n: 0 }
   const settingsFile = await writeHookSettings(runDir())
   const host = createSessionHost({
@@ -274,11 +275,12 @@ export async function registerIpc(
       },
       state: (id, s, info) => send('pty:state', id, s, info)
     },
-    log: (line) => (deps.log ? deps.log(line) : console.error(line))
+    log: appLog
   })
   const hooks = await startHookServer({
     accept: (token) => host.accept(token),
-    onHook: (token, body) => host.onHook(token, body)
+    onHook: (token, body) => host.onHook(token, body),
+    log: appLog
   })
   portBox.n = hooks.port
   // renderer recarregou (F5/dev): os xterms morreram junto; não espera aqui

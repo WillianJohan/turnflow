@@ -39,8 +39,12 @@ const legacy = vi.hoisted(() => ({
   watch: vi.fn<(root: string, onChange: () => void) => () => void>(() => () => undefined)
 }))
 vi.mock('./tasks', () => ({ loadTasks: legacy.load, watchTasks: legacy.watch }))
+const hookServer = vi.hoisted(() => ({ opts: null as null | { log?: (line: string) => void } }))
 vi.mock('./hooks', () => ({
-  startHookServer: async () => ({ port: 1, token: 't', close: () => undefined }),
+  startHookServer: async (o: { log?: (line: string) => void }) => {
+    hookServer.opts = o
+    return { port: 1, token: 't', close: () => undefined }
+  },
   writeHookSettings: async () => '/tmp/settings.json'
 }))
 vi.mock('./appConfig', async (orig) => ({
@@ -102,6 +106,13 @@ afterEach(() => {
 })
 
 const cfgFile = (): string => join(dir, 'config.json')
+
+describe('servidor de hooks', () => {
+  it('recebe o log do app: exceção do onHook não some', () => {
+    hookServer.opts?.log?.('boom')
+    expect(log).toHaveBeenCalledWith('boom')
+  })
+})
 
 describe('tema pelo IPC', () => {
   it('tema ausente ou quebrado cai no padrão com erro, sem derrubar o config', async () => {

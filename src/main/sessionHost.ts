@@ -341,17 +341,11 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
     onHook(token, b) {
       const ptyId = byToken.get(token)
       const entry = ptyId ? entries.get(ptyId) : undefined
-      if (
-        !ptyId ||
-        !entry ||
-        entry.tool === 'shell' ||
-        entry.tool === 'cursor' ||
-        entry.tool === 'other'
-      )
-        return
+      // só o claude-code muda estado por hook (§5): Codex, Cursor e Outra nunca
+      if (!ptyId || !entry || entry.tool !== 'claude-code') return
       const effect = hookEffect(b)
-      if (effect.ignoredType !== undefined) o.log(effect.ignoredType)
-      else if (b.hook_event_name === 'Notification' && effect.state === null) o.log('')
+      if (b.hook_event_name === 'Notification' && effect.state === null)
+        o.log(`hook Notification ignored: type ${effect.ignoredType || '<none>'}`)
       const d = o.domain()
       if (effect.start && entry.session_id && d) {
         const next = recordSessionStart(d, entry.session_id, {
