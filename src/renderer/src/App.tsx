@@ -221,6 +221,16 @@ function App(): React.JSX.Element {
       m.set(r.id, { key: r.key, title: r.title })
     return m
   }, [tasks, doneRows, attention, tabRows])
+  // key → id do domínio: a task importada abre (árvore, paleta) direto pelo ULID
+  const keyToId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const r of [...doneRows, ...attention, ...tabRows.values()]) m.set(r.key, r.id)
+    return m
+  }, [doneRows, attention, tabRows])
+  const onCanonical = useCallback(
+    (from: string, to: string) => act({ t: 'alias', from, to }),
+    [act]
+  )
   const domainKeys = useMemo(
     () => new Set([...doneRows, ...attention, ...tabRows.values()].map((r) => r.key)),
     [doneRows, attention, tabRows]
@@ -480,8 +490,8 @@ function App(): React.JSX.Element {
         tasks={tasks}
         openIds={openIds}
         live={live}
-        onOpen={(id) => act({ t: 'open', taskId: id })}
-        onPeek={(id) => act({ t: 'peek', taskId: id })}
+        onOpen={(id) => act({ t: 'open', taskId: keyToId.get(id) ?? id })}
+        onPeek={(id) => act({ t: 'peek', taskId: keyToId.get(id) ?? id })}
         onEnd={endSession}
         onSearch={() => setSearching('search')}
         root={root}
@@ -537,6 +547,7 @@ function App(): React.JSX.Element {
         onStarted={markStarted}
         onEnd={endSession}
         onUndoable={onUndoable}
+        onCanonical={onCanonical}
         draft={!!cfg?.config.draftMode}
         newTabPanel={newTabPanel}
         setNewTabPanel={setNewTabPanel}
@@ -561,7 +572,7 @@ function App(): React.JSX.Element {
       {searching && (
         <Palette
           mode={searching}
-          brain={tasks}
+          brain={tasks.map((t) => ({ id: keyToId.get(t.id) ?? t.id, key: t.id, title: t.title }))}
           recent={attention.map((row) => ({
             id: row.id,
             key: row.key,

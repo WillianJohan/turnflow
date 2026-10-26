@@ -141,3 +141,17 @@ describe('busca FTS5', () => {
     db.close()
   })
 })
+
+describe('busca marca concluída', () => {
+  it('hit diz se a task está encerrada (FTS e fallback curto)', () => {
+    const db = openTestDb()
+    const open = insertTask(db, { key: 'T-1', title: 'gamma aberta' })
+    const done = insertTask(db, { key: 'T-2', title: 'gamma fechada' })
+    db.prepare('update task set done_at = ? where id = ?').run('2026-10-22T10:00:00.000Z', done)
+    const byId = (q: string): Record<string, boolean> =>
+      Object.fromEntries(runSearch(db, q).map((h) => [h.task_id, h.done]))
+    expect(byId('gamma')).toEqual({ [open]: false, [done]: true })
+    expect(byId('ga')).toEqual({ [open]: false, [done]: true })
+    db.close()
+  })
+})

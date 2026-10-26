@@ -21,6 +21,7 @@ type Props = {
   onStarted(id: string): void
   onEnd(id: string): void
   onUndoable(activityId: string, text: string): void
+  onCanonical(from: string, to: string): void
   draft: boolean
   newTabPanel: number | null // painel com o menu "+" aberto
   setNewTabPanel(p: number | null): void
@@ -52,6 +53,7 @@ export function Panels(props: Props): React.JSX.Element {
     onStarted,
     onEnd,
     onUndoable,
+    onCanonical,
     draft,
     newTabPanel,
     setNewTabPanel,
@@ -259,6 +261,7 @@ export function Panels(props: Props): React.JSX.Element {
                 onEnd={onEnd}
                 onPin={() => act({ t: 'pin', taskId: activeId })}
                 onUndoable={onUndoable}
+                onCanonical={onCanonical}
               />
             ) : (
               <div className="notice">{SHELL_COPY.tabs.empty}</div>

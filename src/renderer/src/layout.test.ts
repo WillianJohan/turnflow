@@ -443,3 +443,33 @@ it('fechar/abrir aba não perde o tamanho do painel', () => {
   l = reduce(l, { t: 'peek', taskId: 'D' })
   expect(l.panels.map((p) => p.size)).toEqual([1.5, 0.5])
 })
+
+describe('alias (id do brain → id do domínio)', () => {
+  it('troca no lugar, mantendo posição, ativa e prévia', () => {
+    const l: Layout = {
+      panels: [{ tabs: ['A', 'WF-1', 'B'], active: 1, preview: 'WF-1' }],
+      focused: 0
+    }
+    expect(reduce(l, { t: 'alias', from: 'WF-1', to: 'X' })).toEqual({
+      panels: [{ tabs: ['A', 'X', 'B'], active: 1, preview: 'X' }],
+      focused: 0
+    })
+  })
+
+  it('com o destino já aberto, a de origem sai e o destino fica ativo', () => {
+    const l: Layout = {
+      panels: [
+        { tabs: ['WF-1', 'A'], active: 0 },
+        { tabs: ['X'], active: 0 }
+      ],
+      focused: 0
+    }
+    expect(reduce(l, { t: 'alias', from: 'WF-1', to: 'X' })).toEqual({
+      panels: [
+        { tabs: ['A'], active: 0 },
+        { tabs: ['X'], active: 0 }
+      ],
+      focused: 1
+    })
+  })
+})

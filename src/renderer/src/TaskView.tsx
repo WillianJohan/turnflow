@@ -45,6 +45,8 @@ type Props = {
   onEnd(id: string): void
   /** Ação com Desfazer: o toast mora no app, então sobrevive a trocar ou fechar a aba. */
   onUndoable?(activityId: string, text: string): void
+  /** A aba abriu pelo id do brain de uma task importada: passa a ser a aba do id do domínio. */
+  onCanonical?(from: string, to: string): void
 }
 
 type Ask =
@@ -96,7 +98,8 @@ export function TaskView({
   onStarted,
   onEnd,
   onPin,
-  onUndoable
+  onUndoable,
+  onCanonical
 }: Props): React.JSX.Element {
   const alive = live.alive.has(id)
   const exitCode = live.exited[id]
@@ -126,6 +129,11 @@ export function TaskView({
     aliveRef.current = alive
   }, [alive])
   const reload = (): void => setReloadTick((n) => n + 1)
+  // Aba aberta pelo id do brain (ui.json antigo, árvore, paleta antes do FTS) de task importada:
+  // vira a aba do ULID. Com processo vivo no id antigo espera ele sair (o pty_id é o id da aba).
+  useEffect(() => {
+    if (domainId && domainId !== id && !alive && !starting) onCanonical?.(id, domainId)
+  }, [domainId, id, alive, starting, onCanonical])
   const remember = (activityId: string | null, text: string): void => {
     if (activityId) onUndoable?.(activityId, text)
   }

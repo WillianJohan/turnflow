@@ -337,3 +337,37 @@ it('+ Novo fechado no Esc devolve o foco pra quem abriu', async () => {
   await flush()
   expect(document.activeElement).toBe(plus)
 })
+
+const X = '01JIMPORTED0000000000000XX'
+const savedTabs = (fake: ReturnType<typeof fakeApi>): string[] =>
+  (
+    fake.calls.filter((c) => c.name === 'uiSet').at(-1)?.args[0] as UiFile | undefined
+  )?.layout.panels.flatMap((p) => p.tabs) ?? []
+
+it('aba antiga com id do brain de task importada vira a aba do domínio (uma só)', async () => {
+  const fake = await mount({
+    brain: [brainTask('WF-1')],
+    rows: [taskRow(X, 'WF-1')],
+    ui: withLayout(['WF-1'])
+  })
+  await act(async () => await new Promise((r) => setTimeout(r, 600)))
+  expect(tabs()).toEqual([expect.stringContaining('WF-1')])
+  expect(savedTabs(fake)).toEqual([X])
+  // abrir pela atenção não cria a segunda
+  act(() => host.querySelector<HTMLElement>('[role="option"]')!.click())
+  await flush()
+  expect(tabs()).toHaveLength(1)
+})
+
+it('concluída importada aberta pela árvore do brain abre no id do domínio', async () => {
+  const done = taskRow(X, 'WF-2', { group: 'concluida' })
+  const fake = await mount({ brain: [brainTask('WF-2')], rows: [], done: [done] })
+  const item = [...host.querySelectorAll<HTMLElement>('.item')].find((b) =>
+    b.textContent?.includes('WF-2')
+  )!
+  act(() => item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
+  await flush()
+  await act(async () => await new Promise((r) => setTimeout(r, 600)))
+  expect(tabs()).toEqual([expect.stringContaining('WF-2')])
+  expect(savedTabs(fake)).toEqual([X])
+})

@@ -260,3 +260,38 @@ it('mover mostra o par de etapa sugerido antes de aplicar', async () => {
   expect(moves.at(-1)).toMatchObject({ project_id: 'p1', choice: 'adopt', mapping: { st1: 'st9' } })
   expect(view.undoable).toEqual([['act-m', 'Task moved']])
 })
+
+it('aba pelo id do brain com processo vivo só vira a do domínio quando ele sai', async () => {
+  const row = taskRow(ID, 'WF-7')
+  const fake = fakeApi({ rows: [row] })
+  ;(window as unknown as { turnflow: unknown }).turnflow = fake.api
+  const canon: [string, string][] = []
+  const view = (live: Live): React.JSX.Element => (
+    <TaskView
+      id="WF-7"
+      task={{
+        id: 'WF-7',
+        title: 'brain',
+        status: 'x',
+        bucket: { idx: 0, name: 'Doing' },
+        parent: null,
+        dir: 'current',
+        readmePath: '/b/WF-7/README.md',
+        sessions: []
+      }}
+      live={live}
+      focused={false}
+      draft={false}
+      onStarted={() => undefined}
+      onEnd={() => undefined}
+      onPin={() => undefined}
+      onCanonical={(from, to) => canon.push([from, to])}
+    />
+  )
+  act(() => root.render(view({ states: {}, alive: new Set(['WF-7']), exited: {} })))
+  await flush()
+  expect(canon).toEqual([])
+  act(() => root.render(view({ states: {}, alive: new Set(), exited: { 'WF-7': 0 } })))
+  await flush()
+  expect(canon).toEqual([['WF-7', ID]])
+})

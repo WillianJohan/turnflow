@@ -10,6 +10,8 @@ export const SearchHitZ = z.object({
   task_id: z.string(),
   key: z.string(),
   title: z.string(),
+  /** Task encerrada (`done_at`): a paleta mostra o chip "Done". */
+  done: z.boolean(),
   // Texto cru do usuário com HL_OPEN/HL_CLOSE ao redor do trecho casado. A UI divide por esses
   // marcadores e renderiza tudo como texto, nunca como HTML.
   snippet: z.string()

@@ -30,13 +30,13 @@ export type Found = { id: string; key: string; title: string; done: boolean }
 
 /**
  * Uma linha por task, na ordem do FTS. Vários hits da mesma task (título e checkpoints) viram um;
- * a task do brain com a mesma key de um hit do domínio some (o domínio vence).
+ * a task do brain com a mesma key de um hit do domínio some (o domínio vence). `brain[].id` já vem
+ * traduzido pro ULID quando a task foi importada (o App sabe o mapa key → id).
  */
 export function mergeFound(
   hits: SearchHit[],
-  brain: { id: string; title: string }[],
-  query: string,
-  doneIds: ReadonlySet<string> = new Set()
+  brain: { id: string; key: string; title: string }[],
+  query: string
 ): Found[] {
   const out: Found[] = []
   const seen = new Set<string>()
@@ -45,17 +45,20 @@ export function mergeFound(
     if (seen.has(hit.task_id)) continue
     seen.add(hit.task_id)
     keys.add(hit.key)
-    out.push({ id: hit.task_id, key: hit.key, title: hit.title, done: doneIds.has(hit.task_id) })
+    out.push({ id: hit.task_id, key: hit.key, title: hit.title, done: hit.done })
   }
   const q = query.trim()
   if (!q) return out
   const legacy = brain
-    .filter((task) => !keys.has(task.id))
-    .map((task) => ({ task, score: fuzzyScore(q, `${task.id} ${task.title}`) }))
+    .filter((task) => !keys.has(task.key) && !seen.has(task.id))
+    .map((task) => ({ task, score: fuzzyScore(q, `${task.key} ${task.title}`) }))
     .filter((x) => x.score !== null)
     .sort((a, b) => b.score! - a.score!)
-  for (const { task } of legacy)
-    out.push({ id: task.id, key: task.id, title: task.title, done: false })
+  for (const { task } of legacy) {
+    if (seen.has(task.id)) continue
+    seen.add(task.id)
+    out.push({ id: task.id, key: task.key, title: task.title, done: false })
+  }
   return out
 }
 

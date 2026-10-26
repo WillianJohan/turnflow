@@ -31,17 +31,21 @@ function highlight(title: string, needle: string): string {
 }
 
 function viaFts(db: Db, terms: string[], limit: number): SearchHit[] {
-  return db
+  const rows = db
     .prepare(
       `select search_fts.kind as kind, search_fts.task_id as task_id, task.key as key,
-              task.title as title, snippet(search_fts, -1, ?, ?, '…', 12) as snippet
+              task.title as title, task.done_at is not null as done,
+              snippet(search_fts, -1, ?, ?, '…', 12) as snippet
          from search_fts
          join task on task.id = search_fts.task_id and task.deleted_at is null
         where search_fts match ?
         order by bm25(search_fts)
         limit ?`
     )
-    .all(HL_OPEN, HL_CLOSE, terms.map(phrase).join(' AND '), limit) as SearchHit[]
+    .all(HL_OPEN, HL_CLOSE, terms.map(phrase).join(' AND '), limit) as (Omit<SearchHit, 'done'> & {
+    done: number
+  })[]
+  return rows.map((h) => ({ ...h, done: h.done === 1 }))
 }
 
 // Consulta curta (< 3 chars) não tem trigram: cai no LIKE por título e key.
@@ -49,18 +53,24 @@ function viaLike(db: Db, q: string, limit: number): SearchHit[] {
   const like = `%${likeEscape(q)}%`
   const rows = db
     .prepare(
-      `select id as task_id, key, title from task
+      `select id as task_id, key, title, done_at from task
         where deleted_at is null
           and (tf_fold(title) like ? escape '\\' or tf_fold(key) like ? escape '\\')
         order by touched_at desc
         limit ?`
     )
-    .all(like, like, limit) as { task_id: string; key: string; title: string }[]
+    .all(like, like, limit) as {
+    task_id: string
+    key: string
+    title: string
+    done_at: string | null
+  }[]
   return rows.map((r) => ({
     kind: 'task',
     task_id: r.task_id,
     key: r.key,
     title: r.title,
+    done: r.done_at !== null,
     snippet: highlight(r.title, q)
   }))
 }

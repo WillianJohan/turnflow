@@ -35,7 +35,8 @@ const hit = (task_id: string, key: string, title: string): SearchHit => ({
   task_id,
   key,
   title,
-  snippet: title
+  snippet: title,
+  done: false
 })
 
 type Log = { picked: string[]; created: string[]; queries: string[] }
@@ -44,7 +45,7 @@ function render(
   o: {
     mode?: 'search' | 'new'
     hits?: SearchHit[]
-    brain?: { id: string; title: string }[]
+    brain?: { id: string; key: string; title: string }[]
     create?: (title: string) => Promise<string | null>
   } = {}
 ): Log {
@@ -112,7 +113,7 @@ it('Enter repetido durante a criação cria uma vez; erro aparece na paleta', as
 it('task do brain que já é do domínio aparece uma vez só', async () => {
   render({
     hits: [hit('u1', 'WF-1', 'login novo')],
-    brain: [{ id: 'WF-1', title: 'login novo' }]
+    brain: [{ id: 'WF-1', key: 'WF-1', title: 'login novo' }]
   })
   act(() => typeIn('login'))
   await settle()
@@ -161,4 +162,14 @@ it('Enter antes da busca voltar espera o resultado e abre a existente', async ()
   await settle()
   expect(log.picked).toEqual(['u1'])
   expect(log.created).toEqual([])
+})
+
+it('task concluída achada pela busca aparece com o chip Done', async () => {
+  render({ hits: [{ ...hit('u9', 'T-9', 'old login'), done: true }] })
+  act(() => typeIn('login'))
+  await settle()
+  const row = [...host.querySelectorAll('[role="option"]')].find((o) =>
+    o.textContent?.includes('T-9')
+  )
+  expect(row?.querySelector('.palette-chip')?.textContent).toBe('Done')
 })

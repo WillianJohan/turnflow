@@ -101,17 +101,40 @@ describe('mergeFound', () => {
   it('uma linha por task: hit do domínio vence a task do brain com a mesma key', () => {
     const merged = mergeFound(
       [
-        { kind: 'task', task_id: 'u1', key: 'WF-1', title: 'A', snippet: '' },
-        { kind: 'checkpoint', task_id: 'u1', key: 'WF-1', title: 'A', snippet: '' },
-        { kind: 'checkpoint', task_id: 'u2', key: 'T-2', title: 'B', snippet: '' }
+        { kind: 'task', task_id: 'u1', key: 'WF-1', title: 'A', snippet: '', done: false },
+        { kind: 'checkpoint', task_id: 'u1', key: 'WF-1', title: 'A', snippet: '', done: false },
+        { kind: 'checkpoint', task_id: 'u2', key: 'T-2', title: 'B', snippet: '', done: true }
       ],
       [
-        { id: 'WF-1', title: 'A (brain)' },
-        { id: 'WF-3', title: 'C (brain)' }
+        { id: 'WF-1', key: 'WF-1', title: 'A (brain)' },
+        { id: 'WF-3', key: 'WF-3', title: 'C (brain)' }
       ],
       'a'
     )
     expect(merged.map((r) => r.id)).toEqual(['u1', 'u2', 'WF-3'])
+  })
+})
+
+describe('mergeFound: importadas e concluídas', () => {
+  it('concluída vem marcada do hit', () => {
+    const merged = mergeFound(
+      [{ kind: 'task', task_id: 'u2', key: 'T-2', title: 'B', snippet: '', done: true }],
+      [],
+      'b'
+    )
+    expect(merged).toEqual([{ id: 'u2', key: 'T-2', title: 'B', done: true }])
+  })
+
+  it('task do brain já importada sai com o id do domínio e não duplica', () => {
+    // FTS ainda sem resposta: só o brain, com a key traduzida pro ULID pelo App
+    const pending = mergeFound([], [{ id: 'u1', key: 'WF-1', title: 'login' }], 'login')
+    expect(pending).toEqual([{ id: 'u1', key: 'WF-1', title: 'login', done: false }])
+    const later = mergeFound(
+      [{ kind: 'task', task_id: 'u1', key: 'WF-1', title: 'login', snippet: '', done: false }],
+      [{ id: 'u1', key: 'WF-1', title: 'login' }],
+      'login'
+    )
+    expect(later.map((r) => r.id)).toEqual(['u1'])
   })
 })
 

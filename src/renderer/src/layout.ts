@@ -11,6 +11,7 @@ export type Action =
   | { t: 'resizePair'; panel: number; a: number; b: number } // divisória entre panel e panel+1
   | { t: 'equalize' }
   | { t: 'rename'; from: string; to: string } // aba avulsa adotada pela task
+  | { t: 'alias'; from: string; to: string } // id do brain da task importada → id do domínio
   | { t: 'close'; taskId: string }
   | { t: 'split' }
   | { t: 'dropPanel'; panel: number }
@@ -103,6 +104,18 @@ export function reduce(l: Layout, a: Action): Layout {
       return setPanel(out, p, {
         ...unpreview(out.panels[p], a.from),
         tabs: out.panels[p].tabs.map((t, j) => (j === i ? a.to : t))
+      })
+    }
+    case 'alias': {
+      if (a.from === a.to) return l
+      const [fp, fi] = find(l, a.from)
+      if (fp < 0) return l
+      if (find(l, a.to)[0] >= 0) return reduce(removeTab(l, a.from), { t: 'open', taskId: a.to })
+      const p = l.panels[fp]
+      return setPanel(l, fp, {
+        ...p,
+        tabs: p.tabs.map((t, j) => (j === fi ? a.to : t)),
+        preview: p.preview === a.from ? a.to : p.preview
       })
     }
     case 'resizePair': {

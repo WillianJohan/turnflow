@@ -11,7 +11,7 @@ type Props = {
   /** `search`: achar primeiro. `new` (+ Novo > Task): criar primeiro. */
   mode: 'search' | 'new'
   /** Tasks do brain legado: entram por subsequência, atrás das do domínio. */
-  brain: { id: string; title: string }[]
+  brain: { id: string; key: string; title: string }[]
   /** O que aparece com a busca vazia (a fila de atenção). */
   recent?: Found[]
   /** Busca FTS do domínio (inclui concluídas). */
