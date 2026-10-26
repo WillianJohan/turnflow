@@ -55,3 +55,18 @@ it('shellEnv devolve o PATH mesmo sem claude (terminal, Codex e Cursor não prec
   resetLoginEnv()
   await expect(shellEnv(async () => '\r\n', 'win32')).resolves.toMatchObject({ claude: null })
 })
+
+it('claude instalado com o app aberto: resultado sem claude não fica em cache', async () => {
+  resetLoginEnv()
+  let out = '__TURNFLOW_PATH=/usr/bin\n__TURNFLOW_CLAUDE=\n'
+  const exec = async (): Promise<string> => out
+  await expect(loginEnv(exec, 'linux')).rejects.toThrow('claude não encontrado')
+  out = '__TURNFLOW_PATH=/usr/bin\n__TURNFLOW_CLAUDE=/usr/bin/claude\n'
+  await expect(loginEnv(exec, 'linux')).resolves.toEqual({
+    PATH: '/usr/bin',
+    claude: '/usr/bin/claude'
+  })
+  // com o claude achado, aí sim fica em cache
+  out = '__TURNFLOW_PATH=/x\n__TURNFLOW_CLAUDE=\n'
+  await expect(loginEnv(exec, 'linux')).resolves.toMatchObject({ claude: '/usr/bin/claude' })
+})

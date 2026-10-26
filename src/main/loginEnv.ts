@@ -64,7 +64,7 @@ const fromWhere = (out: string): ShellEnv => {
 
 /**
  * PATH do login sem exigir o claude: o terminal puro, o Codex e o Cursor rodam sem ele.
- * Rejeita só se o shell falhar (timeout); a falha não fica em cache.
+ * Rejeita só se o shell falhar (timeout); falha e resultado sem claude não ficam em cache.
  */
 export function shellEnv(
   exec?: Exec,
@@ -75,7 +75,12 @@ export function shellEnv(
   const run = exec ?? (platform === 'win32' ? whereClaude : shell)
   if (!cached) {
     const pending = run()
-      .then((out) => (platform === 'win32' ? fromWhere(out) : fromBash(out)))
+      .then((out) => {
+        const env = platform === 'win32' ? fromWhere(out) : fromBash(out)
+        // sem claude não fica em cache: instalar com o app aberto vale no próximo lançamento
+        if (!env.claude && cached === pending) cached = null
+        return env
+      })
       .catch((e) => {
         // falha não fica em cache: o próximo lançamento tenta de novo.
         // Só apaga se esta ainda for a promise vigente (outra plataforma pode ter trocado).
