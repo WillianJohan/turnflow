@@ -16,10 +16,16 @@ const stripped = (k: string): boolean =>
 
 export function ptyEnv(
   base: Record<string, string | undefined>,
-  extra: Record<string, string>
+  extra: Record<string, string>,
+  platform: NodeJS.Platform = process.platform
 ): Record<string, string> {
+  // no Windows o nome da variável não diferencia caixa: `Path` herdado + `PATH` do app viraria
+  // duas chaves e o filho pegaria qualquer uma. A do `extra` substitui a herdada.
+  const win = platform === 'win32'
+  const overridden = new Set(Object.keys(extra).map((k) => k.toUpperCase()))
   const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(base)) if (v !== undefined && !stripped(k)) env[k] = v
+  for (const [k, v] of Object.entries(base))
+    if (v !== undefined && !stripped(k) && !(win && overridden.has(k.toUpperCase()))) env[k] = v
   return { ...env, TERM: 'xterm-256color', ...extra }
 }
 

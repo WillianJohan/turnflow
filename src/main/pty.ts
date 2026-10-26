@@ -46,7 +46,12 @@ type Events = {
   /** `gen` é a geração devolvida pelo `start` do processo que saiu. */
   exit(id: string, code: number, gen: number): void
 }
-type Leaving = { p: PtyProc; waiters: Set<() => void>; timer: NodeJS.Timeout | null }
+type Leaving = {
+  p: PtyProc
+  gen: number
+  waiters: Set<() => void>
+  timer: NodeJS.Timeout | null
+}
 
 export function createPtyPool(o: {
   spawner: PtySpawner
@@ -54,31 +59,63 @@ export function createPtyPool(o: {
   platform?: NodeJS.Platform
   baseEnv?: Record<string, string | undefined>
   killGraceMs?: number
+  /** Depois do SIGKILL, quanto esperar o `onExit` antes de liberar o id na marra. */
+  stuckMs?: number
+  log?: (line: string) => void
 }): PtyPool {
   const platform = o.platform ?? process.platform
   const grace = o.killGraceMs ?? 3000
-  const live = new Map<string, PtyProc>()
+  const stuck = o.stuckMs ?? 2000
+  const live = new Map<string, { p: PtyProc; gen: number }>()
+  // liberados sem onExit: um exit que chegue depois não fala por ninguém
+  const released = new WeakSet<PtyProc>()
   let gens = 0
   // morto por `kill` e ainda sem `onExit`: o id continua ocupado até o processo sair de fato
   const leaving = new Map<string, Leaving>()
 
+  const settle = (id: string, l: Leaving): void => {
+    leaving.delete(id)
+    if (l.timer) clearTimeout(l.timer)
+    for (const w of [...l.waiters]) w()
+  }
+
+  // node-pty põe o filho numa sessão própria (pgid = pid): o SIGKILL vai pro grupo, e os netos
+  // (shell → claude → node) não ficam órfãos. Grupo que não existe mais cai no pid.
+  const hardKill = (pid: number): void => {
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {
+      try {
+        process.kill(pid, 'SIGKILL')
+      } catch {
+        // já saiu
+      }
+    }
+  }
+
   const kill = (id: string): void => {
-    const p = live.get(id)
-    if (!p) return
+    const cur = live.get(id)
+    if (!cur) return
     live.delete(id)
-    const l: Leaving = { p, waiters: new Set(), timer: null }
+    const { p, gen } = cur
+    const l: Leaving = { p, gen, waiters: new Set(), timer: null }
     leaving.set(id, l)
     p.kill()
     // claude que ignora SIGHUP vira processo invisível; sem exit em `grace` vai no SIGKILL.
     // No Windows (conpty) matar por pid não existe: só `p.kill()` e esperar o exit.
     if (platform !== 'win32')
       l.timer = setTimeout(() => {
-        l.timer = null
-        try {
-          process.kill(p.pid, 'SIGKILL')
-        } catch {
-          // já saiu
-        }
+        hardKill(p.pid)
+        // nem o SIGKILL trouxe o onExit (o node-pty perdeu o evento): libera o id com log, senão
+        // a aba ficaria em pty_busy para sempre
+        l.timer = setTimeout(() => {
+          l.timer = null
+          if (leaving.get(id) !== l) return
+          released.add(p)
+          settle(id, l)
+          o.log?.(`pty ${id}: no exit ${stuck} ms after SIGKILL (pid ${p.pid}); id released`)
+          o.events.exit(id, -1, gen)
+        }, stuck)
       }, grace)
   }
 
@@ -108,26 +145,23 @@ export function createPtyPool(o: {
         cols: size.cols,
         rows: size.rows,
         cwd,
-        env: ptyEnv(o.baseEnv ?? process.env, env)
+        env: ptyEnv(o.baseEnv ?? process.env, env, platform)
       })
       const gen = ++gens
-      live.set(id, p)
+      live.set(id, { p, gen })
       p.onData((d) => o.events.data(id, d))
       p.onExit(({ exitCode }) => {
+        if (released.has(p)) return
         // só o exit do processo certo libera o id: o de um processo velho nunca encerra o novo
-        if (live.get(id) === p) live.delete(id)
+        if (live.get(id)?.p === p) live.delete(id)
         const l = leaving.get(id)
-        if (l?.p === p) {
-          leaving.delete(id)
-          if (l.timer) clearTimeout(l.timer)
-          for (const w of [...l.waiters]) w()
-        }
+        if (l?.p === p) settle(id, l)
         o.events.exit(id, exitCode, gen)
       })
       return gen
     },
-    write: (id, d) => live.get(id)?.write(d),
-    resize: (id, c, r) => live.get(id)?.resize(c, r),
+    write: (id, d) => live.get(id)?.p.write(d),
+    resize: (id, c, r) => live.get(id)?.p.resize(c, r),
     kill,
     killAndWait,
     killAllAndWait: async (ms, filter) => {
@@ -136,7 +170,6 @@ export function createPtyPool(o: {
     },
     alive: () => [...live.keys()],
     busy: (id) => live.has(id) || leaving.has(id),
-    ownPids: () =>
-      new Set([...live.values(), ...[...leaving.values()].map((l) => l.p)].map((p) => p.pid))
+    ownPids: () => new Set([...live.values(), ...leaving.values()].map(({ p }) => p.pid))
   }
 }

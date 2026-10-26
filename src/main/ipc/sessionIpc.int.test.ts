@@ -26,7 +26,8 @@ function fakeSpawner(): { spawner: PtySpawner; procs: Fake[] } {
   const spawner: PtySpawner = () => {
     let exit: (e: { exitCode: number }) => void = () => undefined
     const p: Fake = {
-      pid: 1000 + procs.length,
+      // acima do pid_max do Linux (2^22): o SIGKILL do pool nunca acerta processo de verdade
+      pid: 5_000_000 + procs.length,
       onData: () => undefined,
       onExit: (cb) => void (exit = cb),
       write: (d) => void p.writes.push(d),

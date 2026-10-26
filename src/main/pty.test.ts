@@ -8,9 +8,13 @@ type Setup = {
   calls: { file: string; args: string[]; o: Parameters<PtySpawner>[2] }[]
   procs: Fake[]
   events: { data: Mock; exit: Mock }
+  log: Mock
 }
 
-function setup(platform: NodeJS.Platform = 'linux'): Setup {
+function setup(
+  platform: NodeJS.Platform = 'linux',
+  baseEnv: Record<string, string> = { HOME: '/h', CLAUDECODE: '1' }
+): Setup {
   const calls: { file: string; args: string[]; o: Parameters<PtySpawner>[2] }[] = []
   const procs: Fake[] = []
   const spawner: PtySpawner = (file, args, o) => {
@@ -32,13 +36,9 @@ function setup(platform: NodeJS.Platform = 'linux'): Setup {
     return p
   }
   const events = { data: vi.fn(), exit: vi.fn() }
-  const pool = createPtyPool({
-    spawner,
-    events,
-    platform,
-    baseEnv: { HOME: '/h', CLAUDECODE: '1' }
-  })
-  return { pool, calls, procs, events }
+  const log = vi.fn()
+  const pool = createPtyPool({ spawner, events, platform, baseEnv, log })
+  return { pool, calls, procs, events, log }
 }
 const size = { cols: 80, rows: 24 }
 
@@ -114,7 +114,50 @@ describe('createPtyPool', () => {
     vi.advanceTimersByTime(2999)
     expect(killSpy).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
+    // o grupo inteiro (node-pty põe o filho numa sessão própria): neto não sobra
+    expect(killSpy).toHaveBeenCalledWith(-1000, 'SIGKILL')
+  })
+
+  it('SIGKILL no grupo que falha cai no pid', () => {
+    vi.useFakeTimers()
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (Number(pid) < 0) throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' })
+      return true
+    })
+    const { pool } = setup()
+    pool.start('a', ['sh'], '/w', {}, size)
+    pool.kill('a')
+    vi.advanceTimersByTime(3000)
     expect(killSpy).toHaveBeenCalledWith(1000, 'SIGKILL')
+  })
+
+  it('onExit que nunca chega: depois do SIGKILL e do teto o id é liberado, com log', () => {
+    vi.useFakeTimers()
+    vi.spyOn(process, 'kill').mockImplementation(() => true)
+    const { pool, procs, events, log } = setup()
+    pool.start('a', ['sh'], '/w', {}, size)
+    pool.kill('a')
+    vi.advanceTimersByTime(3000 + 1999)
+    expect(pool.busy('a')).toBe(true)
+    vi.advanceTimersByTime(1)
+    expect(pool.busy('a')).toBe(false)
+    expect(pool.ownPids().size).toBe(0)
+    expect(events.exit).toHaveBeenCalledWith('a', -1, 1)
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('released'))
+    // o id volta a abrir; o exit atrasado do velho não chega a ninguém
+    pool.start('a', ['sh'], '/w', {}, size)
+    procs[0].emitExit(0)
+    expect(events.exit).toHaveBeenCalledTimes(1)
+    expect(pool.alive()).toEqual(['a'])
+  })
+
+  it('win32: PATH do app substitui o Path herdado, sem chave duplicada', () => {
+    const { pool, calls } = setup('win32', { Path: 'C:\\old', SystemRoot: 'C:\\Windows' })
+    pool.start('a', ['cmd.exe'], 'C:\\w', { PATH: 'C:\\new' }, size)
+    const env = calls[0].o.env
+    expect(Object.keys(env).filter((k) => k.toUpperCase() === 'PATH')).toEqual(['PATH'])
+    expect(env.PATH).toBe('C:\\new')
+    expect(env.SystemRoot).toBe('C:\\Windows')
   })
 
   it('kill com exit antes de 3 s não manda SIGKILL', () => {
