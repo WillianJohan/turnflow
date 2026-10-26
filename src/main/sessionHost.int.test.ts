@@ -8,6 +8,8 @@ import { createTask, updateTask } from '../core/domain/task'
 import { runCommand } from '../core/domain/commands'
 import { insertSession, openTestDb } from '../core/testing/db'
 import { CONFIG_COPY } from '../shared/copy/config'
+import { SESSION_COPY } from '../shared/copy/session'
+import { VAULT_COPY } from '../shared/copy/vault'
 import { startHookServer } from './hooks'
 import { shellArgv } from './launch'
 import { createSessionHost, type SessionHost, type SessionHostDeps } from './sessionHost'
@@ -25,13 +27,13 @@ function fakeSpawner(): {
   spawner: PtySpawner
   procs: Fake[]
   calls: Call[]
-  boom: { on: boolean }
+  boom: { on: boolean; error?: Error }
 } {
   const procs: Fake[] = []
   const calls: Call[] = []
-  const boom = { on: false }
+  const boom: { on: boolean; error?: Error } = { on: false }
   const spawner: PtySpawner = (file, args, o) => {
-    if (boom.on) throw new Error('spawn failed')
+    if (boom.on) throw boom.error ?? new Error('spawn failed')
     calls.push({ file, args, o })
     let data: (d: string) => void = () => undefined
     let exit: (e: { exitCode: number }) => void = () => undefined
@@ -59,7 +61,7 @@ type Box = {
   host: SessionHost
   procs: Fake[]
   calls: Call[]
-  boom: { on: boolean }
+  boom: { on: boolean; error?: Error }
   events: SessionHostDeps['events']
   logs: string[]
   port: number
@@ -532,6 +534,26 @@ describe('session host', () => {
     b.db.close()
   })
 
+  it('binário do agente que não existe → NOT_FOUND agent_missing com a copy, sem linha', async () => {
+    const b = await boot()
+    const t = task(b, '/w')
+    b.boom.on = true
+    for (const error of [
+      Object.assign(new Error('spawn codex ENOENT'), { code: 'ENOENT' }),
+      new Error('File not found: C:\\npm\\codex.exe')
+    ]) {
+      b.boom.error = error
+      await expect(spawn(b, { tool: 'codex', task: t.id })).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+        message: SESSION_COPY.errors.agent_missing,
+        details: { reason: 'agent_missing', command: 'codex' }
+      })
+    }
+    expect(sessions(b.db)).toBe(0)
+    await b.close()
+    b.db.close()
+  })
+
   it('scratch', async () => {
     const b = await boot()
     const t = task(b, '/w')
@@ -615,7 +637,10 @@ describe('session host', () => {
     b.d = null
     expect(await post(b, 'tok-1', { hook_event_name: 'Stop' })).toBe(204)
     expect(statesOf(b).at(-1)?.[1]).toBe('idle')
-    await expect(spawn(b, { pty_id: 'p2', task: t.id })).rejects.toMatchObject({ code: 'LOCKED' })
+    await expect(spawn(b, { pty_id: 'p2', task: t.id })).rejects.toMatchObject({
+      code: 'LOCKED',
+      message: VAULT_COPY.errors.LOCKED
+    })
     await b.close()
     b.db.close()
   })

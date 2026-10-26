@@ -17,6 +17,7 @@ import {
   type SessionTool
 } from '../core/domain/session'
 import { noteUserPrompt } from '../core/domain/turn'
+import { VAULT_COPY } from '../shared/copy/vault'
 import { IpcError } from './ipc/handle'
 import { hookEffect, type HookBody } from './hooks'
 import { agentArgv, launchDir, sessionEnv, shellArgv, type AgentCommands } from './launch'
@@ -84,6 +85,12 @@ export type SessionHost = {
   onVaultLeft(): void
   killAllAndWait(ms: number): Promise<void>
 }
+
+const commandName = (bin: string | undefined): string =>
+  (bin ?? '')
+    .split(/[/\\]/)
+    .pop()!
+    .replace(/\.(exe|cmd|bat)$/i, '')
 
 export function createSessionHost(o: SessionHostDeps): SessionHost {
   const entries = new Map<string, Entry>()
@@ -169,11 +176,19 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
     return entry && pool.alive().includes(ptyId) ? entry : null
   }
 
+  // Erro conhecido do spawn vira DomainError com a copy; o resto segue cru (INTERNAL no IPC).
   const startPty = (...a: Parameters<typeof pool.start>): number => {
     try {
       return pool.start(...a)
     } catch (e) {
-      if (e instanceof Error && e.message === 'pty_busy') throw sessionError('CONFLICT', 'pty_busy')
+      if (!(e instanceof Error)) throw e
+      if (e.message === 'pty_busy') throw sessionError('CONFLICT', 'pty_busy')
+      // node-pty: ENOENT no POSIX, "File not found: …" no Windows
+      if (
+        (e as NodeJS.ErrnoException).code === 'ENOENT' ||
+        /ENOENT|File not found/i.test(e.message)
+      )
+        throw sessionError('NOT_FOUND', 'agent_missing', { command: commandName(a[1][0]) })
       throw e
     }
   }
@@ -247,7 +262,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
         })
         return { session_id: null }
       }
-      if (!o.domain()) throw new IpcError('LOCKED', 'vault locked')
+      if (!o.domain()) throw new IpcError('LOCKED', VAULT_COPY.errors.LOCKED)
       const live = running(i.pty_id)
       if (live) return { session_id: live.session_id }
 
@@ -256,7 +271,7 @@ export function createSessionHost(o: SessionHostDeps): SessionHost {
       const PATH = await o.path()
 
       const d = o.domain()
-      if (!d) throw new IpcError('LOCKED', 'vault locked')
+      if (!d) throw new IpcError('LOCKED', VAULT_COPY.errors.LOCKED)
       const again = running(i.pty_id)
       if (again) return { session_id: again.session_id }
       if (pool.busy(i.pty_id)) throw sessionError('CONFLICT', 'pty_busy')
