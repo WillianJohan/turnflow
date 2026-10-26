@@ -30,7 +30,7 @@ import { configDir, runDir, socketPath } from './config'
 import { brainTasksDir, createLegacyBrain, sessionCwd } from './brainDir'
 import { startHookServer, writeHookSettings } from './hooks'
 import { splitCommand, type AgentCommands } from './launch'
-import { loginEnv } from './loginEnv'
+import { shellEnv, type ShellEnv } from './loginEnv'
 import { nodePtySpawner, type PtySpawner } from './pty'
 import { createPtyGuard } from './ptyGuard'
 import { binMatch, findProcessByArg } from './procs'
@@ -203,22 +203,27 @@ export async function registerIpc(
       return null
     }
   }
-  const login = async (): Promise<{ PATH: string; claude: string }> => {
+  const appLog = (line: string): void => (deps.log ? deps.log(line) : console.error(line))
+  // PATH do login sem exigir o claude: terminal, Codex e Cursor rodam sem ele; o claude-code
+  // é quem recusa (NOT_FOUND) quando falta. Shell que falha cai no PATH do processo.
+  const login = async (): Promise<ShellEnv> => {
+    let env: ShellEnv
     try {
-      return await loginEnv()
+      env = await shellEnv()
     } catch (e) {
-      // CI e o build de teste não têm o binário; o testSpawner troca o comando de qualquer jeito
-      if (__TURNFLOW_TEST__ && process.env.TURNFLOW_TEST_PTY)
-        return { PATH: process.env.PATH ?? '', claude: 'claude' }
-      throw e
+      appLog(`login shell failed: ${e instanceof Error ? e.message : String(e)}`)
+      env = { PATH: process.env.PATH ?? '', claude: null }
     }
+    // CI e o build de teste não têm o binário; o testSpawner troca o comando de qualquer jeito
+    if (!env.claude && __TURNFLOW_TEST__ && process.env.TURNFLOW_TEST_PTY)
+      return { ...env, claude: 'claude' }
+    return env
   }
   const bins = async (): Promise<AgentCommands> => {
     const { config, error } = await readConfig(cfgDir)
     if (!error) agents = config.agents
-    const shell = await login()
     return {
-      claude: shell.claude,
+      claude: (await login()).claude,
       codex: splitCommand(agents.codex),
       cursor: splitCommand(agents.cursor),
       other: agents.other === null ? null : splitCommand(agents.other)
@@ -233,7 +238,6 @@ export async function registerIpc(
     const { testSpawner } = await import('./testing/pty')
     spawner = testSpawner(process.env, nodePtySpawner, agentBins)
   }
-  const appLog = (line: string): void => (deps.log ? deps.log(line) : console.error(line))
   const portBox = { n: 0 }
   const settingsFile = await writeHookSettings(runDir())
   const host = createSessionHost({

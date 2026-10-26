@@ -1,6 +1,8 @@
 import { BRAND } from '../shared/brand'
+import { CONFIG_COPY } from '../shared/copy/config'
 import { SESSION_COPY } from '../shared/copy/session'
 import { sessionError, type SessionTool } from '../core/domain/session'
+import { IpcError } from './ipc/handle'
 
 // Env do PTY: herda o do app menos os marcadores de uma sessão claude pai
 // (com eles o claude filho desliga o transcript e a conversa não é salva), o
@@ -61,7 +63,8 @@ export function splitCommand(s: string): string[] {
 }
 
 export type AgentCommands = {
-  claude: string
+  /** `null`: claude não instalado; só o claude-code precisa dele. */
+  claude: string | null
   codex: string[]
   cursor: string[]
   other: string[] | null
@@ -77,13 +80,15 @@ export function agentArgv(i: {
   const prompt = i.task ? initialPrompt(i.task) : ''
   const name = i.task ? `${i.task.key} ${i.task.title}` : null
   if (i.tool === 'claude-code') {
+    const claude = i.bin.claude
+    if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
     if (i.resume) {
-      const argv = [i.bin.claude, '--resume', i.resume, '--settings', i.settingsPath]
+      const argv = [claude, '--resume', i.resume, '--settings', i.settingsPath]
       if (name) argv.push('--name', name)
       return argv
     }
-    if (i.task && name) return [i.bin.claude, prompt, '--name', name, '--settings', i.settingsPath]
-    return [i.bin.claude, '--settings', i.settingsPath]
+    if (i.task && name) return [claude, prompt, '--name', name, '--settings', i.settingsPath]
+    return [claude, '--settings', i.settingsPath]
   }
   if (i.tool === 'codex') {
     if (i.resume) return [...i.bin.codex, 'resume', i.resume]

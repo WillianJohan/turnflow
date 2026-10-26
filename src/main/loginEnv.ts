@@ -25,7 +25,10 @@ const shell: Exec = () =>
     }
   ).then((r) => r.stdout)
 
-let cached: Promise<{ PATH: string; claude: string }> | null = null
+/** PATH do shell de login e o claude dele (`null` quando não está instalado). */
+export type ShellEnv = { PATH: string; claude: string | null }
+
+let cached: Promise<ShellEnv> | null = null
 let cachedPlatform: NodeJS.Platform | null = null
 
 const marker = (out: string, k: string): string =>
@@ -35,26 +38,27 @@ const marker = (out: string, k: string): string =>
 const whereClaude: Exec = () =>
   promisify(execFile)('where.exe', ['claude'], { timeout: 15000 }).then((r) => r.stdout)
 
-const fromBash = (out: string): { PATH: string; claude: string } => {
-  const PATH = marker(out, 'PATH')
-  const claude = marker(out, 'CLAUDE')
-  if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
-  return { PATH, claude }
-}
+const fromBash = (out: string): ShellEnv => ({
+  PATH: marker(out, 'PATH'),
+  claude: marker(out, 'CLAUDE') || null
+})
 
-const fromWhere = (out: string): { PATH: string; claude: string } => {
+const fromWhere = (out: string): ShellEnv => {
   const claude = out
     .split(/\r?\n/)
     .map((s) => s.trim())
     .find((s) => s.length > 0)
-  if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
-  return { PATH: process.env.PATH ?? '', claude }
+  return { PATH: process.env.PATH ?? '', claude: claude ?? null }
 }
 
-export function loginEnv(
+/**
+ * PATH do login sem exigir o claude: o terminal puro, o Codex e o Cursor rodam sem ele.
+ * Rejeita só se o shell falhar (timeout); a falha não fica em cache.
+ */
+export function shellEnv(
   exec?: Exec,
   platform: NodeJS.Platform = process.platform
-): Promise<{ PATH: string; claude: string }> {
+): Promise<ShellEnv> {
   if (cachedPlatform !== platform) cached = null
   cachedPlatform = platform
   const run = exec ?? (platform === 'win32' ? whereClaude : shell)
@@ -70,6 +74,16 @@ export function loginEnv(
     cached = pending
   }
   return cached
+}
+
+/** Como o `shellEnv`, mas o claude é obrigatório: sem ele, `NOT_FOUND` com o texto da copy. */
+export async function loginEnv(
+  exec?: Exec,
+  platform: NodeJS.Platform = process.platform
+): Promise<{ PATH: string; claude: string }> {
+  const env = await shellEnv(exec, platform)
+  if (!env.claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
+  return { PATH: env.PATH, claude: env.claude }
 }
 
 export const resetLoginEnv = (): void => {

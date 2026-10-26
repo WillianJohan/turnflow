@@ -7,6 +7,7 @@ import { getSession } from '../core/domain/session'
 import { createTask, updateTask } from '../core/domain/task'
 import { runCommand } from '../core/domain/commands'
 import { insertSession, openTestDb } from '../core/testing/db'
+import { CONFIG_COPY } from '../shared/copy/config'
 import { startHookServer } from './hooks'
 import { shellArgv } from './launch'
 import { createSessionHost, type SessionHost, type SessionHostDeps } from './sessionHost'
@@ -69,6 +70,8 @@ type Box = {
   elsewhereTool: string | null
   workdir: string | null
   other: string[] | null
+  /** `null` = claude não instalado. */
+  claude: string | null
   /** Segura o `bins()` até resolver: simula o start lento (login do shell). */
   gate: Promise<void> | null
 }
@@ -91,6 +94,7 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
   box.elsewhereTool = null
   box.workdir = over.workdir === undefined ? '/d' : over.workdir
   box.other = null
+  box.claude = 'claude'
   box.gate = null
   const fake = fakeSpawner()
   box.procs = fake.procs
@@ -114,7 +118,7 @@ async function boot(over: { workdir?: string | null } = {}): Promise<Box> {
     bins: async () => {
       if (box.gate) await box.gate
       return {
-        claude: 'claude',
+        claude: box.claude,
         codex: ['codex'],
         cursor: ['cursor-agent'],
         other: box.other
@@ -684,6 +688,23 @@ describe('session host', () => {
       external_id: null
     })
     expect(taskRow(b.d!, t.id)?.group).not.toBe('sua_vez')
+    await b.close()
+    b.db.close()
+  })
+
+  it('sem claude instalado: terminal e Codex abrem, claude-code dá NOT_FOUND sem linha', async () => {
+    const b = await boot()
+    b.claude = null
+    const t = task(b, '/w')
+    await expect(spawn(b, { pty_id: 'c', task: t.id })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: CONFIG_COPY.claudeNotFound
+    })
+    expect(sessions(b.db)).toBe(0)
+    expect(b.calls).toHaveLength(0)
+    await spawn(b, { pty_id: 'x', tool: 'codex', task: t.id })
+    await b.host.spawn({ pty_id: 's', kind: 'shell', cols: 80, rows: 24 })
+    expect(b.host.alive().sort()).toEqual(['s', 'x'])
     await b.close()
     b.db.close()
   })

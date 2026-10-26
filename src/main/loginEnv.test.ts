@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { loginEnv, resetLoginEnv } from './loginEnv'
+import { loginEnv, resetLoginEnv, shellEnv } from './loginEnv'
 
 it('falha não fica em cache: a próxima chamada tenta de novo', async () => {
   resetLoginEnv()
@@ -29,4 +29,13 @@ it('win32 usa where.exe', async () => {
 it('win32 sem claude no where.exe dá mensagem legível', async () => {
   resetLoginEnv()
   await expect(loginEnv(async () => '\r\n', 'win32')).rejects.toThrow('claude não encontrado')
+})
+
+it('shellEnv devolve o PATH mesmo sem claude (terminal, Codex e Cursor não precisam dele)', async () => {
+  resetLoginEnv()
+  await expect(
+    shellEnv(async () => '__TURNFLOW_PATH=/usr/bin:/opt/bin\n__TURNFLOW_CLAUDE=\n')
+  ).resolves.toEqual({ PATH: '/usr/bin:/opt/bin', claude: null })
+  resetLoginEnv()
+  await expect(shellEnv(async () => '\r\n', 'win32')).resolves.toMatchObject({ claude: null })
 })
