@@ -211,3 +211,52 @@ it('formulário da task fecha no Esc', async () => {
   })
   expect(host.querySelector('.task-ask')).toBeNull()
 })
+
+it('mover mostra o par de etapa sugerido antes de aplicar', async () => {
+  const moves: unknown[] = []
+  const view = await mount({
+    over: {
+      projectList: (async () => ({
+        ok: true,
+        data: [{ id: 'p1', name: 'Site' }]
+      })) as never,
+      flowList: (async () => ({
+        ok: true,
+        data: [
+          {
+            id: 'f2',
+            name: 'Other',
+            is_default: false,
+            stages: [{ id: 'st9', name: 'Review', short_name: 'Rev' }]
+          }
+        ]
+      })) as never,
+      taskMove: (async (input: { mapping?: unknown }) => {
+        moves.push(input)
+        if (!input.mapping)
+          return {
+            ok: false,
+            error: {
+              code: 'CONFLICT',
+              message: 'remap',
+              details: {
+                reason: 'remap_required',
+                preview: [{ from: { id: 'st1' }, to_stage_id: 'st9' }]
+              }
+            }
+          }
+        return { ok: true, data: { row: null, activity_id: 'act-m' } }
+      }) as never
+    }
+  })
+  menu('Move')
+  await flush()
+  act(() => button('Site')!.click())
+  await flush()
+  expect(moves).toHaveLength(1)
+  expect(host.querySelector('.task-ask')?.textContent).toMatch(/Doing.*Rev/)
+  act(() => button('Move')!.click())
+  await flush()
+  expect(moves.at(-1)).toMatchObject({ project_id: 'p1', choice: 'adopt', mapping: { st1: 'st9' } })
+  expect(view.undoable).toEqual([['act-m', 'Task moved']])
+})
