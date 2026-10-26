@@ -25,44 +25,54 @@ const shell: Exec = () =>
     }
   ).then((r) => r.stdout)
 
-// Windows: sem bash -ic; o PATH do processo já é o do usuário e `where.exe` acha o claude.
-const where: Exec = () =>
-  promisify(execFile)('where.exe', ['claude'], { timeout: 15000 }).then((r) => r.stdout)
-
 let cached: Promise<{ PATH: string; claude: string }> | null = null
+let cachedPlatform: NodeJS.Platform | null = null
 
 const marker = (out: string, k: string): string =>
   out.match(new RegExp(`^${MARK}${k}=(.*)$`, 'm'))?.[1]?.trim() ?? ''
 
-const parse = (out: string, platform: NodeJS.Platform): { PATH: string; claude: string } =>
-  platform === 'win32'
-    ? {
-        PATH: process.env.PATH ?? '',
-        claude:
-          out
-            .split(/\r?\n/)
-            .find((l) => l.trim())
-            ?.trim() ?? ''
-      }
-    : { PATH: marker(out, 'PATH'), claude: marker(out, 'CLAUDE') }
+// No Windows não há bash -ic. O PATH é o do processo; o claude sai da primeira linha do where.exe.
+const whereClaude: Exec = () =>
+  promisify(execFile)('where.exe', ['claude'], { timeout: 15000 }).then((r) => r.stdout)
+
+const fromBash = (out: string): { PATH: string; claude: string } => {
+  const PATH = marker(out, 'PATH')
+  const claude = marker(out, 'CLAUDE')
+  if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
+  return { PATH, claude }
+}
+
+const fromWhere = (out: string): { PATH: string; claude: string } => {
+  const claude = out
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .find((s) => s.length > 0)
+  if (!claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
+  return { PATH: process.env.PATH ?? '', claude }
+}
 
 export function loginEnv(
   exec?: Exec,
   platform: NodeJS.Platform = process.platform
 ): Promise<{ PATH: string; claude: string }> {
-  cached ??= (exec ?? (platform === 'win32' ? where : shell))()
-    .then((out) => {
-      const r = parse(out, platform)
-      if (!r.claude) throw new IpcError('NOT_FOUND', CONFIG_COPY.claudeNotFound)
-      return r
-    })
-    .catch((e) => {
-      cached = null // falha não fica em cache: o próximo lançamento tenta de novo
-      throw e
-    })
+  if (cachedPlatform !== platform) cached = null
+  cachedPlatform = platform
+  const run = exec ?? (platform === 'win32' ? whereClaude : shell)
+  if (!cached) {
+    const pending = run()
+      .then((out) => (platform === 'win32' ? fromWhere(out) : fromBash(out)))
+      .catch((e) => {
+        // falha não fica em cache: o próximo lançamento tenta de novo.
+        // Só apaga se esta ainda for a promise vigente (outra plataforma pode ter trocado).
+        if (cached === pending) cached = null
+        throw e
+      })
+    cached = pending
+  }
   return cached
 }
 
 export const resetLoginEnv = (): void => {
   cached = null
+  cachedPlatform = null
 }
