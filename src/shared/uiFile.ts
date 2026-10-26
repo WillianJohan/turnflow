@@ -100,10 +100,20 @@ export function parseUi(raw: string): UiFile | null {
   }
 }
 
+/** Shift/Ctrl/Alt/Meta sozinhos: o atalho é Ctrl+Shift + outra tecla, nunca o modificador. */
+export function isModifierCode(code: string): boolean {
+  return /^(Shift|Control|Alt|Meta|OS)(Left|Right)?$/.test(code)
+}
+
+/** Tecla gravável: `code` físico sem modificador. `''` = comando desvinculado de propósito. */
+export function isShortcutCode(code: string): boolean {
+  return code === '' || (/^[A-Za-z0-9]+$/.test(code) && !isModifierCode(code))
+}
+
 const saneShortcuts = (raw: Record<string, string> | undefined): Record<string, string> => {
   const out: Record<string, string> = {}
   for (const [id, code] of Object.entries(raw ?? {})) {
-    if (/^[A-Za-z0-9]+$/.test(code)) out[id] = code
+    if (isShortcutCode(code)) out[id] = code
   }
   return out
 }

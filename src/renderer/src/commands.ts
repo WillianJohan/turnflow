@@ -1,3 +1,5 @@
+import { isShortcutCode } from '../../shared/uiFile'
+
 // Registro único da paleta, do modal de atalhos e do teclado (E6.5).
 
 export type CommandId =
@@ -73,12 +75,19 @@ export function defaultBindings(): Record<string, string> {
   return map
 }
 
-/** Parte do padrão e aplica só o que foi gravado. Comando desligado não entra. */
+/**
+ * Parte do padrão e aplica só o que foi gravado. Comando desligado não entra. `''` gravado =
+ * desvinculado (perdeu a tecla para outro comando) e continua assim depois de reabrir.
+ */
 export function activeBindings(saved: Record<string, string>): Record<string, string> {
   const next = defaultBindings()
   for (const [id, code] of Object.entries(saved)) {
     const command = COMMANDS.find((item) => item.id === id)
-    if (!command?.enabled || !code) continue
+    if (!command?.enabled || !isShortcutCode(code)) continue
+    if (code === '') {
+      delete next[id]
+      continue
+    }
     for (const [other, bound] of Object.entries(next)) {
       if (bound === code && other !== id) delete next[other]
     }
@@ -105,11 +114,15 @@ export function commandFor(bindings: Record<string, string>, code: string): stri
   return found?.[0] ?? null
 }
 
+/** O que difere do padrão. Comando do padrão que ficou sem tecla grava `''`. */
 export function shortcutOverrides(bindings: Record<string, string>): Record<string, string> {
   const base = defaultBindings()
   const out: Record<string, string> = {}
   for (const [id, code] of Object.entries(bindings)) {
     if (base[id] !== code) out[id] = code
+  }
+  for (const id of Object.keys(base)) {
+    if (!(id in bindings)) out[id] = ''
   }
   return out
 }

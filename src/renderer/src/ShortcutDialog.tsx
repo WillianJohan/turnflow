@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isModifierCode } from '../../shared/uiFile'
 import { COMMANDS } from './commands'
 
 type Props = {
@@ -20,6 +21,8 @@ export function ShortcutDialog({ bindings, onBind, onClose }: Props): React.JSX.
       if (!event.ctrlKey || !event.shiftKey || event.altKey) return
       event.preventDefault()
       event.stopPropagation()
+      // segurar Ctrl+Shift dispara keydown do próprio modificador: espera a tecla de verdade
+      if (isModifierCode(event.code)) return
       onBind(capture, event.code)
       setCapture(null)
     }

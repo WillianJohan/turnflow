@@ -46,3 +46,20 @@ describe('clampSidebar', () => {
     expect(clampSidebar(Number.NaN)).toBe(288)
   })
 })
+
+describe('shortcuts do ui.json', () => {
+  it('tecla modificadora não vira atalho; vazio = desvinculado fica gravado', () => {
+    const raw = JSON.stringify({
+      layout,
+      shortcuts: {
+        search: 'ShiftLeft',
+        new: 'ControlRight',
+        split: 'AltLeft',
+        sidebar: 'MetaLeft',
+        draft: 'KeyJ',
+        sync: ''
+      }
+    })
+    expect(parseUi(raw)?.shortcuts).toEqual({ draft: 'KeyJ', sync: '' })
+  })
+})
