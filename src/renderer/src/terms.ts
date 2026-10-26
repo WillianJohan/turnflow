@@ -7,6 +7,7 @@ import { oscRgb } from '../../shared/color'
 import { zoomFont } from './zoom'
 import { unwrap } from './ipc'
 import { chunks } from './chunk'
+import { DEFAULT_THEME } from '../../shared/theme/builtins'
 
 // Zoom por aba (Ctrl+scroll): diferença em px sobre a fonte das Configurações, salva por id.
 const zoomKey = (id: string): string => `turnflow.zoom.${id}`
@@ -26,12 +27,7 @@ const saveZoom = (id: string, delta: number): void => {
   }
 }
 
-let termTheme: Record<string, string> = {
-  background: '#14161a',
-  foreground: '#c9d1d9',
-  cursor: '#c9d1d9',
-  selectionBackground: '#3b4a63'
-}
+let termTheme: Record<string, string> = { ...DEFAULT_THEME.terminal }
 let termFont = 13
 let termFamily = "'JetBrains Mono', monospace"
 

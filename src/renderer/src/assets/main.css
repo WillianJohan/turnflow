@@ -1,22 +1,5 @@
 :root {
   --bar-h: 34px;
-  --bg: #14161a;
-  --bg2: #1b1f25;
-  --bg3: #22272e;
-  --line: #2a2f37;
-  --fg: #c9d1d9;
-  --fg-dim: #7d8590;
-  --accent: #58a6ff;
-  --yellow: #d29922;
-  --green: #3fb950;
-  --gray: #484f58;
-  --red: #f85149;
-  --primary-fg: #0d1117;
-  --header-bg: #1f2630;
-  --sel-bg: #2d3a4f;
-  --warn-bg: #2b2410;
-  --err-bg: #2d1416;
-  --err-fg: #ffb3ad;
   font-family: var(--app-font, system-ui, sans-serif);
   font-size: var(--app-font-size, 13px);
   color-scheme: dark;
@@ -168,7 +151,7 @@ kbd {
   border-radius: 9px;
   background: var(--bg2);
   border: 1px solid var(--line);
-  box-shadow: 0 12px 32px #0009;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -587,7 +570,7 @@ kbd {
 .overlay {
   position: fixed;
   inset: 0;
-  background: #0008;
+  background: rgb(0 0 0 / 0.53);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -599,7 +582,7 @@ kbd {
   background: var(--bg3);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 12px 32px #000a;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.67);
   overflow: hidden;
 }
 .search input {
@@ -713,7 +696,7 @@ kbd {
   background: var(--bg3);
   border: 1px solid var(--line);
   border-radius: 6px;
-  box-shadow: 0 8px 24px #000a;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.67);
 }
 .menu button {
   display: block;
@@ -739,7 +722,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 12px 32px #000a;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.67);
 }
 .update .th {
   background: var(--header-bg);
@@ -1258,7 +1241,7 @@ kbd {
   background: var(--bg3);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 12px 32px #000a;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.67);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1630,4 +1613,13 @@ body.resizing .settings-page {
 .search button {
   min-height: 24px;
   min-width: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .panel,
+  .fab {
+    animation-duration: 0s;
+    transition-duration: 0s;
+  }
 }

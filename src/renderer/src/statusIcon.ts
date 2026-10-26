@@ -1,6 +1,6 @@
 // Valor do ícone de status no config.json:
 //   "🚀"                    emoji
-//   "icon:rocket:#2e7cd1"   ícone monocromático (nome do lucide) com cor; sem cor = cor do texto
+//   "icon:rocket"           ícone monocromático (nome do lucide); uma cor pode seguir depois de ":"
 //   ""                      sem ícone
 export type StatusIconValue =
   | { kind: 'none' }

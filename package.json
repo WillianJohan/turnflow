@@ -7,7 +7,8 @@
   "homepage": "https://github.com/willianjohan/turnflow",
   "scripts": {
     "format": "prettier --write .",
-    "lint": "eslint --cache .",
+    "lint": "eslint --cache . && npm run check-colors",
+    "check-colors": "tsx scripts/check-colors.ts",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",

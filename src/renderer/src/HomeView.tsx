@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { TaskRow } from '../../shared/contracts'
 import type { UiFile } from '../../shared/uiFile'
 import { homeColumns, homeLine, stalledLabel } from './homeBoard'
+import { Counter } from './ui/Counter'
+import { ListRow } from './ui/ListRow'
+import { Segmented } from './ui/Segmented'
+import { Tag } from './ui/Tag'
 
 type Mode = UiFile['home']
 
@@ -43,14 +47,15 @@ export function HomeView({
   return (
     <div ref={host} className={`home ${mode}`} data-narrow={tight ? '1' : '0'}>
       <div className="home-bar">
-        <div role="group" aria-label="Home layout">
-          <button type="button" aria-pressed={mode === 'list'} onClick={() => onMode('list')}>
-            List
-          </button>
-          <button type="button" aria-pressed={mode === 'kanban'} onClick={() => onMode('kanban')}>
-            Kanban
-          </button>
-        </div>
+        <Segmented
+          label="Home layout"
+          value={mode}
+          options={[
+            { id: 'list', label: 'List' },
+            { id: 'kanban', label: 'Kanban' }
+          ]}
+          onChange={onMode}
+        />
         <button type="button" aria-pressed={showDone} onClick={onToggleDone}>
           Done
         </button>
@@ -70,19 +75,19 @@ export function HomeView({
           {columns.map((col) => (
             <section key={col.id} aria-label={col.label}>
               <h3>
-                {col.label} <span className="count">{col.rows.length}</span>
+                {col.label} <Counter value={col.rows.length} />
               </h3>
               <ul>
                 {col.rows.map((row) => {
                   const line = homeLine(row, tight)
                   return (
                     <li key={row.id}>
-                      <button type="button" onClick={() => onOpen(row.id)}>
+                      <ListRow onClick={() => onOpen(row.id)}>
                         {line.key && <span className="home-key">{line.key}</span>}
                         <span className="home-title">{line.title}</span>
                         {line.motive && <span className="home-motive">{line.motive}</span>}
-                        {line.tag && <span className="home-tag">{line.tag}</span>}
-                      </button>
+                        {line.tag && <Tag>{line.tag}</Tag>}
+                      </ListRow>
                     </li>
                   )
                 })}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { TaskRow } from '../../shared/contracts'
 import type { Density } from '../../shared/uiFile'
 import { attentionFields, attentionSections } from './attentionFields'
-import { Dot } from './Dot'
+import { Dot } from './ui/Dot'
 
 type Props = {
   rows: TaskRow[]
