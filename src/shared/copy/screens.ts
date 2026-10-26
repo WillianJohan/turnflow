@@ -29,7 +29,19 @@ export const SCREENS_COPY = {
     remove: 'Remove',
     search: 'Search…',
     custom: 'Other color',
-    none: 'nothing found'
+    none: 'nothing found',
+    swatches: {
+      text: 'Text color',
+      gray: 'Gray',
+      brown: 'Brown',
+      orange: 'Orange',
+      yellow: 'Yellow',
+      green: 'Green',
+      blue: 'Blue',
+      purple: 'Purple',
+      pink: 'Pink',
+      red: 'Red'
+    }
   },
   scratch: {
     title: (claude: boolean, dir: string): string =>

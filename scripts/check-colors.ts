@@ -1,16 +1,30 @@
 // Cor em hex só pode viver na derivação do tema e nos temas embutidos.
-// O restante da UI usa variável CSS.
+// O restante da UI usa variável CSS. A única outra exceção é a paleta de amostras do seletor de
+// ícones (swatches.ts), que é cor escolhida pelo usuário, não cor de tema.
 import { readdirSync, readFileSync } from 'fs'
 import { join, relative, sep } from 'path'
 import { fileURLToPath } from 'url'
 import { SKIP_DIRS, SKIP_FILES, BINARY } from './check-brand'
 
-export const ALLOWED = new Set(['src/shared/theme/derive.ts', 'src/shared/theme/builtins.ts'])
+export const ALLOWED = new Set([
+  'src/shared/theme/derive.ts',
+  'src/shared/theme/builtins.ts',
+  'src/shared/theme/swatches.ts'
+])
 const TEST = /\.(?:test|int\.test|spec)\.(?:ts|tsx)$/
-const SOURCE = /\.(?:css|ts|tsx)$/
+const SOURCE = /\.(?:css|ts|tsx|js|mjs|html)$/
 const HEX = /#([0-9a-fA-F]{3,8})(?![0-9a-fA-F])/g
 
-export const hasHexColor = (text: string): boolean => {
+// Comentário não é cor: some antes da busca. `//` só conta como comentário quando não vem logo
+// depois de `:` (o `https://` de uma string não engole o resto da linha).
+export const stripComments = (text: string): string =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+export const hasHexColor = (raw: string): boolean => {
+  const text = stripComments(raw)
   for (const match of text.matchAll(HEX)) {
     const digits = match[1]
     if (digits.length !== 3 && digits.length !== 4 && digits.length !== 6 && digits.length !== 8) {

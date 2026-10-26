@@ -512,18 +512,3 @@ export const BUILTIN_THEMES: Record<string, Theme> = {
 }
 export const DEFAULT_THEME = DARK
 
-// Valor que <input type="color"> aceita quando o campo ainda não tem cor.
-export const COLOR_INPUT_FALLBACK = '#000000'
-
-// Cores do seletor de ícones. null no picker significa "cor do texto".
-export const ICON_SWATCHES = [
-  '#91918e',
-  '#a27763',
-  '#cb7b37',
-  '#c29243',
-  '#4f9768',
-  '#2e7cd1',
-  '#8d5bc1',
-  '#c94a8c',
-  '#cd5049'
-] as const

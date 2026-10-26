@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SCREENS_COPY } from '../../shared/copy/screens'
 import type { ConfigState, Theme } from '../../shared/types'
-import { COLOR_INPUT_FALLBACK } from '../../shared/theme/builtins'
+import { COLOR_INPUT_FALLBACK } from '../../shared/theme/swatches'
 import { applyTheme } from './theme'
 import { slug } from './slug'
 import { orThrow, unwrap } from './ipc'

@@ -2,24 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { SCREENS_COPY } from '../../shared/copy/screens'
 import { EMOJIS, ICON_WORDS } from './emojiSet'
 import { ICONS } from './iconSet'
-import { COLOR_INPUT_FALLBACK, ICON_SWATCHES } from '../../shared/theme/builtins'
+import { COLOR_INPUT_FALLBACK, ICON_SWATCHES } from '../../shared/theme/swatches'
 import { formatIcon, parseIcon } from './statusIcon'
 
-const SWATCH_LABELS = [
-  'Cinza',
-  'Marrom',
-  'Laranja',
-  'Amarelo',
-  'Verde',
-  'Azul',
-  'Roxo',
-  'Rosa',
-  'Vermelho'
-]
-// null = acompanha a cor do texto do tema.
-const COLORS: [string | null, string][] = [
-  [null, 'Cor do texto'],
-  ...ICON_SWATCHES.map((swatch, index): [string, string] => [swatch, SWATCH_LABELS[index]])
+// hex null = acompanha a cor do texto do tema.
+const COLORS: { hex: string | null; label: string }[] = [
+  { hex: null, label: SCREENS_COPY.iconPicker.swatches.text },
+  ...ICON_SWATCHES
 ]
 const norm = (s: string): string =>
   s
@@ -87,13 +76,15 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
       />
       {tab === 'icon' && (
         <div className="ip-colors">
-          {COLORS.map(([c, label]) => (
+          {COLORS.map(({ hex, label }) => (
             <button
               key={label}
               title={label}
-              className={`ip-swatch ${color === c ? 'on' : ''} ${c ? '' : 'auto'}`}
-              style={c ? { background: c } : undefined}
-              onClick={() => setColor(c)}
+              aria-label={label}
+              aria-pressed={color === hex}
+              className={`ip-swatch ${color === hex ? 'on' : ''} ${hex ? '' : 'auto'}`}
+              style={hex ? { background: hex } : undefined}
+              onClick={() => setColor(hex)}
             />
           ))}
           <label className="ip-swatch custom" title={SCREENS_COPY.iconPicker.custom}>
