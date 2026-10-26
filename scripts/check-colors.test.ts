@@ -59,7 +59,10 @@ describe('checkColors', () => {
 
   it('hex dentro de comentário não conta; fora do comentário, na mesma linha, conta', () => {
     put('src/renderer/src/a.css', '/* antes era #ff0000 */\n.a { color: var(--fg); }')
-    put('src/renderer/src/b.ts', "// cinza #888888 do protótipo\nexport const url = 'https://x.dev'")
+    put(
+      'src/renderer/src/b.ts',
+      "// cinza #888888 do protótipo\nexport const url = 'https://x.dev'"
+    )
     put('src/renderer/index.html', '<!-- #fff -->\n<div></div>')
     put('src/renderer/src/c.ts', "export const u = 'https://x.dev'; export const c = '#abc'")
     expect(checkColors(root).offenders).toEqual(['src/renderer/src/c.ts'])

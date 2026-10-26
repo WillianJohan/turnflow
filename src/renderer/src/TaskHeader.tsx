@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { SHELL_COPY } from '../../shared/copy/shell'
 import { headerFace, menuItems, summaryPatch, type MenuId } from './taskFace'
+import { Menu } from './ui/Menu'
 import { StageBar } from './ui/StageBar'
 import { TextField } from './ui/TextField'
 import { Toast } from './ui/Toast'
@@ -47,7 +48,6 @@ export function TaskHeader({
   const [editing, setEditing] = useState(false)
   const [what, setWhat] = useState(face.lines[0].text)
   const [next, setNext] = useState(face.lines[1].text)
-  const [menu, setMenu] = useState(false)
   const showUndo = toast !== null && now < toast.until
 
   return (
@@ -58,31 +58,14 @@ export function TaskHeader({
         </span>
         <span className="th-actions">
           {trailing}
-          <button
-            onClick={() => setMenu((open) => !open)}
-            aria-expanded={menu}
-            aria-label={SHELL_COPY.header.menu}
-          >
-            ⋯
-          </button>
+          <Menu
+            label="⋯"
+            ariaLabel={SHELL_COPY.header.menu}
+            items={menuItems(blocked)}
+            onPick={(id) => onAction(id as MenuId)}
+          />
         </span>
       </div>
-      {menu && (
-        <ul className="task-menu">
-          {menuItems(blocked).map((item) => (
-            <li key={item.id}>
-              <button
-                onClick={() => {
-                  setMenu(false)
-                  onAction(item.id)
-                }}
-              >
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
       <StageBar stages={stages} current={stageId} onPick={onStage} />
       {editing ? (
         <form

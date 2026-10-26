@@ -53,7 +53,7 @@ const samples: Record<(typeof MIN_COMPONENTS)[number], React.ReactNode> = {
       <IconButton icon="search" label="Find" />
     </Tooltip>
   ),
-  Menu: <Menu label="Task" open items={[{ id: 'close', label: 'Close' }]} />,
+  Menu: <Menu label="Task" open preview items={[{ id: 'close', label: 'Close' }]} />,
   Dialog: (
     <Dialog title="Rename" onClose={() => undefined} preview>
       <Button>Save</Button>
