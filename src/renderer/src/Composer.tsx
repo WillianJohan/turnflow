@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { SCREENS_COPY } from '../../shared/copy/screens'
 import { draftPayload } from './draft'
 import { sendOutcome } from './sendOutcome'
 
@@ -60,7 +61,7 @@ export function Composer({
         ref={ref}
         value={text}
         rows={Math.min(12, Math.max(3, text.split('\n').length))}
-        placeholder="Draft mode: Enter quebra linha · Ctrl+Enter envia · Ctrl+Shift+D desliga"
+        placeholder={SCREENS_COPY.composer.placeholder}
         onChange={(e) => save(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && e.ctrlKey && !e.shiftKey) {
@@ -70,12 +71,12 @@ export function Composer({
         }}
       />
       <div className="composer-bar">
-        {lost && <span className="dim err">sessão encerrada — rascunho mantido</span>}
+        {lost && <span className="dim err">{SCREENS_COPY.composer.lost}</span>}
         <span className="dim">
-          ✎ draft · {text.trim() ? `${text.trimEnd().split('\n').length} linha(s)` : 'vazio'}
+          {SCREENS_COPY.composer.status(text.trim() ? text.trimEnd().split('\n').length : null)}
         </span>
         <button className="primary" disabled={!text.trim()} onClick={send}>
-          Enviar ⏎
+          {SCREENS_COPY.composer.send}
         </button>
       </div>
     </div>

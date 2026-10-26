@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { SCREENS_COPY } from '../../shared/copy/screens'
 import { EMOJIS, ICON_WORDS } from './emojiSet'
 import { ICONS } from './iconSet'
 import { COLOR_INPUT_FALLBACK, ICON_SWATCHES } from '../../shared/theme/builtins'
@@ -63,24 +64,24 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
       className={`icon-picker ${up ? 'up' : ''}`}
       ref={ref}
       role="dialog"
-      aria-label="Escolher ícone"
+      aria-label={SCREENS_COPY.iconPicker.title}
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="ip-tabs">
         <button className={tab === 'emoji' ? 'on' : ''} onClick={() => setTab('emoji')}>
-          Emoji
+          {SCREENS_COPY.iconPicker.emoji}
         </button>
         <button className={tab === 'icon' ? 'on' : ''} onClick={() => setTab('icon')}>
-          Ícones
+          {SCREENS_COPY.iconPicker.icons}
         </button>
         <button className="ip-remove" onClick={() => onPick('')}>
-          Remover
+          {SCREENS_COPY.iconPicker.remove}
         </button>
       </div>
       <input
         autoFocus
         className="ip-search"
-        placeholder="Buscar…"
+        placeholder={SCREENS_COPY.iconPicker.search}
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -95,7 +96,7 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
               onClick={() => setColor(c)}
             />
           ))}
-          <label className="ip-swatch custom" title="Outra cor">
+          <label className="ip-swatch custom" title={SCREENS_COPY.iconPicker.custom}>
             <input
               type="color"
               value={color ?? COLOR_INPUT_FALLBACK}
@@ -129,7 +130,9 @@ export function IconPicker({ value, onPick, onClose }: Props): React.JSX.Element
                 </button>
               )
             })}
-        {(tab === 'emoji' ? emojis : icons).length === 0 && <p className="dim">nada encontrado</p>}
+        {(tab === 'emoji' ? emojis : icons).length === 0 && (
+          <p className="dim">{SCREENS_COPY.iconPicker.none}</p>
+        )}
       </div>
     </div>
   )

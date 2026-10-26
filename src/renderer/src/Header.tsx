@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SCREENS_COPY } from '../../shared/copy/screens'
 import type { SessionRow } from '../../shared/contracts'
 import { SESSION_COPY } from '../../shared/copy/session'
 import type { HeaderCache, Task } from '../../shared/types'
@@ -61,7 +62,7 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
         <button
           className="hdr-toggle"
           onClick={toggle}
-          title={open ? 'Recolher resumo' : 'Mostrar resumo'}
+          title={SCREENS_COPY.brainHeader.toggle(open)}
         >
           {open ? '▾' : '▸'}
         </button>
@@ -85,7 +86,7 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
                 })
               }}
             >
-              Sessões <Icon name="chevron" size={12} />
+              {SCREENS_COPY.brainHeader.sessions} <Icon name="chevron" size={12} />
             </button>
             {sessions && (
               <ul className="menu" onMouseLeave={() => setSessions(null)}>
@@ -106,16 +107,22 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
                     </button>
                   </li>
                 ))}
-                {!sessions.length && <li className="empty">nenhuma sessão gravada</li>}
+                {!sessions.length && (
+                  <li className="empty">{SCREENS_COPY.brainHeader.noSessions}</li>
+                )}
               </ul>
             )}
           </span>
-          <button onClick={() => refresh(true)} disabled={loading} title="Gerar o resumo de novo">
+          <button
+            onClick={() => refresh(true)}
+            disabled={loading}
+            title={SCREENS_COPY.brainHeader.regenerate}
+          >
             <Icon name="refresh" size={13} />
           </button>
           {alive && (
-            <button onClick={onEnd} title="Mata o processo; a conversa fica salva">
-              Encerrar sessão
+            <button onClick={onEnd} title={SCREENS_COPY.brainHeader.endHint}>
+              {SCREENS_COPY.brainHeader.end}
             </button>
           )}
         </span>
@@ -125,22 +132,22 @@ export function Header({ task, alive, onEnd, onSwitch, extra }: Props): React.JS
           {hdr?.what ? (
             <>
               <p>
-                <span className="k">O que é</span>
+                <span className="k">{SCREENS_COPY.brainHeader.what}</span>
                 {hdr.what}
               </p>
               <p>
-                <span className="k">Parei em</span>
+                <span className="k">{SCREENS_COPY.brainHeader.where}</span>
                 {hdr.where}
               </p>
               <p>
-                <span className="k">Próximo</span>
+                <span className="k">{SCREENS_COPY.brainHeader.next}</span>
                 {hdr.next}
               </p>
             </>
           ) : (
-            !loading && !h?.error && <p className="dim">sem resumo ainda</p>
+            !loading && !h?.error && <p className="dim">{SCREENS_COPY.brainHeader.empty}</p>
           )}
-          {loading && <p className="dim">gerando resumo…</p>}
+          {loading && <p className="dim">{SCREENS_COPY.brainHeader.loading}</p>}
           {!loading && h?.error && <p className="hdr-err">{h.error}</p>}
         </div>
       )}

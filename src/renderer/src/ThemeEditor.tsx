@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SCREENS_COPY } from '../../shared/copy/screens'
 import type { ConfigState, Theme } from '../../shared/types'
 import { COLOR_INPUT_FALLBACK } from '../../shared/theme/builtins'
 import { applyTheme } from './theme'
@@ -52,7 +53,7 @@ function ColorRow(props: {
       <input
         className="hex"
         value={v}
-        placeholder="padrão"
+        placeholder={SCREENS_COPY.themeEditor.default}
         onChange={(e) => props.onChange(e.target.value.trim())}
         spellCheck={false}
       />
@@ -119,22 +120,22 @@ export function ThemeEditor({
     <div className="theme-editor">
       <div className="te-head">
         <label>
-          Nome
+          {SCREENS_COPY.themeEditor.name}
           <input value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="te-actions">
           {canOverwrite && (
             <button className="primary" disabled={!dirty} onClick={() => saveAs(cfg.config.theme)}>
-              Salvar
+              {SCREENS_COPY.themeEditor.save}
             </button>
           )}
           <button
             className={canOverwrite ? '' : 'primary'}
             disabled={!newId || newId === cfg.config.theme}
             onClick={() => saveAs(newId)}
-            title={`Grava themes/${newId}.json e ativa`}
+            title={SCREENS_COPY.themeEditor.saveAsHint(newId)}
           >
-            Salvar como novo
+            {SCREENS_COPY.themeEditor.saveAs}
           </button>
           <button
             disabled={!dirty}
@@ -144,7 +145,7 @@ export function ThemeEditor({
               applyTheme(cfg.theme, cfg.config)
             }}
           >
-            Descartar
+            {SCREENS_COPY.themeEditor.discard}
           </button>
           {canOverwrite && (
             <button
@@ -155,24 +156,22 @@ export function ThemeEditor({
                 )
               }
             >
-              Excluir tema
+              {SCREENS_COPY.themeEditor.remove}
             </button>
           )}
         </div>
       </div>
-      {current?.builtin && (
-        <p className="dim">Tema padrão: suas mudanças viram um tema novo ao salvar.</p>
-      )}
+      {current?.builtin && <p className="dim">{SCREENS_COPY.themeEditor.builtin}</p>}
       {err && <p className="err">{err}</p>}
       <div className="te-cols">
         <section>
-          <h4>Interface</h4>
+          <h4>{SCREENS_COPY.themeEditor.ui}</h4>
           {UI_LABELS.map(([k, l]) => (
             <ColorRow key={k} label={l} value={draft.ui[k]} onChange={(v) => set('ui', k, v)} />
           ))}
         </section>
         <section>
-          <h4>Terminal</h4>
+          <h4>{SCREENS_COPY.themeEditor.terminal}</h4>
           {TERM_LABELS.map(([k, l]) => (
             <ColorRow
               key={k}
@@ -182,7 +181,7 @@ export function ThemeEditor({
             />
           ))}
           <details>
-            <summary>16 cores ANSI</summary>
+            <summary>{SCREENS_COPY.themeEditor.ansi}</summary>
             {ANSI_LABELS.map(([k, l]) => (
               <ColorRow
                 key={k}

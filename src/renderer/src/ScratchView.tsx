@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { SCREENS_COPY } from '../../shared/copy/screens'
 import { SESSION_COPY } from '../../shared/copy/session'
 import type { Live } from './App'
 import { tabLabel, scratchKind } from './layout'
@@ -93,8 +94,7 @@ export function ScratchView({
         <div className="th">
           <Icon name={kind === 'claude' ? 'pencil' : 'terminal'} size={13} />
           <span className="th-title">
-            <b>{tabLabel(id)}</b> — {kind === 'claude' ? 'Claude sem task' : 'terminal'} em{' '}
-            {workdir ?? '~'}
+            <b>{tabLabel(id)}</b> — {SCREENS_COPY.scratch.title(kind === 'claude', workdir ?? '~')}
           </span>
           <span className="th-actions">
             {alive && kind === 'claude' && sessionId && (
@@ -103,7 +103,7 @@ export function ScratchView({
                   value={adoptKey}
                   onChange={(e) => setAdoptKey(e.target.value)}
                   aria-label={SESSION_COPY.adopt}
-                  placeholder="T-1"
+                  placeholder={SCREENS_COPY.scratch.adoptPlaceholder}
                 />
                 <button
                   onClick={() =>
@@ -127,9 +127,9 @@ export function ScratchView({
                     return
                   onEnd(id)
                 }}
-                title="Mata o processo"
+                title={SCREENS_COPY.scratch.endHint}
               >
-                Encerrar
+                {SCREENS_COPY.scratch.end}
               </button>
             )}
           </span>
@@ -137,7 +137,8 @@ export function ScratchView({
       </div>
       {exited && (
         <div className="banner">
-          Processo saiu. <button onClick={start}>Reabrir</button>
+          {SCREENS_COPY.scratch.exited}{' '}
+          <button onClick={start}>{SCREENS_COPY.scratch.reopen}</button>
         </div>
       )}
       {err && <div className="banner error">{err}</div>}

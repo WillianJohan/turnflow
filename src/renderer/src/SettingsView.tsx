@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { SCREENS_COPY } from '../../shared/copy/screens'
 import { Catalog } from './ui/catalog'
 import type { AppConfig, ConfigState } from '../../shared/types'
 import { ThemeEditor } from './ThemeEditor'
@@ -55,7 +56,7 @@ function FontSelect(props: {
       : [props.value, ...props.options]
   return (
     <select value={props.value} onChange={(e) => props.onChange(e.target.value)}>
-      <option value={props.fallback}>Padrão</option>
+      <option value={props.fallback}>{SCREENS_COPY.settings.default}</option>
       {opts.map((f) => (
         <option key={f} value={f} style={{ fontFamily: `"${f}"` }}>
           {f}
@@ -87,7 +88,7 @@ export function SettingsView({
   return (
     <div className="settings-page">
       <div className="sp-inner">
-        <div role="tablist" aria-label="Settings">
+        <div role="tablist" aria-label={SCREENS_COPY.settings.tabs}>
           <button
             type="button"
             role="tab"
@@ -95,7 +96,7 @@ export function SettingsView({
             aria-selected={tab === 'settings'}
             onClick={() => setTab('settings')}
           >
-            Settings
+            {SCREENS_COPY.settings.settings}
           </button>
           <button
             type="button"
@@ -104,18 +105,18 @@ export function SettingsView({
             aria-selected={tab === 'design'}
             onClick={() => setTab('design')}
           >
-            Design system
+            {SCREENS_COPY.settings.design}
           </button>
         </div>
         {tab === 'design' ? (
           <Catalog />
         ) : (
           <>
-            <h2>Configurações</h2>
+            <h2>{SCREENS_COPY.settings.heading}</h2>
             {(err || cfg.error) && <p className="err">{err || cfg.error}</p>}
 
             <section className="sp-card">
-              <h3>Tema</h3>
+              <h3>{SCREENS_COPY.settings.theme}</h3>
               <div className="theme-picker">
                 {cfg.themes.map((t) => (
                   <button
@@ -125,7 +126,7 @@ export function SettingsView({
                     title={`themes/${t.id}.json`}
                   >
                     {t.name}
-                    {!t.builtin && <span className="dim"> · seu</span>}
+                    {!t.builtin && <span className="dim">{SCREENS_COPY.settings.yours}</span>}
                   </button>
                 ))}
               </div>
@@ -133,10 +134,10 @@ export function SettingsView({
             </section>
 
             <section className="sp-card">
-              <h3>Fontes</h3>
+              <h3>{SCREENS_COPY.settings.fonts}</h3>
               <div className="sp-grid">
                 <label>
-                  Terminal
+                  {SCREENS_COPY.settings.terminal}
                   <FontSelect
                     value={c.termFont}
                     options={fonts.mono}
@@ -145,11 +146,11 @@ export function SettingsView({
                   />
                 </label>
                 <label>
-                  Tamanho
+                  {SCREENS_COPY.settings.size}
                   <SizeField value={c.fontSize} onCommit={(n) => set({ fontSize: n })} />
                 </label>
                 <label>
-                  App
+                  {SCREENS_COPY.settings.app}
                   <FontSelect
                     value={c.appFont}
                     options={fonts.all}
@@ -158,46 +159,44 @@ export function SettingsView({
                   />
                 </label>
                 <label>
-                  Tamanho
+                  {SCREENS_COPY.settings.size}
                   <SizeField value={c.appFontSize} onCommit={(n) => set({ appFontSize: n })} />
                 </label>
               </div>
             </section>
 
             <section className="sp-card">
-              <h3>Notificações</h3>
+              <h3>{SCREENS_COPY.settings.notifications}</h3>
               <label className="check">
                 <input
                   type="checkbox"
                   checked={c.notifications}
                   onChange={(e) => set({ notifications: e.target.checked })}
                 />
-                Avisar no sistema quando um Claude pedir permissão ou terminar e você não estiver
-                olhando aquela aba
+                {SCREENS_COPY.settings.notify}
               </label>
             </section>
 
             <section className="sp-card">
-              <h3>Rascunho</h3>
+              <h3>{SCREENS_COPY.settings.draft}</h3>
               <label className="check">
                 <input
                   type="checkbox"
                   checked={c.draftMode}
                   onChange={(e) => set({ draftMode: e.target.checked })}
                 />
-                Draft mode: caixa de rascunho embaixo do terminal (Enter quebra linha, Ctrl+Enter
-                envia) · <kbd>Ctrl+Shift+D</kbd>
+                {SCREENS_COPY.settings.draftHint} <kbd>{'Ctrl+Shift+D'}</kbd>
               </label>
             </section>
 
             <section className="sp-card">
-              <h3>Ícones dos status</h3>
+              <h3>{SCREENS_COPY.settings.statusIcons}</h3>
               <div className="icon-grid">
                 {Object.entries(c.statusIcons).map(([name, icon]) => (
                   <div key={name} className="icon-row">
                     <button
                       className="icon-btn"
-                      title="Escolher ícone"
+                      title={SCREENS_COPY.settings.chooseIcon}
                       onClick={() => setPicking(picking === name ? null : name)}
                     >
                       {icon ? (
@@ -223,12 +222,15 @@ export function SettingsView({
             </section>
 
             <section className="sp-card">
-              <h3>Arquivos</h3>
+              <h3>{SCREENS_COPY.settings.files}</h3>
               <p className="dim">
-                Tudo fica em <code>{cfg.dir}</code>: <code>config.json</code> e{' '}
-                <code>themes/*.json</code>. Editou e salvou, o app aplica na hora.
+                {SCREENS_COPY.settings.filesIn} <code>{cfg.dir}</code>: <code>{'config.json'}</code>{' '}
+                {SCREENS_COPY.settings.filesAnd} <code>{'themes/*.json'}</code>
+                {SCREENS_COPY.settings.filesApply}
               </p>
-              <button onClick={() => window.turnflow.openConfigDir()}>Abrir pasta de config</button>
+              <button onClick={() => window.turnflow.openConfigDir()}>
+                {SCREENS_COPY.settings.openDir}
+              </button>
             </section>
 
             <section className="sp-card" data-testid="settings-import">
