@@ -6,6 +6,7 @@ import type { Db } from '../core/db/open'
 import type { TaskDetail, TaskRow } from '../shared/contracts'
 import { CHANNELS } from '../shared/ipc/registry'
 import type { Result } from '../shared/ipc/result'
+import { DEFAULT_THEME } from '../shared/theme/builtins'
 
 // Mesmos stubs do ipc.coverage.test.ts; aqui o config.json é real (TURNFLOW_CONFIG_DIR = tmp).
 vi.mock('electron', () => ({
@@ -101,6 +102,19 @@ afterEach(() => {
 })
 
 const cfgFile = (): string => join(dir, 'config.json')
+
+describe('tema pelo IPC', () => {
+  it('tema ausente ou quebrado cai no padrão com erro, sem derrubar o config', async () => {
+    await writeFile(join(dir, 'themes', 'ruim.json'), '{', 'utf8')
+    await writeFile(cfgFile(), JSON.stringify({ theme: 'ruim' }), 'utf8')
+    const state = data<{ theme: { name: string }; error?: string }>(await call('config'))
+    expect(state.theme.name).toBe(DEFAULT_THEME.name)
+    expect(state.error).toMatch(/ruim\.json/)
+    expect(data<{ name: string }>(await call('readTheme', { id: 'nao-existe' })).name).toBe(
+      DEFAULT_THEME.name
+    )
+  })
+})
 
 describe('config.json × pasta padrão', () => {
   it('config:set com defaultWorkdir relativo é VALIDATION e não toca o config.json', async () => {

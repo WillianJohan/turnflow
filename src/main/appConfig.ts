@@ -202,18 +202,18 @@ export async function readTheme(
   id: string
 ): Promise<{ theme: Theme; error?: string }> {
   if (!/^[\w.-]+$/.test(id) || id.startsWith('.'))
-    return { theme: DARK, error: `tema "${id}" inválido` }
+    return { theme: DEFAULT_THEME, error: `tema "${id}" inválido` }
   try {
     const t = JSON.parse(await readFile(join(themesDir(dir), `${id}.json`), 'utf8'))
     return {
       theme: {
         name: t.name ?? id,
-        ui: { ...DARK.ui, ...t.ui },
-        terminal: { ...DARK.terminal, ...t.terminal }
+        ui: { ...DEFAULT_THEME.ui, ...t.ui },
+        terminal: { ...DEFAULT_THEME.terminal, ...t.terminal }
       }
     }
   } catch (e) {
-    return { theme: DARK, error: `themes/${id}.json: ${(e as Error).message}` }
+    return { theme: DEFAULT_THEME, error: `themes/${id}.json: ${(e as Error).message}` }
   }
 }
 
