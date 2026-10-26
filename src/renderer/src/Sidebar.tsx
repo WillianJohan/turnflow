@@ -29,6 +29,8 @@ type Props = {
   attention?: TaskRow[]
   density?: Density
   onDensity?(density: Density): void
+  /** Keys de tasks que já existem no domínio: a árvore do brain não repete as importadas. */
+  domainKeys?: Set<string>
 }
 
 const COLLAPSED = new Set(['Concluído', 'Arquivada'])
@@ -76,7 +78,8 @@ export function Sidebar({
   onWidth,
   attention = [],
   density = 'normal',
-  onDensity
+  onDensity,
+  domainKeys
 }: Props): React.JSX.Element {
   const [collapsed, setCollapsed] = useState<Set<string>>(COLLAPSED)
   const [expanded, setExpanded] = useState<Set<string>>(new Set()) // épicos abertos
@@ -109,9 +112,14 @@ export function Sidebar({
   const byNum = (a: Task, b: Task): number =>
     Number(b.id.replace(/\D/g, '')) - Number(a.id.replace(/\D/g, ''))
   const open = tasks.filter((t) => openIds.has(t.id) || live.alive.has(t.id)).sort(byNum)
+  const imported = useMemo(
+    () => new Set([...(domainKeys ?? []), ...attention.map((row) => row.key)]),
+    [domainKeys, attention]
+  )
   const groups = useMemo(() => {
     const m = new Map<number, { name: string; tasks: Task[] }>()
     for (const t of tasks) {
+      if (imported.has(t.id)) continue
       const g = m.get(t.bucket.idx) ?? { name: t.bucket.name, tasks: [] }
       g.tasks.push(t)
       m.set(t.bucket.idx, g)
@@ -122,7 +130,7 @@ export function Sidebar({
         const rows = tree(g.tasks.sort(byNum))
         return { ...g, rows, kids: kidCount(rows) }
       })
-  }, [tasks])
+  }, [tasks, imported])
   const shown = filter.size ? groups.filter((g) => filter.has(g.name)) : groups
 
   const flip =
